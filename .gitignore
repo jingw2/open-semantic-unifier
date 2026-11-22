@@ -20,7 +20,8 @@ node_modules/
 frontend/dist/
 npm-debug.log*
 
-# OS / IDE
+# OS / IDE / Local Agent Notes
 .DS_Store
 .vscode/
 .idea/
+CLAUDE.md
