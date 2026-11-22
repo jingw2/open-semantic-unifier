@@ -1,0 +1,108 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: su_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-semantic_unifier}
+      POSTGRES_USER: ${POSTGRES_USER:-su_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-su_secret_2026}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-su_admin} -d ${POSTGRES_DB:-semantic_unifier}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: su_redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: su_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin123}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: su_backend
+    restart: unless-stopped
+    env_file:
+      - .env.example
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-su_admin}:${POSTGRES_PASSWORD:-su_secret_2026}@postgres:5432/${POSTGRES_DB:-semantic_unifier}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_ENABLED: "true"
+      STORAGE_BACKEND: s3
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin123}
+      S3_BUCKET: ${S3_BUCKET:-semantic-unifier}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    ports:
+      - "8000:8000"
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: su_worker
+    restart: unless-stopped
+    command: celery -A app.workers.celery_app:celery_app worker --loglevel=info --concurrency=2
+    env_file:
+      - .env.example
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-su_admin}:${POSTGRES_PASSWORD:-su_secret_2026}@postgres:5432/${POSTGRES_DB:-semantic_unifier}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_ENABLED: "true"
+      STORAGE_BACKEND: s3
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin123}
+      S3_BUCKET: ${S3_BUCKET:-semantic-unifier}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: su_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+
+volumes:
+  pg_data:
+  minio_data:
