@@ -22,6 +22,12 @@ class Settings:
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./local_dev.db")
     redis_url: str = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
     celery_enabled: bool = os.getenv("CELERY_ENABLED", "false").lower() == "true"
+    phoenix_enabled: bool = os.getenv("PHOENIX_ENABLED", "false").lower() == "true"
+    phoenix_collector_endpoint: str = os.getenv("PHOENIX_COLLECTOR_ENDPOINT", "http://127.0.0.1:6006/v1/traces")
+    otel_service_name: str = os.getenv("OTEL_SERVICE_NAME", "open-semantic-unifier")
+    otel_export_timeout_seconds: float = float(os.getenv("OTEL_EXPORT_TIMEOUT_SECONDS", "1.0"))
+    llm_timeout_seconds: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "30.0"))
+    unification_max_attempts: int = int(os.getenv("UNIFICATION_MAX_ATTEMPTS", "3"))
 
     storage_backend: str = os.getenv("STORAGE_BACKEND", "local")  # local | s3
     local_storage_dir: str = os.getenv("LOCAL_STORAGE_DIR", "./local_storage")
@@ -29,6 +35,28 @@ class Settings:
     s3_access_key: str = os.getenv("S3_ACCESS_KEY", "minioadmin")
     s3_secret_key: str = os.getenv("S3_SECRET_KEY", "minioadmin123")
     s3_bucket: str = os.getenv("S3_BUCKET", "semantic-unifier")
+
+    def validate_for_deployment(self) -> None:
+        """Reject invalid retry limits and the repository's example credentials in production mode."""
+        if self.unification_max_attempts < 1:
+            raise ValueError("UNIFICATION_MAX_ATTEMPTS must be at least 1")
+        if self.app_env.lower() != "production":
+            return
+        required_secrets = {
+            "JWT_SECRET_KEY": self.jwt_secret_key,
+            "INIT_ADMIN_PASSWORD": self.init_admin_password,
+            "S3_SECRET_KEY": self.s3_secret_key,
+        }
+        invalid = [
+            name
+            for name, value in required_secrets.items()
+            if len(value.strip()) < 24 or value.strip().startswith("generate-with-")
+        ]
+        if invalid:
+            raise ValueError(
+                "Production credentials are missing or too short: " + ", ".join(invalid)
+                + ". Generate a private .env with scripts/init_env.py."
+            )
 
 
 settings = Settings()

@@ -2,20 +2,20 @@
 
 import os
 import tempfile
+import json
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, require_role, verify_serving_api_key
+from app.api.deps import require_resource_access, get_current_user, require_role, verify_serving_api_key
 from app.core.db import get_db
 from app.core.security import generate_project_api_key
 from app.models.entities import ArtifactVersion, CanonicalMapping, Project, ProjectApiKey, ReviewItem
+from app.models.unification import UnificationSnapshot
 from app.services.engines import (
-    MASTER_SUPPLIERS,
-    _calc_supplier_score,
     compile_and_query_metric_yaml,
     validate_with_schema_text,
 )
@@ -38,6 +38,13 @@ class ServeReconcileRequest(BaseModel):
     query: str
 
 
+class ServeUnificationResolveRequest(BaseModel):
+    snapshot_id: str = Field(min_length=1)
+    source_system: str = Field(min_length=1, max_length=160)
+    dataset: str = Field(min_length=1, max_length=200)
+    source_record_id: str = Field(min_length=1, max_length=320)
+
+
 class ServeValidateRequest(BaseModel):
     entity_name: str = "ShipmentOrder"
     payload: Dict[str, Any]
@@ -50,7 +57,7 @@ class ServeMetricQueryRequest(BaseModel):
 
 # ==================== 1. 人工复核队列 & 可复用映射字典 ====================
 
-@router.get("/projects/{project_id}/reviews")
+@router.get("/projects/{project_id}/reviews", dependencies=[Depends(require_resource_access)])
 def list_reviews(project_id: str, ctx: Dict[str, str] = Depends(get_current_user), db: Session = Depends(get_db)):
     items = db.query(ReviewItem).filter(ReviewItem.project_id == project_id).order_by(ReviewItem.created_at.desc()).limit(50).all()
     mappings = db.query(CanonicalMapping).filter(CanonicalMapping.project_id == project_id).order_by(CanonicalMapping.created_at.desc()).limit(100).all()
@@ -81,7 +88,7 @@ def list_reviews(project_id: str, ctx: Dict[str, str] = Depends(get_current_user
     }
 
 
-@router.post("/reviews/{review_id}/decide")
+@router.post("/reviews/{review_id}/decide", dependencies=[Depends(require_resource_access)])
 def decide_review(
     review_id: str,
     req: ReviewDecisionRequest,
@@ -135,7 +142,7 @@ def decide_review(
 
 # ==================== 2. 产物版本管理：草稿 / 发布 / 一键回滚 / 下载 ====================
 
-@router.get("/projects/{project_id}/artifacts")
+@router.get("/projects/{project_id}/artifacts", dependencies=[Depends(require_resource_access)])
 def list_artifacts(project_id: str, ctx: Dict[str, str] = Depends(get_current_user), db: Session = Depends(get_db)):
     rows = db.query(ArtifactVersion).filter(ArtifactVersion.project_id == project_id).order_by(ArtifactVersion.created_at.desc()).limit(60).all()
     return [
@@ -154,7 +161,7 @@ def list_artifacts(project_id: str, ctx: Dict[str, str] = Depends(get_current_us
     ]
 
 
-@router.post("/artifacts/{artifact_id}/publish")
+@router.post("/artifacts/{artifact_id}/publish", dependencies=[Depends(require_resource_access)])
 def publish_artifact_version(
     artifact_id: str,
     ctx: Dict[str, str] = Depends(require_role("admin", "editor")),
@@ -176,7 +183,7 @@ def publish_artifact_version(
     return {"id": art.id, "artifact_type": art.artifact_type, "version_no": art.version_no, "release_status": "PUBLISHED"}
 
 
-@router.get("/artifacts/{artifact_id}/content")
+@router.get("/artifacts/{artifact_id}/content", dependencies=[Depends(require_resource_access)])
 def download_artifact(artifact_id: str, db: Session = Depends(get_db)):
     art = db.query(ArtifactVersion).filter(ArtifactVersion.id == artifact_id).first()
     if not art:
@@ -189,13 +196,13 @@ def download_artifact(artifact_id: str, db: Session = Depends(get_db)):
 
 # ==================== 3. 项目级 Serving API Key 管理 ====================
 
-@router.get("/projects/{project_id}/api-keys")
+@router.get("/projects/{project_id}/api-keys", dependencies=[Depends(require_resource_access)])
 def list_project_api_keys(project_id: str, ctx: Dict[str, str] = Depends(get_current_user), db: Session = Depends(get_db)):
     rows = db.query(ProjectApiKey).filter(ProjectApiKey.project_id == project_id).order_by(ProjectApiKey.created_at.desc()).all()
     return [{"id": k.id, "name": k.name, "key_prefix": k.key_prefix, "is_active": k.is_active, "created_at": k.created_at.isoformat()} for k in rows]
 
 
-@router.post("/projects/{project_id}/api-keys")
+@router.post("/projects/{project_id}/api-keys", dependencies=[Depends(require_resource_access)])
 def create_project_api_key(
     project_id: str,
     req: CreateApiKeyRequest,
@@ -209,7 +216,7 @@ def create_project_api_key(
     return {"id": rec.id, "name": rec.name, "key_prefix": prefix, "api_key_once": raw_key}
 
 
-@router.delete("/api-keys/{key_id}")
+@router.delete("/api-keys/{key_id}", dependencies=[Depends(require_resource_access)])
 def revoke_api_key(key_id: str, ctx: Dict[str, str] = Depends(require_role("admin", "editor")), db: Session = Depends(get_db)):
     rec = db.query(ProjectApiKey).filter(ProjectApiKey.id == key_id).first()
     if not rec:
@@ -233,16 +240,35 @@ def serve_reconcile(
     if hit:
         return {"project": proj.slug, "query": q, "matched": True, "source": "HUMAN_REVIEW_DICT", "canonical_id": hit.canonical_id, "canonical_name": hit.canonical_name, "score": 100.0}
 
-    cands = []
-    for item in MASTER_SUPPLIERS:
-        sc = _calc_supplier_score(q, item)
-        if sc >= 50:
-            cands.append({"canonical_id": item["id"], "canonical_name": item["name"], "score": sc})
-    cands.sort(key=lambda x: x["score"], reverse=True)
-    if cands:
-        top = cands[0]
-        return {"project": proj.slug, "query": q, "matched": top["score"] >= 80, "source": "MASTER_CATALOG", **top, "candidates": cands[:3]}
     return {"project": proj.slug, "query": q, "matched": False, "source": "NONE", "candidates": []}
+
+
+@router.post("/serve/{project_slug}/unification/resolve")
+def serve_unification_resolve(
+    req: ServeUnificationResolveRequest,
+    proj: Project = Depends(verify_serving_api_key),
+    db: Session = Depends(get_db),
+):
+    """Resolve an exact source identity against an explicitly published snapshot."""
+    snapshot = db.query(UnificationSnapshot).filter(
+        UnificationSnapshot.id == req.snapshot_id,
+        UnificationSnapshot.project_id == proj.id,
+    ).first()
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="snapshot not found for this project")
+    source_key = json.dumps([
+        proj.id, req.source_system.strip().casefold(), req.dataset.strip().casefold(), req.source_record_id.strip(),
+    ], ensure_ascii=False, separators=(",", ":"))
+    entity_id = snapshot.snapshot_json.get("memberships", {}).get(source_key)
+    return {
+        "project": proj.slug,
+        "snapshot_id": snapshot.id,
+        "version": snapshot.version,
+        "matched": entity_id is not None,
+        "entity_id": entity_id,
+        "entity": snapshot.snapshot_json.get("entities", {}).get(entity_id) if entity_id else None,
+        "attributes": snapshot.snapshot_json.get("attributes", {}).get(entity_id) if entity_id else None,
+    }
 
 
 @router.post("/serve/{project_slug}/validate")

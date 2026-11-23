@@ -1,3 +1,4 @@
+import { ArtifactDownload, ArtifactPreview } from '../components/ArtifactAccess'
 import React, { useEffect, useState } from 'react'
 import { Play, Download, Sparkles, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { apiFetch, JobItem } from '../lib/api'
@@ -58,23 +59,15 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
       })
       setJob(created)
 
-      // 若后端为 Celery 异步模式，通过 SSE 订阅实时进度
+      // 使用带登录凭据的请求获取异步任务进度
       if (created.status !== 'SUCCESS' && created.status !== 'FAILED') {
-        const es = new EventSource(`/api/v1/jobs/${created.id}/stream`)
-        es.onmessage = async (ev) => {
-          const pkt = JSON.parse(ev.data)
-          setJob((prev) => (prev ? { ...prev, status: pkt.status, progress: pkt.progress, stage_message: pkt.message } : prev))
-          if (pkt.status === 'SUCCESS' || pkt.status === 'FAILED') {
-            es.close()
-            const finalJob = await apiFetch<JobItem>(`/api/v1/jobs/${created.id}`)
-            setJob(finalJob)
-            setRunning(false)
-          }
+        let current = created
+        while (current.status !== 'SUCCESS' && current.status !== 'FAILED') {
+          await new Promise(resolve => setTimeout(resolve, 500))
+          current = await apiFetch<JobItem>(`/api/v1/jobs/${created.id}`)
+          setJob(current)
         }
-        es.onerror = () => {
-          es.close()
-          setRunning(false)
-        }
+        setRunning(false)
       } else {
         setRunning(false)
       }
@@ -183,13 +176,13 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
             </div>
             <div className="flex gap-2 flex-wrap">
               {(job.result?.artifacts || []).map((a: any) => (
-                <a
+                <ArtifactDownload
                   key={a.id}
-                  href={`/api/v1/artifacts/${a.id}/content`}
+                  id={a.id} filename={a.filename}
                   className="px-3 py-1.5 bg-brand-50 text-brand-600 rounded-lg text-xs font-bold flex items-center gap-1"
                 >
                   <Download className="w-3.5 h-3.5" /> v{a.version} {a.filename}
-                </a>
+                </ArtifactDownload>
               ))}
             </div>
           </div>
@@ -218,12 +211,12 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
                 <div className="p-4 bg-brand-50 rounded-xl border border-brand-200"><div className="text-2xl font-extrabold text-brand-600">{job.result.token_cost_saved_pct}%</div><div className="text-xs text-brand-700">漏斗节省 Token</div></div>
               </div>
               {job.result.weights_artifact_id && (
-                <iframe src={`/api/v1/artifacts/${job.result.weights_artifact_id}/content`} className="w-full h-80 border border-slate-200 rounded-xl" />
+                <ArtifactPreview id={job.result.weights_artifact_id} className="w-full h-80 border border-slate-200 rounded-xl" />
               )}
               {(job.result.waterfall_artifacts || []).map((wf: any) => (
                 <div key={wf.id} className="border border-slate-200 rounded-xl p-3">
                   <div className="text-xs font-bold text-slate-800 mb-2">{wf.title}</div>
-                  <iframe src={`/api/v1/artifacts/${wf.id}/content`} className="w-full h-96 border-0" />
+                  <ArtifactPreview id={wf.id} className="w-full h-96 border-0" />
                 </div>
               ))}
             </div>

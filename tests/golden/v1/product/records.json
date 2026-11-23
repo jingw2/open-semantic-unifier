@@ -1,0 +1,216 @@
+[
+  {
+    "record_ref": "product:erp:01",
+    "source_system": "erp",
+    "dataset": "product",
+    "source_record_id": "L01",
+    "attributes": {
+      "name": "测试电机",
+      "gtin": "TEST-GTIN-001",
+      "brand": "TEST",
+      "model": "M1",
+      "voltage": "220V"
+    }
+  },
+  {
+    "record_ref": "product:secondary:01",
+    "source_system": "secondary",
+    "dataset": "product",
+    "source_record_id": "R01",
+    "attributes": {
+      "name": "测试马达",
+      "gtin": "TEST-GTIN-001",
+      "brand": "TEST",
+      "model": "M1",
+      "voltage": "220V"
+    }
+  },
+  {
+    "record_ref": "product:erp:02",
+    "source_system": "erp",
+    "dataset": "product",
+    "source_record_id": "L02",
+    "attributes": {
+      "name": "测试电机 M2"
+    }
+  },
+  {
+    "record_ref": "product:secondary:02",
+    "source_system": "secondary",
+    "dataset": "product",
+    "source_record_id": "R02",
+    "attributes": {
+      "name": "测试马达 M2"
+    }
+  },
+  {
+    "record_ref": "product:erp:03",
+    "source_system": "erp",
+    "dataset": "product",
+    "source_record_id": "L03",
+    "attributes": {
+      "name": "测试电机",
+      "brand": "TEST",
+      "model": "M3",
+      "voltage": "110V"
+    }
+  },
+  {
+    "record_ref": "product:secondary:03",
+    "source_system": "secondary",
+    "dataset": "product",
+    "source_record_id": "R03",
+    "attributes": {
+      "name": "测试电机",
+      "brand": "TEST",
+      "model": "M3",
+      "voltage": "220V"
+    }
+  },
+  {
+    "record_ref": "product:erp:04",
+    "source_system": "erp",
+    "dataset": "product",
+    "source_record_id": "L04",
+    "attributes": {
+      "name": "测试包装",
+      "weight": "1000g"
+    }
+  },
+  {
+    "record_ref": "product:secondary:04",
+    "source_system": "secondary",
+    "dataset": "product",
+    "source_record_id": "R04",
+    "attributes": {
+      "name": "测试包装",
+      "weight": "1kg"
+    }
+  },
+  {
+    "record_ref": "product:erp:05",
+    "source_system": "erp",
+    "dataset": "product",
+    "source_record_id": "L05",
+    "attributes": {
+      "name": "测试零件甲",
+      "sku": "001",
+      "supplier": "TEST-A"
+    }
+  },
+  {
+    "record_ref": "product:secondary:05",
+    "source_system": "secondary",
+    "dataset": "product",
+    "source_record_id": "R05",
+    "attributes": {
+      "name": "测试零件乙",
+      "sku": "001",
+      "supplier": "TEST-B"
+    }
+  },
+  {
+    "record_ref": "product:erp:06",
+    "source_system": "erp",
+    "dataset": "product",
+    "source_record_id": "L06",
+    "attributes": {
+      "name": "测试耗材",
+      "gtin": null
+    }
+  },
+  {
+    "record_ref": "product:secondary:06",
+    "source_system": "secondary",
+    "dataset": "product",
+    "source_record_id": "R06",
+    "attributes": {
+      "name": "测试耗材",
+      "gtin": ""
+    }
+  },
+  {
+    "record_ref": "product:erp:07",
+    "source_system": "erp",
+    "dataset": "product",
+    "source_record_id": "L07",
+    "attributes": {
+      "name": "测试电源",
+      "gtin": "TEST-GTIN-007",
+      "voltage": "110V"
+    }
+  },
+  {
+    "record_ref": "product:secondary:07",
+    "source_system": "secondary",
+    "dataset": "product",
+    "source_record_id": "R07",
+    "attributes": {
+      "name": "测试电源",
+      "gtin": "TEST-GTIN-007",
+      "voltage": "220V"
+    }
+  },
+  {
+    "record_ref": "product:erp:08",
+    "source_system": "erp",
+    "dataset": "product",
+    "source_record_id": "L08",
+    "attributes": {
+      "name": "测试新包装名称",
+      "gtin": "TEST-GTIN-009"
+    }
+  },
+  {
+    "record_ref": "product:secondary:08",
+    "source_system": "secondary",
+    "dataset": "product",
+    "source_record_id": "R08",
+    "attributes": {
+      "name": "测试旧包装名称",
+      "gtin": "TEST-GTIN-009"
+    }
+  },
+  {
+    "record_ref": "product:erp:09",
+    "source_system": "erp",
+    "dataset": "product",
+    "source_record_id": "L09",
+    "attributes": {
+      "name": null,
+      "gtin": null
+    }
+  },
+  {
+    "record_ref": "product:secondary:09",
+    "source_system": "secondary",
+    "dataset": "product",
+    "source_record_id": "R09",
+    "attributes": {
+      "name": "",
+      "gtin": null
+    }
+  },
+  {
+    "record_ref": "product:erp:10",
+    "source_system": "erp",
+    "dataset": "product",
+    "source_record_id": "L10",
+    "attributes": {
+      "name": "测试螺丝",
+      "model": "M6",
+      "pack_count": 10
+    }
+  },
+  {
+    "record_ref": "product:secondary:10",
+    "source_system": "secondary",
+    "dataset": "product",
+    "source_record_id": "R10",
+    "attributes": {
+      "name": "测试螺丝",
+      "model": "M6",
+      "pack_count": 100
+    }
+  }
+]

@@ -1,0 +1,44 @@
+{
+  "scheme_version": "1",
+  "entity_type": "product",
+  "identity_granularity": "sellable_variant",
+  "field_map": {
+    "name": "name",
+    "gtin": "gtin",
+    "brand": "brand",
+    "model": "model",
+    "voltage": "voltage",
+    "weight": "weight",
+    "sku": "sku",
+    "supplier": "supplier",
+    "pack_count": "pack_count"
+  },
+  "strong_identifier": "gtin",
+  "identifier_authority": "explicitly_trusted_in_this_synthetic_fixture",
+  "normalization": [
+    "unicode_nfkc",
+    "trim"
+  ],
+  "nulls_never_equal": true,
+  "conflict_fields": [
+    "gtin",
+    "voltage",
+    "pack_count"
+  ],
+  "conflict_precedence": "veto_auto_merge",
+  "weak_evidence_action": "REVIEW",
+  "golden_pair_discovery": "evaluate_all_pairs_for_this_small_fixture",
+  "canonical_attribute_policy": {
+    "name": {
+      "source_priority": [
+        "erp",
+        "secondary"
+      ],
+      "on_conflict": "retain_provenance"
+    },
+    "other_attributes": {
+      "on_conflict": "REVIEW"
+    }
+  },
+  "real_world_identifier_validation": "TEST-* values are synthetic opaque identifiers; not valid legal IDs or GTINs"
+}

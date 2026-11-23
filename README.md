@@ -1,20 +1,64 @@
-# 零点未来 · 企业语义统一平台（Semantic Unifier Platform）
+# Open Semantic Unifier
 
-私有化 / 团队自部署的企业级语义统一全栈平台，将 **L1 小表清洗对齐、L2 Splink 5.0 + LLM 混合实体解析、L3 LinkML 源头契约与 AI 防幻觉、L4 指标语义层** 整合为完整生产闭环。
+Open Semantic Unifier is a self-hosted workbench for configurable entity resolution across business systems. Its first delivery focuses on persistent source identity, candidate evidence, human review, auditable identity changes, immutable snapshots, and version-bound exports.
 
-## 核心特性
-- **私有化账号与 RBAC 权限**：首次启动自动初始化超管（关闭公开注册），支持 Admin 管理团队成员与 `Admin / Editor / Viewer` 角色，Fernet 对称加密存储数据库密码与大模型 API Key。
-- **多源数据接入 + 安全抽样**：支持上传 `CSV / XLSX / Parquet / TSV / YAML` 与直连 `DuckDB / SQLite / MySQL / PostgreSQL / MongoDB`；大表先 5,000 行安全抽样体检，执行任务时异步抽取落盘 Parquet 进 MinIO（支持自定义 SQL 过滤）。
-- **智能路由（Smart Router）**：根据数据画像与业务目标自动推荐 L1–L4 路线并给出大白话理由。
-- **人工复核与规则沉淀（Human-in-the-Loop）**：L1 低分项与 L2 灰色边界样本进入复核队列，确认后自动沉淀为项目级可复用映射字典。
-- **草稿 / 发布双态版本 + 对外 Serving API**：L3 契约与 L4 指标支持版本号管理、一键发布到线上与一键回滚，签发项目级 `X-API-Key` 供外部系统与 AI Agent 直接调用 `/api/v1/serve/{project_slug}/reconcile|validate|metrics/query`。
+The supplier, customer, and product examples are starting configurations. Projects can define other entity types and field mappings. L3 contract unification and L4 metric unification remain experimental and are not release claims. The V0.1 acceptance baseline is still being evaluated; see [acceptance status](docs/reference/acceptance-status.json).
 
-## 一键 Docker Compose 私有化部署
+## Quick start
+
+Requirements: Docker with the Compose plugin, Python 3.11+ for the credential helper, and a free local port range 8000–9001.
+
 ```bash
-cp .env.example .env
+python3 scripts/init_env.py
 docker compose up -d --build
 ```
-- Web 工作台：`http://localhost:8080`
-- 默认超管：`admin@lingdianweilai.ai` / `Admin@2026`（请在 `.env` 中修改）
-- MinIO 控制台：`http://localhost:9001`
-- 后端 Swagger 文档：`http://localhost:8000/docs`
+
+The helper creates a private `.env` with fresh JWT, encryption, database, object-store, and initial administrator credentials. Save the one-time administrator password printed by the helper. Do not deploy `.env.example` directly. To apply later `.env` changes, recreate the affected services:
+
+```bash
+docker compose up -d --force-recreate backend worker
+```
+
+Open the workbench at `http://localhost:8080`; API docs are at `http://localhost:8000/docs`. PostgreSQL data and MinIO objects persist in named Compose volumes. Database migrations run on API startup. To stop services while keeping data, run `docker compose down`. `docker compose down -v` deletes the database, object-store data, and optional Phoenix data.
+
+## What is implemented
+
+- Project-scoped source records and revisions with stable source keys.
+- Configurable supplier, customer, product, and custom entity schemes.
+- Rule and Splink candidate evidence, human review, merge/undo, snapshots, and exports.
+- Asynchronous Celery run submission in the Compose deployment.
+- Optional local or private OpenAI-compatible model providers.
+- Optional Phoenix tracing. It is not required for core matching.
+
+Connector code paths exist for DuckDB, SQLite, MySQL, PostgreSQL, and MongoDB. The project has automated unit/API coverage for SQLite and the Compose PostgreSQL deployment. MySQL, standalone DuckDB, and MongoDB live connection tests have not been run in this release task; see [connector validation](docs/how-to/connectors.md).
+
+## Guides
+
+- [Installation and operations](docs/how-to/install.md)
+- [Three example scenarios](docs/how-to/scenarios.md)
+- [API workflow](docs/how-to/api.md)
+- [Database connectors and validation](docs/how-to/connectors.md)
+- [Contribution guide](CONTRIBUTING.md)
+- [Acceptance baseline and current status](docs/reference/acceptance-baseline.md)
+- [Golden Test Set](tests/golden/README.md)
+
+## Local development
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -r backend/requirements.txt
+python -m pytest backend/tests -q
+npm --prefix frontend ci
+npm --prefix frontend run build
+```
+
+Run `python3 scripts/golden.py validate` to check fixture integrity and `python3 -m unittest discover -s tests -p 'test_golden_contract.py' -v` to test the scorer contract. These commands validate fixtures and the scorer; they do not evaluate product predictions or satisfy lifecycle acceptance.
+
+## Local models and tracing
+
+Configure an OpenAI-compatible local or private model under **Providers**, then select it in a project scheme. The model can suggest review actions; configured conflicts and human cannot-link decisions remain authoritative. Start optional Phoenix with `docker compose --profile observability up -d phoenix` after setting `PHOENIX_ENABLED=true` in `.env` and recreating backend and worker. See the [installation guide](docs/how-to/install.md#optional-phoenix-tracing).
+
+## License
+
+Open Semantic Unifier is distributed under the Apache License 2.0. Third-party services and dependencies retain their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

@@ -1,0 +1,333 @@
+[
+  {
+    "case_id": "L01",
+    "name": "stable-rerun",
+    "scenario": "supplier",
+    "steps": "初次导入并发布；相同输入重跑",
+    "assertions": [
+      "source_mapping_and_entity_ids_equal",
+      "no_duplicate_entities"
+    ],
+    "baseline_ids": [
+      "ID-01",
+      "RUN-01"
+    ],
+    "execution_status": "NOT_RUN"
+  },
+  {
+    "case_id": "L02",
+    "name": "reordered-input",
+    "scenario": "customer",
+    "steps": "交换导入记录顺序后重跑",
+    "assertions": [
+      "source_identity_uses_configured_key",
+      "published_mapping_unchanged"
+    ],
+    "baseline_ids": [
+      "ID-01"
+    ],
+    "execution_status": "NOT_RUN"
+  },
+  {
+    "case_id": "L03",
+    "name": "updated-record",
+    "scenario": "supplier",
+    "steps": "使用同一来源键提交更新后的名称",
+    "assertions": [
+      "source_revision_added",
+      "source_key_unchanged",
+      "entity_id_unchanged",
+      "old_snapshot_unchanged"
+    ],
+    "baseline_ids": [
+      "RUN-02",
+      "VER-01"
+    ],
+    "execution_status": "NOT_RUN"
+  },
+  {
+    "case_id": "L04",
+    "name": "human-approve",
+    "scenario": "supplier",
+    "steps": "确认 supplier-02-name_only 合并后重跑",
+    "assertions": [
+      "pair_same_entity",
+      "decision_persisted",
+      "no_repeat_pending_review"
+    ],
+    "baseline_ids": [
+      "HITL-01"
+    ],
+    "execution_status": "NOT_RUN"
+  },
+  {
+    "case_id": "L05",
+    "name": "human-reject",
+    "scenario": "customer",
+    "steps": "拒绝 customer-04-shared_phone 合并后重跑",
+    "assertions": [
+      "pair_distinct",
+      "cannot_link_persisted",
+      "no_auto_merge"
+    ],
+    "baseline_ids": [
+      "HITL-02"
+    ],
+    "execution_status": "NOT_RUN"
+  },
+  {
+    "case_id": "L06",
+    "name": "merge-redirect",
+    "scenario": "supplier",
+    "steps": "将两个已存在实体合并",
+    "assertions": [
+      "one_active_id",
+      "retired_id_redirects",
+      "old_snapshot_unchanged"
+    ],
+    "baseline_ids": [
+      "ID-02",
+      "VER-01"
+    ],
+    "execution_status": "NOT_RUN"
+  },
+  {
+    "case_id": "L07",
+    "name": "split-undo",
+    "scenario": "supplier",
+    "steps": "撤销 L06 的合并并重新发布",
+    "assertions": [
+      "restored_membership",
+      "split_lineage",
+      "new_snapshot",
+      "old_snapshot_unchanged"
+    ],
+    "baseline_ids": [
+      "ID-03",
+      "VER-01"
+    ],
+    "execution_status": "NOT_RUN"
+  },
+  {
+    "case_id": "L08",
+    "name": "transitive-veto",
+    "scenario": "supplier",
+    "steps": "声明 A-B 同一、B-C 候选，但人工拒绝 A-C",
+    "assertions": [
+      "no_cluster_contains_both_A_C",
+      "blocked_bridge_explained"
+    ],
+    "baseline_ids": [
+      "MATCH-03"
+    ],
+    "execution_status": "NOT_RUN"
+  },
+  {
+    "case_id": "L09",
+    "name": "attribute-choice",
+    "scenario": "supplier",
+    "steps": "erp 地址旧、secondary 地址新；配置 erp 优先，再人工覆盖",
+    "assertions": [
+      "chosen_value_follows_versioned_policy",
+      "alternatives_and_origin_retained",
+      "override_audited"
+    ],
+    "baseline_ids": [
+      "ATTR-01"
+    ],
+    "execution_status": "NOT_RUN"
+  },
+  {
+    "case_id": "L10",
+    "name": "duplicate-request",
+    "scenario": "product",
+    "steps": "同一幂等键重复提交相同批次；用同一键提交不同内容",
+    "assertions": [
+      "one_logical_run_and_publication",
+      "changed_payload_returns_409"
+    ],
+    "baseline_ids": [
+      "RUN-01"
+    ],
+    "execution_status": "NOT_RUN"
+  },
+  {
+    "case_id": "L11",
+    "name": "worker-crash",
+    "scenario": "supplier",
+    "steps": "写入中断；重投同一任务",
+    "assertions": [
+      "no_partial_published_snapshot",
+      "retry_no_duplicate_business_effects"
+    ],
+    "baseline_ids": [
+      "OPS-01"
+    ],
+    "execution_status": "NOT_RUN"
+  },
+  {
+    "case_id": "L12",
+    "name": "llm-invalid",
+    "scenario": "customer",
+    "steps": "模型超时、无效 JSON、缺少凭据分别运行",
+    "assertions": [
+      "explicit_error",
+      "configured_review_or_failure",
+      "no_demo_verdict"
+    ],
+    "baseline_ids": [
+      "LLM-01"
+    ],
+    "execution_status": "NOT_RUN"
+  },
+  {
+    "case_id": "L13",
+    "name": "trace-context",
+    "scenario": "supplier",
+    "steps": "API 任务经 Celery 调用模型并写结果",
+    "assertions": [
+      "trace_context_continues",
+      "spans_link_run",
+      "prompt_version_model_error_usage_recorded_when_available"
+    ],
+    "baseline_ids": [
+      "OBS-01"
+    ],
+    "execution_status": "NOT_RUN"
+  },
+  {
+    "case_id": "L14",
+    "name": "collector-down",
+    "scenario": "supplier",
+    "steps": "Phoenix 不可达或清理 trace 后读取历史裁决",
+    "assertions": [
+      "task_not_blocked",
+      "export_failure_visible",
+      "durable_audit_still_readable"
+    ],
+    "baseline_ids": [
+      "OBS-02",
+      "AUDIT-01"
+    ],
+    "execution_status": "NOT_RUN"
+  },
+  {
+    "case_id": "L15",
+    "name": "cross-workspace",
+    "scenario": "supplier",
+    "steps": "另一个空间的用户读取、下载、签发 Key、修改裁决",
+    "assertions": [
+      "401_anonymous",
+      "404_foreign_resources",
+      "zero_mutation"
+    ],
+    "baseline_ids": [
+      "SEC-01"
+    ],
+    "execution_status": "NOT_RUN"
+  },
+  {
+    "case_id": "L16",
+    "name": "missing-key",
+    "scenario": "customer",
+    "steps": "缺来源 ID 时尝试持续同步；同一批次重复键内容冲突",
+    "assertions": [
+      "422_with_record_errors",
+      "no_partial_ingestion",
+      "exploration_mode_explicit"
+    ],
+    "baseline_ids": [
+      "INGEST-01"
+    ],
+    "execution_status": "NOT_RUN"
+  },
+  {
+    "case_id": "L17",
+    "name": "concurrent-review",
+    "scenario": "supplier",
+    "steps": "两个用户携带同一裁决版本并发确认",
+    "assertions": [
+      "one_wins",
+      "other_409",
+      "no_lost_update",
+      "actor_timestamp_persisted"
+    ],
+    "baseline_ids": [
+      "HITL-03"
+    ],
+    "execution_status": "NOT_RUN"
+  },
+  {
+    "case_id": "L18",
+    "name": "published-reader",
+    "scenario": "supplier",
+    "steps": "发布新版本期间读取旧 Serving 映射",
+    "assertions": [
+      "reader_sees_complete_old_or_new_snapshot",
+      "never_mixed_membership"
+    ],
+    "baseline_ids": [
+      "VER-02"
+    ],
+    "execution_status": "NOT_RUN"
+  },
+  {
+    "case_id": "L19",
+    "name": "model-veto",
+    "scenario": "product",
+    "steps": "模型对 product-07-bad_strong_id 返回同一实体",
+    "assertions": [
+      "configured_conflict_still_blocks_merge",
+      "model_span_and_conflict_reason_visible"
+    ],
+    "baseline_ids": [
+      "MATCH-03",
+      "LLM-01"
+    ],
+    "execution_status": "NOT_RUN"
+  },
+  {
+    "case_id": "L20",
+    "name": "api-export",
+    "scenario": "customer",
+    "steps": "分别从 UI、API 与导出读取同一已发布版本",
+    "assertions": [
+      "entity_mapping_decisions_and_delta_agree",
+      "foreign_project_unreadable"
+    ],
+    "baseline_ids": [
+      "API-01"
+    ],
+    "execution_status": "NOT_RUN"
+  },
+  {
+    "case_id": "L21",
+    "name": "source-collision",
+    "scenario": "supplier",
+    "steps": "两个来源都提交来源记录 ID=001",
+    "assertions": [
+      "two_source_records",
+      "keys_include_source_dataset",
+      "no_overwrite"
+    ],
+    "baseline_ids": [
+      "ID-01"
+    ],
+    "execution_status": "NOT_RUN"
+  },
+  {
+    "case_id": "L22",
+    "name": "rollback",
+    "scenario": "supplier",
+    "steps": "发布 V1 后发布 V2，再回滚当前指针至 V1",
+    "assertions": [
+      "serving_matches_V1",
+      "V2_remains_readable",
+      "rollback_audited"
+    ],
+    "baseline_ids": [
+      "VER-01"
+    ],
+    "execution_status": "NOT_RUN"
+  }
+]

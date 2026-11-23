@@ -1,0 +1,202 @@
+[
+  {
+    "record_ref": "customer:erp:01",
+    "source_system": "erp",
+    "dataset": "customer",
+    "source_record_id": "L01",
+    "attributes": {
+      "name": "测试顾客甲",
+      "person_ref": "TEST-PERSON-001"
+    }
+  },
+  {
+    "record_ref": "customer:secondary:01",
+    "source_system": "secondary",
+    "dataset": "customer",
+    "source_record_id": "R01",
+    "attributes": {
+      "name": "测试顾客甲别名",
+      "person_ref": "TEST-PERSON-001"
+    }
+  },
+  {
+    "record_ref": "customer:erp:02",
+    "source_system": "erp",
+    "dataset": "customer",
+    "source_record_id": "L02",
+    "attributes": {
+      "name": "测试顾客乙"
+    }
+  },
+  {
+    "record_ref": "customer:secondary:02",
+    "source_system": "secondary",
+    "dataset": "customer",
+    "source_record_id": "R02",
+    "attributes": {
+      "name": "测试顾客乙"
+    }
+  },
+  {
+    "record_ref": "customer:erp:03",
+    "source_system": "erp",
+    "dataset": "customer",
+    "source_record_id": "L03",
+    "attributes": {
+      "name": "测试顾客丙",
+      "person_ref": "TEST-PERSON-003"
+    }
+  },
+  {
+    "record_ref": "customer:secondary:03",
+    "source_system": "secondary",
+    "dataset": "customer",
+    "source_record_id": "R03",
+    "attributes": {
+      "name": "测试顾客丙",
+      "person_ref": "TEST-PERSON-004"
+    }
+  },
+  {
+    "record_ref": "customer:erp:04",
+    "source_system": "erp",
+    "dataset": "customer",
+    "source_record_id": "L04",
+    "attributes": {
+      "name": "测试家庭成员甲",
+      "phone": "TEST-HOME-01"
+    }
+  },
+  {
+    "record_ref": "customer:secondary:04",
+    "source_system": "secondary",
+    "dataset": "customer",
+    "source_record_id": "R04",
+    "attributes": {
+      "name": "测试家庭成员乙",
+      "phone": "TEST-HOME-01"
+    }
+  },
+  {
+    "record_ref": "customer:erp:05",
+    "source_system": "erp",
+    "dataset": "customer",
+    "source_record_id": "L05",
+    "attributes": {
+      "name": "测试采购甲",
+      "email": "shared@example.invalid"
+    }
+  },
+  {
+    "record_ref": "customer:secondary:05",
+    "source_system": "secondary",
+    "dataset": "customer",
+    "source_record_id": "R05",
+    "attributes": {
+      "name": "测试采购乙",
+      "email": "shared@example.invalid"
+    }
+  },
+  {
+    "record_ref": "customer:erp:06",
+    "source_system": "erp",
+    "dataset": "customer",
+    "source_record_id": "L06",
+    "attributes": {
+      "name": "测试顾客丁",
+      "person_ref": null
+    }
+  },
+  {
+    "record_ref": "customer:secondary:06",
+    "source_system": "secondary",
+    "dataset": "customer",
+    "source_record_id": "R06",
+    "attributes": {
+      "name": "测试顾客丁",
+      "person_ref": ""
+    }
+  },
+  {
+    "record_ref": "customer:erp:07",
+    "source_system": "erp",
+    "dataset": "customer",
+    "source_record_id": "L07",
+    "attributes": {
+      "name": "测试原号码持有人",
+      "phone": "TEST-RECYCLED",
+      "person_ref": "TEST-PERSON-007"
+    }
+  },
+  {
+    "record_ref": "customer:secondary:07",
+    "source_system": "secondary",
+    "dataset": "customer",
+    "source_record_id": "R07",
+    "attributes": {
+      "name": "测试新号码持有人",
+      "phone": "TEST-RECYCLED",
+      "person_ref": "TEST-PERSON-008"
+    }
+  },
+  {
+    "record_ref": "customer:erp:08",
+    "source_system": "erp",
+    "dataset": "customer",
+    "source_record_id": "L08",
+    "attributes": {
+      "name": "测试旧称",
+      "person_ref": "TEST-PERSON-009"
+    }
+  },
+  {
+    "record_ref": "customer:secondary:08",
+    "source_system": "secondary",
+    "dataset": "customer",
+    "source_record_id": "R08",
+    "attributes": {
+      "name": "测试新称",
+      "person_ref": "TEST-PERSON-009"
+    }
+  },
+  {
+    "record_ref": "customer:erp:09",
+    "source_system": "erp",
+    "dataset": "customer",
+    "source_record_id": "L09",
+    "attributes": {
+      "name": null,
+      "phone": null
+    }
+  },
+  {
+    "record_ref": "customer:secondary:09",
+    "source_system": "secondary",
+    "dataset": "customer",
+    "source_record_id": "R09",
+    "attributes": {
+      "name": "",
+      "phone": ""
+    }
+  },
+  {
+    "record_ref": "customer:erp:10",
+    "source_system": "erp",
+    "dataset": "customer",
+    "source_record_id": "L10",
+    "attributes": {
+      "name": "测试顾客戊",
+      "address": "测试路一号"
+    }
+  },
+  {
+    "record_ref": "customer:secondary:10",
+    "source_system": "secondary",
+    "dataset": "customer",
+    "source_record_id": "R10",
+    "attributes": {
+      "name": "测试顾客戊",
+      "address": "测试路1号"
+    }
+  }
+]

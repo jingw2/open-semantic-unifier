@@ -1,12 +1,16 @@
 """数据库会话管理与首次启动超管幂等初始化"""
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import settings
 
 connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
 engine = create_engine(settings.database_url, connect_args=connect_args, pool_pre_ping=True)
+if settings.database_url.startswith("sqlite"):
+    @event.listens_for(engine, "connect")
+    def _enable_sqlite_foreign_keys(connection, _record):
+        connection.execute("PRAGMA foreign_keys=ON")
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
@@ -23,11 +27,17 @@ def get_db():
 
 
 def init_db_and_seed() -> None:
-    """建表并幂等初始化默认超管、工作空间与默认示例项目"""
+    """Apply versioned schema migrations and idempotently initialize demo data."""
+    from alembic import command
+    from alembic.config import Config
     from app.core.security import hash_password
     from app.models.entities import Project, User, Workspace, WorkspaceMember
+    from pathlib import Path
 
-    Base.metadata.create_all(bind=engine)
+    backend_dir = Path(__file__).resolve().parents[2]
+    alembic_config = Config(str(backend_dir / "alembic.ini"))
+    alembic_config.set_main_option("script_location", str(backend_dir / "migrations"))
+    command.upgrade(alembic_config, "head")
     db: Session = SessionLocal()
     try:
         admin = db.query(User).filter(User.email == settings.init_admin_email).first()

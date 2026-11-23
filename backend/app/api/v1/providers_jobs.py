@@ -9,14 +9,14 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, require_role
+from app.api.deps import require_resource_access, get_current_user, require_role
 from app.core.db import SessionLocal, get_db
 from app.core.security import decrypt_secret, encrypt_secret, mask_secret
-from app.models.entities import Job, LLMProvider
+from app.models.entities import DataSource, Job, LLMProvider
 from app.services.llm_client import BUILTIN_PROVIDERS, test_llm_connectivity
 from app.workers.tasks import dispatch_job
 
-router = APIRouter(prefix="/api/v1", tags=["LLM Providers & Async Jobs"])
+router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_resource_access)], tags=["LLM Providers & Async Jobs"])
 
 
 class SaveProviderRequest(BaseModel):
@@ -134,6 +134,18 @@ def submit_job(
     st = req.stage.upper()
     if st not in ("L1", "L2", "L3", "L4"):
         raise HTTPException(status_code=400, detail=f"不支持的阶段: {req.stage}")
+
+    source_ids = set(req.datasource_ids)
+    valid_sources = db.query(DataSource.id).filter(
+        DataSource.id.in_(source_ids), DataSource.project_id == project_id
+    ).all()
+    if {row[0] for row in valid_sources} != source_ids:
+        raise HTTPException(status_code=404, detail="数据源不存在于当前项目")
+    if req.provider_id and not db.query(LLMProvider).filter(
+        LLMProvider.id == req.provider_id,
+        LLMProvider.workspace_id == ctx["workspace_id"],
+    ).first():
+        raise HTTPException(status_code=404, detail="Provider 不存在")
 
     full_params = dict(req.params)
     full_params["datasource_ids"] = req.datasource_ids

@@ -1,0 +1,38 @@
+{
+  "scheme_version": "1",
+  "entity_type": "customer",
+  "identity_granularity": "person",
+  "field_map": {
+    "name": "name",
+    "person_ref": "person_ref",
+    "phone": "phone",
+    "email": "email",
+    "address": "address"
+  },
+  "strong_identifier": "person_ref",
+  "identifier_authority": "explicitly_trusted_in_this_synthetic_fixture",
+  "normalization": [
+    "unicode_nfkc",
+    "trim"
+  ],
+  "nulls_never_equal": true,
+  "conflict_fields": [
+    "person_ref"
+  ],
+  "conflict_precedence": "veto_auto_merge",
+  "weak_evidence_action": "REVIEW",
+  "golden_pair_discovery": "evaluate_all_pairs_for_this_small_fixture",
+  "canonical_attribute_policy": {
+    "name": {
+      "source_priority": [
+        "erp",
+        "secondary"
+      ],
+      "on_conflict": "retain_provenance"
+    },
+    "other_attributes": {
+      "on_conflict": "REVIEW"
+    }
+  },
+  "real_world_identifier_validation": "TEST-* values are synthetic opaque identifiers; not valid legal IDs or GTINs"
+}

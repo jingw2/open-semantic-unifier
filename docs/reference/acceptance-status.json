@@ -1,0 +1,334 @@
+{
+  "baseline_version": "1.0",
+  "golden_version": "1.0.0",
+  "as_of": "2026-11-23",
+  "product_release_status": "BLOCKED",
+  "note": "All V0.1 gates except OSS-02 have PASS evidence. The product release remains blocked on a clean remote CI run. Per-gate evidence is summarized here and in t8-acceptance-report.json.",
+  "definition_checks": {
+    "fixture_integrity": "PASS",
+    "scorer_contract_tests": {
+      "status": "PASS",
+      "test_count": 6,
+      "command": "python3 -m unittest discover -s tests -p 'test_golden_contract.py' -v"
+    },
+    "l13_l14_integration": {
+      "status": "PASS",
+      "command": "RUN_L13_L14_INTEGRATION=true python -m pytest backend/tests/integration/test_l13_l14_observability.py -q",
+      "result": "1 passed in 40.80s",
+      "log": ".superpowers/sdd/2026-11-23-open-semantic-unifier/t8-l13-l14-runtime.log"
+    },
+    "compose_release_tests": {
+      "status": "PASS",
+      "command": "RUN_COMPOSE_RELEASE_TESTS=true python -m pytest backend/tests/integration/test_compose_release.py -q",
+      "result": "5 passed in 34.17s",
+      "log": ".superpowers/sdd/2026-11-23-open-semantic-unifier/t8-compose-release-runtime.log"
+    },
+    "backend_suite": {
+      "status": "PASS",
+      "command": "python -m pytest backend/tests -q",
+      "result": "149 passed, 6 skipped"
+    },
+    "license_audit": {
+      "status": "PASS",
+      "report": "docs/reference/license-audit-summary.json",
+      "note": "182 Python packages, 184 npm packages, pinned container images. Every package has an identifiable license. This is an inventory, not legal clearance."
+    }
+  },
+  "gates": [
+    {
+      "id": "CONFIG-01",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "T2 configurable schemes/custom catalog, demo isolation and fresh supplier/customer/product API Golden runs. GPT-6.1 Sol reconciled the evidence.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "INGEST-01",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "43 focused ingest/file/public-API tests passed: python -m pytest backend/tests/test_unification_ingest.py backend/tests/test_unification_file_import.py backend/tests/test_unification_public_api.py -q",
+        "CSV and Parquet imports reject missing source IDs and duplicate keys with row-level errors and zero writes; exploration mode declares the single-import identity limitation.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "INGEST-02",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "Unsupported file types, empty tables, missing key columns, non-string Parquet keys, NaN attributes, and byte/row/column limits return 413/415/422 with zero writes.",
+        "docs/how-to/connectors.md limits connector claims to validated paths: SQLite and Compose PostgreSQL tested, DuckDB partial, MySQL and MongoDB live connections explicitly untested.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "ID-01",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "See reviewed lifecycle evidence in this report for L01, L02, L21.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "ID-02",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "Reviewed L06 and test_redirect_cycle_is_rejected. GPT-6.1 Sol reconciled the evidence.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "ID-03",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "See reviewed lifecycle evidence in this report for L07.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "MATCH-01",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "Real isolated FastAPI/SQLite run on frozen Golden v1.0.0: supplier, customer, product each 10/10 actions and 8/8 required candidates.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "MATCH-02",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "Fresh live Golden v1.0.0 run: all 30 pairs include evidence_codes, evidence objects and scores; missing IDs, name-only, shared phone/email, sparse and typo cases returned REVIEW; configured conflicts returned DISTINCT; 0 false merges and 0 unauthorized cluster links.",
+        ".superpowers/sdd/2026-11-23-open-semantic-unifier/t8-live-golden-predictions.json; t8-live-golden-evaluate.log",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "MATCH-03",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "See reviewed lifecycle evidence in this report for L08, L19.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "ATTR-01",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "See reviewed lifecycle evidence in this report for L09.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "RUN-01",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "See reviewed lifecycle evidence in this report for L01, L10.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "RUN-02",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "Reviewed L03 revision, identity and historical delta plus test_source_update_after_merge_creates_persistent_identity_conflict. GPT-6.1 Sol reconciled the evidence.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "HITL-01",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "See reviewed lifecycle evidence in this report for L04.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "HITL-02",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "Reviewed L05 and test_human_reject_can_be_undone_with_audited_revision. GPT-6.1 Sol reconciled the evidence.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "HITL-03",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "See reviewed lifecycle evidence in this report for L17.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "VER-01",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "Reviewed L03/L06/L07/L22 and immutable scheme revision tests. GPT-6.1 Sol reconciled the evidence.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "VER-02",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "See reviewed lifecycle evidence in this report for L18.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "OPS-01",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "Isolated Compose PostgreSQL/Redis and real Celery prefork worker. Child was killed after auto-merge/result flush, before commit. Readers saw separate owners and no audit/snapshot. Redelivery completed attempt 2 with one merge audit, exact complete mapping/revisions/attributes, one snapshot, and persisted worker interruption. GPT-6.1 Terra implemented and GPT-6.1 Sol reviewed.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "OPS-02",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "UNIFICATION_MAX_ATTEMPTS (default 3) configures the attempt limit; values below 1 fail startup. API and workbench expose status, attempt_count, error_message and last_interruption.",
+        "22 release tests passed, including bounded lease recovery, terminal failure, attempt fencing and configured-limit wiring.",
+        "Real Compose L11 redelivery completed attempt 2 with no partial publication.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "LLM-01",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "T6 actual Ollama model and Phoenix smoke plus reviewed L12 and L19. GPT-6.1 Sol reconciled the evidence.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "OBS-01",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "RUN_L13_L14_INTEGRATION=true python -m pytest backend/tests/integration/test_l13_l14_observability.py -q: 1 passed in 40.80s against isolated PostgreSQL/Redis/Celery/MinIO/Phoenix and a controlled OpenAI-compatible model.",
+        "Phoenix returned the actual trace with api_submit, run, read_input, standardize_and_match, candidate_generation, pair_rules, write_result and model_judge spans. Parent/child linkage and project/run/input/scheme/prompt/model attributes were asserted.",
+        ".superpowers/sdd/2026-11-23-open-semantic-unifier/t8-l13-l14-runtime.log"
+      ]
+    },
+    {
+      "id": "OBS-02",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "Same L13/L14 run: with Phoenix stopped, export failures appear in backend/worker logs while the run succeeds; with PHOENIX_ENABLED=false, a run completes with trace_id=None and audit rows unchanged.",
+        ".superpowers/sdd/2026-11-23-open-semantic-unifier/t8-l13-l14-runtime.log"
+      ]
+    },
+    {
+      "id": "AUDIT-01",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "Same L13/L14 run: a review decision persisted with actor, reason, change ID and trace reference. Deleting the Phoenix project and clearing spans left identity-change rows unchanged, as did collector loss and tracing-off reruns.",
+        ".superpowers/sdd/2026-11-23-open-semantic-unifier/t8-l13-l14-runtime.log"
+      ]
+    },
+    {
+      "id": "API-01",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "See L20 reviewed UI, API replay, and four same-snapshot exports.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "SEC-01",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "Reviewed L15 and L20 real authentication plus T6 provider-error credential redaction and project/API regression. GPT-6.1 Sol reconciled the evidence.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "DEPLOY-01",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "Isolated clean Compose with generated credentials, real login, PostgreSQL, Celery, MinIO and frontend proxy. GPT-6.1 Sol reconciled the evidence.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "DEPLOY-02",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "Isolated full service restart preserved review, mapping, snapshots and MinIO object; PostgreSQL baseline-to-head upgrade preserved existing projects. GPT-6.1 Sol reconciled the evidence.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "GOLD-01",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "Frozen fixture validation, six scorer tests and fresh three-domain API scoring passed. Adapter sends scheme and source attributes; expected case references are used only to index responses.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "GOLD-02",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "All 22 lifecycle contracts executed and recorded: L01-L12 and L15-L22 per reviewed evidence, L13/L14 by the real Compose Phoenix test, L20 by the Chromium workbench run.",
+        "Fresh live Golden v1.0.0: 30/30 actions, 24/24 required candidates, 7/7 required merges, 0 false merges, 0 unauthorized links.",
+        "python -m pytest backend/tests/test_unification_lifecycle.py backend/tests/test_unification_l15.py -q: 23 passed.",
+        "docs/reference/t8-acceptance-report.json"
+      ]
+    },
+    {
+      "id": "OSS-01",
+      "stage": "V0.1",
+      "status": "PASS",
+      "evidence": [
+        "LICENSE is Apache-2.0 and permits commercial use. docs/reference/license-audit-summary.json covers 182 Python and 184 npm packages plus pinned images; every package now has an identifiable license.",
+        "schemasheets 0.4.0 metadata gap resolved from the upstream Apache-2.0 LICENSE. Copyleft/source-available obligations are recorded for rfc3987, psycopg2-binary, MPL packages, MinIO, Phoenix and Redis 7.4.",
+        "The audit is an inventory, not legal clearance."
+      ]
+    },
+    {
+      "id": "OSS-02",
+      "stage": "V0.1",
+      "status": "BLOCKED",
+      "evidence": [
+        "BLOCKED: GitHub Actions has not run on GitHub. .github/workflows/ci.yml defines backend, frontend and compose-config jobs; local equivalents pass: 149 backend tests, frontend production build, Golden checks, Compose config and release tests, and a fresh Chromium workbench flow (exit 0).",
+        "Missing external condition: a clean remote CI run."
+      ]
+    },
+    {
+      "id": "LINEAGE-01",
+      "stage": "后续 L4",
+      "status": "NOT_RUN",
+      "evidence": []
+    }
+  ],
+  "release_blocker": "OSS-02: GitHub Actions has not run on GitHub; clean remote CI evidence is missing."
+}

@@ -1,0 +1,323 @@
+{
+  "baseline_id": "open-semantic-unifier-v1.0.0",
+  "date": "2026-11-23",
+  "git_commit": "fd836a7833bc1660fd71989bc4b4869da9ca73d0",
+  "worktree_sha256": "99c4ff591550cb894b9f3bf47a5a31a1154ad464fa9aa8ead1d40511c86adaff",
+  "worktree_hash_method": "SHA-256 over sorted `git ls-files --cached --others --exclude-standard` relative paths, each file hashed as SHA-256(path + NUL + SHA-256(file contents)), excluding docs/reference/t8-acceptance-report.json, before this report was written.",
+  "environment": "macOS host Python 3.13, Docker Compose 5.4.0, PostgreSQL 16.14, Redis 7.4.11, MinIO, Celery 5.7.0, Phoenix 22.0.1, controlled OpenAI-compatible model, Chromium",
+  "product_release_status": "BLOCKED",
+  "evidence": [
+    "T1–T7 progress ledger and runtime reports",
+    "RUN_COMPOSE_RELEASE_TESTS=true python -m pytest backend/tests/integration/test_compose_release.py -q: 4 passed",
+    "real Chromium workbench flow: passed",
+    "Golden fixture integrity 60 records / 30 pairs / 22 lifecycle definitions; scorer contract 6 passed",
+    "T5 live Golden pair report: all three domains passed",
+    "RUN_COMPOSE_RELEASE_TESTS=true python -m pytest backend/tests/integration/test_compose_release.py::test_postgres_upgrade_preserves_existing_application_data -q: 1 passed; PostgreSQL baseline project preserved through upgrade",
+    "python -m pytest backend/tests -q: 99 passed, 4 skipped",
+    "python -m pytest backend/tests/test_unification_lifecycle.py -q: 4 passed; full L02/L16/L21 contracts; L10 submission only",
+    "python -m pytest backend/tests/test_unification_lifecycle.py -q: 5 passed after GPT-6.1-Sol review fixes; L01/L02/L16/L21 covered; L10 partial",
+    "python -m pytest backend/tests/test_unification_lifecycle.py -q: 7 passed; L04 awaiting review",
+    "python -m pytest backend/tests/test_unification_lifecycle.py -q: 8 passed; L06/L07 combined workflow pending full review",
+    "python -m pytest backend/tests/test_unification_lifecycle.py -q: 9 passed; L06/L07 review closed",
+    "python -m pytest backend/tests -q: 109 passed, 4 skipped before final L08 audit assertion; focused lifecycle/identity suite after assertion: 21 passed",
+    "Lifecycle + release tests after override preview and rollback locking: 31 passed; frontend production build and real Chromium override/rerun/publish workflow passed.",
+    "RUN_COMPOSE_RELEASE_TESTS=true python -m pytest backend/tests/integration/test_compose_release.py::test_clean_compose_migrate_restart_async_publish_and_download -q: 1 passed with initial product concurrency, project isolation and publication.",
+    "L05 targeted API/controlled HTTP test passed; L19 product controlled HTTP/span test passed, review pending.",
+    "L12 real controlled HTTP timeout/invalid JSON/missing credentials under REVIEW and FAIL: 6 parameter cases passed; reviewer pending.",
+    "python -m pytest backend/tests/test_unification_lifecycle.py::test_l12_model_failures_follow_configured_policy -q: 6 passed; reviewed",
+    "L17 targeted concurrent review test passed; review closed.",
+    "L22 targeted lifecycle and release suite 21 passed; Chromium rollback UI verified reason and audit.",
+    "L15/L18 targeted run: 2 passed. GPT-6.1 Sol confirmed both lifecycle contracts.",
+    "Chromium L20 customer review, publish, four export comparisons, independent API replay, and real foreign authorization checks passed. GPT-6.1 Sol confirmed.",
+    "Fresh local FastAPI/SQLite and signed login: scripts/run_golden.py plus golden.py evaluate passed all three domains, 30/30 policy actions, 24/24 required candidates, 7/7 required merges and zero false or unauthorized merges. Golden fixture and scorer self-checks also passed.",
+    "Real Compose L11 worker-loss acceptance passed 1/1 after retained interruption fix and exact merge assertions.",
+    "RUN_L13_L14_INTEGRATION=true python -m pytest backend/tests/integration/test_l13_l14_observability.py -q: 1 passed in 40.80s against isolated PostgreSQL/Redis/Celery/MinIO/Phoenix and a controlled OpenAI-compatible model.",
+    "python -m pytest backend/tests/test_unification_lifecycle.py backend/tests/test_unification_l15.py -q: 23 passed.",
+    "python -m pytest backend/tests/test_unification_ingest.py backend/tests/test_unification_file_import.py backend/tests/test_unification_public_api.py -q: 43 passed.",
+    "python -m pytest backend/tests/test_unification_releases.py -q: 22 passed, including UNIFICATION_MAX_ATTEMPTS wiring and startup validation.",
+    "Fresh live FastAPI/SQLite Golden v1.0.0 with evidence-bearing predictions: all three domains passed, 30/30 actions, 24/24 required candidates, 7/7 required merges, 0 false merges, 0 unauthorized links; scripts/golden.py evaluate exit 0. Output: .superpowers/sdd/2026-11-23-open-semantic-unifier/t8-live-golden-predictions.json.",
+    "python -m pytest backend/tests -q: 149 passed, 6 skipped.",
+    "npm --prefix frontend run build: passed.",
+    "python3 scripts/golden.py validate: PASS (60 records, 30 pairs, 22 lifecycle); scorer contract: 6 passed.",
+    "RUN_COMPOSE_RELEASE_TESTS=true python -m pytest backend/tests/integration/test_compose_release.py -q: 5 passed in 34.17s.",
+    "docs/reference/license-audit-summary.json: 182 Python and 184 npm packages; every package has an identifiable license after resolving schemasheets to Apache-2.0.",
+    "Fresh Chromium workbench flow: `python frontend/tests/unification_workbench.spec.py` with Vite on 5173 and inline FastAPI on 8765 passed (exit 0)."
+  ],
+  "gates": [
+    {
+      "id": "CONFIG-01",
+      "status": "PASS",
+      "note": "T2 configurable schemes/custom catalog, demo isolation and fresh supplier/customer/product API Golden runs. GPT-6.1 Sol reconciled the evidence."
+    },
+    {
+      "id": "INGEST-01",
+      "status": "PASS",
+      "note": "API JSON batches and CSV/Parquet imports reject missing source IDs and duplicate keys with row-level errors and zero writes. Exploration mode declares the single-import identity limitation. 43 focused ingest/file/public-API tests passed."
+    },
+    {
+      "id": "INGEST-02",
+      "status": "PASS",
+      "note": "Unsupported file types, empty tables, missing key columns, non-string Parquet keys, NaN attributes, and byte/row/column limits return 413/415/422 with zero writes. docs/how-to/connectors.md limits claims to validated connectors and marks MySQL and MongoDB live connections untested."
+    },
+    {
+      "id": "ID-01",
+      "status": "PASS",
+      "note": "See reviewed lifecycle evidence in this report for L01, L02, L21."
+    },
+    {
+      "id": "ID-02",
+      "status": "PASS",
+      "note": "Reviewed L06 and test_redirect_cycle_is_rejected. GPT-6.1 Sol reconciled the evidence."
+    },
+    {
+      "id": "ID-03",
+      "status": "PASS",
+      "note": "See reviewed lifecycle evidence in this report for L07."
+    },
+    {
+      "id": "MATCH-01",
+      "status": "PASS",
+      "note": "Real isolated FastAPI/SQLite run on frozen Golden v1.0.0: supplier, customer, product each 10/10 actions and 8/8 required candidates."
+    },
+    {
+      "id": "MATCH-02",
+      "status": "PASS",
+      "note": "Fresh live Golden v1.0.0: all 30 pairs carry evidence_codes, evidence objects and scores. Missing IDs, name-only, shared phone/email, sparse and typo cases returned REVIEW; configured conflicts returned DISTINCT; 0 false merges and 0 unauthorized cluster links."
+    },
+    {
+      "id": "MATCH-03",
+      "status": "PASS",
+      "note": "See reviewed lifecycle evidence in this report for L08, L19."
+    },
+    {
+      "id": "ATTR-01",
+      "status": "PASS",
+      "note": "See reviewed lifecycle evidence in this report for L09."
+    },
+    {
+      "id": "RUN-01",
+      "status": "PASS",
+      "note": "See reviewed lifecycle evidence in this report for L01, L10."
+    },
+    {
+      "id": "RUN-02",
+      "status": "PASS",
+      "note": "Reviewed L03 revision, identity and historical delta plus test_source_update_after_merge_creates_persistent_identity_conflict. GPT-6.1 Sol reconciled the evidence."
+    },
+    {
+      "id": "HITL-01",
+      "status": "PASS",
+      "note": "See reviewed lifecycle evidence in this report for L04."
+    },
+    {
+      "id": "HITL-02",
+      "status": "PASS",
+      "note": "Reviewed L05 and test_human_reject_can_be_undone_with_audited_revision. GPT-6.1 Sol reconciled the evidence."
+    },
+    {
+      "id": "HITL-03",
+      "status": "PASS",
+      "note": "See reviewed lifecycle evidence in this report for L17."
+    },
+    {
+      "id": "VER-01",
+      "status": "PASS",
+      "note": "Reviewed L03/L06/L07/L22 and immutable scheme revision tests. GPT-6.1 Sol reconciled the evidence."
+    },
+    {
+      "id": "VER-02",
+      "status": "PASS",
+      "note": "See reviewed lifecycle evidence in this report for L18."
+    },
+    {
+      "id": "OPS-01",
+      "status": "PASS",
+      "note": "Isolated Compose PostgreSQL/Redis and real Celery prefork worker. Child was killed after auto-merge/result flush, before commit. Readers saw separate owners and no audit/snapshot. Redelivery completed attempt 2 with one merge audit, exact complete mapping/revisions/attributes, one snapshot, and persisted worker interruption. GPT-6.1 Terra implemented and GPT-6.1 Sol reviewed."
+    },
+    {
+      "id": "OPS-02",
+      "status": "PASS",
+      "note": "UNIFICATION_MAX_ATTEMPTS (default 3) configures the attempt limit and invalid values fail startup. API and workbench expose status, attempt_count, error_message and last_interruption. 22 release tests cover bounded lease recovery, terminal failure, attempt fencing and configured-limit wiring. Real Compose L11 redelivery completed attempt 2 without partial publication."
+    },
+    {
+      "id": "LLM-01",
+      "status": "PASS",
+      "note": "T6 actual Ollama model and Phoenix smoke plus reviewed L12 and L19. GPT-6.1 Sol reconciled the evidence."
+    },
+    {
+      "id": "OBS-01",
+      "status": "PASS",
+      "note": "Real isolated Compose: API request through Redis/Celery and a controlled model produced one Phoenix trace with api_submit, run, read_input, standardize_and_match, candidate_generation, pair_rules, write_result and model_judge spans. Parent/child linkage, project_id, run_id, input_version, scheme_revision, prompt_version, model input/output and duration were asserted. 1 passed in 40.80s."
+    },
+    {
+      "id": "OBS-02",
+      "status": "PASS",
+      "note": "Same L13/L14 run: with the Phoenix collector stopped, export failures were visible in backend/worker logs while the business run succeeded. With PHOENIX_ENABLED=false, the run completed with trace_id=None and audit rows unchanged."
+    },
+    {
+      "id": "AUDIT-01",
+      "status": "PASS",
+      "note": "Same L13/L14 run: a review decision persisted with actor, reason, change ID and trace reference. Deleting the Phoenix project and clearing spans left identity-change rows unchanged, as did collector loss and tracing-off reruns."
+    },
+    {
+      "id": "API-01",
+      "status": "PASS",
+      "note": "See L20 reviewed UI, API replay, and four same-snapshot exports."
+    },
+    {
+      "id": "SEC-01",
+      "status": "PASS",
+      "note": "Reviewed L15 and L20 real authentication plus T6 provider-error credential redaction and project/API regression. GPT-6.1 Sol reconciled the evidence."
+    },
+    {
+      "id": "DEPLOY-01",
+      "status": "PASS",
+      "note": "Isolated clean Compose with generated credentials, real login, PostgreSQL, Celery, MinIO and frontend proxy. GPT-6.1 Sol reconciled the evidence."
+    },
+    {
+      "id": "DEPLOY-02",
+      "status": "PASS",
+      "note": "Isolated full service restart preserved review, mapping, snapshots and MinIO object; PostgreSQL baseline-to-head upgrade preserved existing projects. GPT-6.1 Sol reconciled the evidence."
+    },
+    {
+      "id": "GOLD-01",
+      "status": "PASS",
+      "note": "Frozen fixture validation, six scorer tests and fresh three-domain API scoring passed. Adapter sends scheme and source attributes; expected case references are used only to index responses."
+    },
+    {
+      "id": "GOLD-02",
+      "status": "PASS",
+      "note": "All 22 lifecycle contracts executed and recorded. L13/L14 passed in real Compose with Phoenix; L20 passed through Chromium; the remaining contracts have reviewed lifecycle evidence. Fresh live Golden v1.0.0 passed 30/30 actions, 24/24 required candidates, 7/7 required merges, 0 false merges and 0 unauthorized links."
+    },
+    {
+      "id": "OSS-01",
+      "status": "PASS",
+      "note": "LICENSE is Apache-2.0 and permits commercial use. docs/reference/license-audit-summary.json covers 182 Python and 184 npm packages plus pinned container images. Every package has an identifiable license; schemasheets metadata gap resolved from its upstream Apache-2.0 LICENSE. Copyleft/source-available obligations are recorded for rfc3987, psycopg2-binary, MPL packages, MinIO, Phoenix and Redis 7.4. The audit is an inventory, not legal clearance."
+    },
+    {
+      "id": "OSS-02",
+      "status": "BLOCKED",
+      "note": "GitHub Actions has not run on GitHub. .github/workflows/ci.yml defines backend, frontend and compose-config jobs; local equivalents pass: 149 backend tests, frontend production build, Golden checks, Compose config and release tests, and a fresh Chromium workbench flow. Missing external condition: a clean remote CI run."
+    }
+  ],
+  "lifecycle": [
+    {
+      "id": "L01",
+      "status": "PASS",
+      "note": "Golden supplier API workflow: same-key task reused, new-key rerun published identical complete source mapping, stable record/active entity/decision counts. Reviewer remediation verified."
+    },
+    {
+      "id": "L02",
+      "status": "PASS",
+      "note": "Real project API and database lifecycle assertion; python -m pytest backend/tests/test_unification_lifecycle.py -q; see test_l02."
+    },
+    {
+      "id": "L03",
+      "status": "PASS",
+      "note": "Real supplier API workflow verifies two persisted revisions of same source, stable published entity ID, old snapshot immutability, and before/after delta; GPT-6.1-Sol reviewed."
+    },
+    {
+      "id": "L04",
+      "status": "PASS",
+      "note": "Golden supplier human approval persisted with actor/reason; rerun resolved same source keys to one ACTIVE entity without pending review. GPT-6.1-Sol reviewed."
+    },
+    {
+      "id": "L05",
+      "status": "PASS",
+      "note": "Golden customer pair rejected; real controlled HTTP SAME suggestion on rerun did not override persisted cannot-link; exact source mappings, active entities and actor/reason audited. GPT-6.1-Sol reviewed."
+    },
+    {
+      "id": "L06",
+      "status": "PASS",
+      "note": "Real API directed merge, redirect, audit, idempotent repeat, immutable V1/V2, exact V3 restored mapping/delta and independent dependent-undo conflict with explicit split/lineage; GPT-6.1-Sol reviewed."
+    },
+    {
+      "id": "L07",
+      "status": "PASS",
+      "note": "Real API directed merge, redirect, audit, idempotent repeat, immutable V1/V2, exact V3 restored mapping/delta and independent dependent-undo conflict with explicit split/lineage; GPT-6.1-Sol reviewed."
+    },
+    {
+      "id": "L08",
+      "status": "PASS",
+      "note": "A–C rejection prevents A–B–C transitive merge; 409 references blocking change ID and audit remains unchanged. GPT-6.1-Sol reviewed."
+    },
+    {
+      "id": "L09",
+      "status": "PASS",
+      "note": "Versioned source-priority and audited human override verified through project API, exact provenance and delta, immutable prior snapshot, live preview and stale evidence rejection; GPT-6.1-Sol reviewed."
+    },
+    {
+      "id": "L10",
+      "status": "PASS",
+      "note": "Real PostgreSQL/Redis/Celery: initial concurrent product requests reuse one run, changed payload 409, same key isolated by project, one explicit snapshot. Run table scopes keys to sole keyed operation; GPT-6.1-Sol reviewed."
+    },
+    {
+      "id": "L11",
+      "status": "PASS",
+      "note": "Isolated Compose PostgreSQL/Redis and real Celery prefork worker. Child was killed after auto-merge/result flush, before commit. Readers saw separate owners and no audit/snapshot. Redelivery completed attempt 2 with one merge audit, exact complete mapping/revisions/attributes, one snapshot, and persisted worker interruption. GPT-6.1 Terra implemented and GPT-6.1 Sol reviewed."
+    },
+    {
+      "id": "L12",
+      "status": "PASS",
+      "note": "Controlled HTTP timeout/invalid JSON/missing credentials × REVIEW/FAIL: 6 cases; unresolved queue/ACTIVE identities or terminal FAILED, one attempt, no fabricated suggestion. Does not claim general Celery retry exhaustion. GPT-6.1-Sol reviewed."
+    },
+    {
+      "id": "L13",
+      "status": "PASS",
+      "note": "Real isolated Compose with PostgreSQL, Redis, Celery, MinIO, Phoenix and a controlled OpenAI-compatible model. Phoenix returned the actual trace; span names, API/worker parentage, project/run/input/scheme/prompt associations, model request/response/duration and error spans were asserted. Unreported usage and cost stayed null. 1 passed in 40.80s."
+    },
+    {
+      "id": "L14",
+      "status": "PASS",
+      "note": "Same real Compose run: deleting the Phoenix project and clearing spans left identity-change audit rows unchanged. Stopping the collector produced visible export failures while the run succeeded. Disabling tracing produced a successful run with trace_id=None and unchanged audit."
+    },
+    {
+      "id": "L15",
+      "status": "PASS",
+      "note": "Persisted users and workspace memberships with real bearer validation and project Serving key. Anonymous download/progress returns 401, foreign reads/writes and key management return 404, viewer decision returns 403. Denials leave data and pending reviews intact and expose no issued credentials. Implemented by GPT-6.1 Terra and reviewed by GPT-6.1 Sol."
+    },
+    {
+      "id": "L16",
+      "status": "PASS",
+      "note": "Real project API and database lifecycle assertion; python -m pytest backend/tests/test_unification_lifecycle.py -q; see test_l16."
+    },
+    {
+      "id": "L17",
+      "status": "PASS",
+      "note": "Concurrent HTTP reviews from two actor contexts: one success, one 409, one durable decision/revision, correct winner ownership, two actor-correlated in-memory traces including loser error. GPT-6.1-Sol reviewed; Phoenix persistence not claimed."
+    },
+    {
+      "id": "L18",
+      "status": "PASS",
+      "note": "SQLite API concurrency test reads both sides of commit and explicitly reads after pointer flush while commit is paused. Version, Serving values, memberships and source revision mappings agree. Injected post-flush failure leaves only V1. Implemented by GPT-6.1 Terra and reviewed by GPT-6.1 Sol."
+    },
+    {
+      "id": "L19",
+      "status": "PASS",
+      "note": "Golden product-07 with controlled real HTTP SAME/1.0: exact voltage conflict retained, original source mappings remain separate, model span present; result retained after in-memory exporter cleared. GPT-6.1-Sol reviewed; Phoenix deletion is not claimed."
+    },
+    {
+      "id": "L20",
+      "status": "PASS",
+      "note": "Customer Golden pair reviewed and published through Chromium. Four downloaded exports agree with direct HTTP for that snapshot; a separate project replays review/publish through API. Real foreign-workspace bearer receives 404 for all four customer exports. GPT-6.1 Terra implemented and GPT-6.1 Sol reviewed. Fresh Chromium rerun passed with exit 0."
+    },
+    {
+      "id": "L21",
+      "status": "PASS",
+      "note": "Real project API and database lifecycle assertion; python -m pytest backend/tests/test_unification_lifecycle.py -q; see test_l21."
+    },
+    {
+      "id": "L22",
+      "status": "PASS",
+      "note": "Real API/Serving verifies V1→V2→rollback V3, V1 entity/mapping restored, V2 preserved and atomic audit includes actor/reason/from/target/new versions. GPT-6.1-Sol reviewed; browser rollback also passed."
+    }
+  ],
+  "limitations": [
+    "OSS-02 is BLOCKED: GitHub Actions has not run on GitHub. Local CI equivalents pass, but clean remote CI evidence is missing.",
+    "Run recovery is driven by Celery redelivery and the lease-recovery service. No periodic stale-run sweeper is scheduled.",
+    "The license audit is an inventory, not legal clearance. Review obligations for GPL-3.0-or-later rfc3987, AGPL-3.0 MinIO, ELv2 Phoenix and Redis 7.4 source-available terms before distributing a combined binary or hosted service.",
+    "MATCH-02 evidence uses the public 30-pair Golden set. It is a regression baseline, not a production accuracy claim.",
+    "MySQL, standalone DuckDB and MongoDB live connector tests remain untested and are documented as such."
+  ],
+  "release_blocker": "OSS-02: GitHub Actions has not run on GitHub; clean remote CI evidence is missing."
+}

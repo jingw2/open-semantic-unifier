@@ -10,11 +10,11 @@ import pandas as pd
 from app.core.config import settings
 from app.core.db import SessionLocal
 from app.core.security import decrypt_secret
+from app.demo.catalogs import supplier_catalog_for_sources
 from app.models.entities import DataSource, Job, LLMProvider
 from app.services.connectors import extract_db_to_parquet, load_file
 from app.services.engines import (
     build_demo_cross_db_tables,
-    build_demo_dirty_suppliers,
     execute_l1,
     execute_l2,
     execute_l3,
@@ -22,6 +22,8 @@ from app.services.engines import (
 )
 from app.services.storage import storage
 from app.workers.celery_app import celery_app
+from app.services.unification.releases import execute_unification_run, recover_interrupted_run
+from app.services.unification.telemetry import attach_trace_context, inject_trace_context
 
 
 def _publish_progress(job_id: str, status: str, progress: int, message: str, db=None) -> None:
@@ -107,10 +109,14 @@ def run_job_sync(job_id: str) -> Dict[str, Any]:
 
         if job.stage == "L1":
             dfs = _load_datasource_dataframes(db, ds_ids, cb)
-            df = dfs[0] if dfs else build_demo_dirty_suppliers(250)
+            if not dfs:
+                raise ValueError("L1 requires a data source; load the explicit demo fixture or add your own source first")
+            sources = db.query(DataSource).filter(DataSource.project_id == job.project_id, DataSource.id.in_(ds_ids)).all()
+            demo_catalog = supplier_catalog_for_sources(sources)
+            df = dfs[0]
             target_col = params.get("target_col") or ("supplier_raw_name" if "supplier_raw_name" in df.columns else df.columns[0])
             amount_col = params.get("amount_col") or ("order_amount_cny" if "order_amount_cny" in df.columns else None)
-            result = execute_l1(db, job.project_id, job.id, df, target_col=target_col, amount_col=amount_col, progress_cb=cb)
+            result = execute_l1(db, job.project_id, job.id, df, target_col=target_col, amount_col=amount_col, progress_cb=cb, demo_catalog=demo_catalog)
 
         elif job.stage == "L2":
             dfs = _load_datasource_dataframes(db, ds_ids, cb)
@@ -160,6 +166,40 @@ if celery_app is not None:
     def run_job_celery(job_id: str):
         return run_job_sync(job_id)
 
+    @celery_app.task(
+        bind=True,
+        name="semantic_unifier.run_unification",
+        acks_late=True,
+        reject_on_worker_lost=True,
+        max_retries=2,
+    )
+    def run_unification_celery(self, run_id: str):
+        with attach_trace_context(self.request.headers or {}):
+            try:
+                if self.request.delivery_info.get("redelivered"):
+                    recovery_db = SessionLocal()
+                    try:
+                        recovered = recover_interrupted_run(
+                            recovery_db, run_id, max_attempts=settings.unification_max_attempts,
+                        )
+                        if recovered.status == "FAILED":
+                            return {"run_id": run_id, "status": "FAILED", "error": recovered.error_message}
+                    finally:
+                        recovery_db.close()
+                return run_unification_sync(run_id)
+            except Exception as exc:
+                status_db = SessionLocal()
+                try:
+                    from app.models.unification import UnificationRun
+
+                    current = status_db.get(UnificationRun, run_id)
+                    if current is not None and current.status == "FAILED":
+                        raise exc
+                finally:
+                    status_db.close()
+                countdown = min(30, 2 ** (self.request.retries + 1))
+                raise self.retry(exc=exc, countdown=countdown)
+
 
 def dispatch_job(job_id: str) -> None:
     """生产模式推给 Celery Worker；本地测试模式直接同步跑完"""
@@ -167,3 +207,20 @@ def dispatch_job(job_id: str) -> None:
         run_job_celery.delay(job_id)
     else:
         run_job_sync(job_id)
+
+
+def run_unification_sync(run_id: str) -> dict[str, Any]:
+    """Run one idempotently submitted unification task and persist its staged result."""
+    db = SessionLocal()
+    try:
+        run = execute_unification_run(db, run_id, max_attempts=settings.unification_max_attempts)
+        return run.result_json or {}
+    finally:
+        db.close()
+
+
+def dispatch_unification_run(run_id: str) -> None:
+    if settings.celery_enabled and celery_app is not None:
+        run_unification_celery.apply_async(args=[run_id], headers=inject_trace_context())
+    else:
+        run_unification_sync(run_id)
