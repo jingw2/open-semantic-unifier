@@ -2,7 +2,7 @@
   "baseline_id": "open-semantic-unifier-v1.0.0",
   "date": "2026-11-23",
   "git_commit": "fd836a7833bc1660fd71989bc4b4869da9ca73d0",
-  "worktree_sha256": "99c4ff591550cb894b9f3bf47a5a31a1154ad464fa9aa8ead1d40511c86adaff",
+  "worktree_sha256": "7cecf6274e7e618662c1368f4dd92bd9e3e2c1306125a82c82b0e42fd3834210",
   "worktree_hash_method": "SHA-256 over sorted `git ls-files --cached --others --exclude-standard` relative paths, each file hashed as SHA-256(path + NUL + SHA-256(file contents)), excluding docs/reference/t8-acceptance-report.json, before this report was written.",
   "environment": "macOS host Python 3.13, Docker Compose 5.4.0, PostgreSQL 16.14, Redis 7.4.11, MinIO, Celery 5.7.0, Phoenix 22.0.1, controlled OpenAI-compatible model, Chromium",
   "product_release_status": "BLOCKED",
