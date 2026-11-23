@@ -2,7 +2,7 @@
 
 Open Semantic Unifier is a self-hosted workbench for configurable entity resolution across business systems. Its first delivery focuses on persistent source identity, candidate evidence, human review, auditable identity changes, immutable snapshots, and version-bound exports.
 
-The supplier, customer, and product examples are starting configurations. Projects can define other entity types and field mappings. L3 contract unification and L4 metric unification remain experimental and are not release claims. The V0.1 acceptance baseline is still being evaluated; see [acceptance status](docs/reference/acceptance-status.json).
+The supplier, customer, and product examples are starting configurations. Projects can define other entity types and field mappings. L3 contract unification and L4 metric unification remain experimental and are not release claims. The V0.1 acceptance baseline has PASS evidence for all gates, including a clean GitHub Actions run; see [acceptance status](docs/reference/acceptance-status.json). Merge and deployment remain separate decisions.
 
 ## Quick start
 
