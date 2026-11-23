@@ -2,9 +2,9 @@
   "baseline_id": "open-semantic-unifier-v1.0.0",
   "date": "2026-11-23",
   "git_commit": "fd836a7833bc1660fd71989bc4b4869da9ca73d0",
-  "worktree_sha256": "7cecf6274e7e618662c1368f4dd92bd9e3e2c1306125a82c82b0e42fd3834210",
+  "worktree_sha256": "efbb40454423aa843494c6b603b7ed44ce45d86bc6d09232968aea5e8814ec18",
   "worktree_hash_method": "SHA-256 over sorted `git ls-files --cached --others --exclude-standard` relative paths, each file hashed as SHA-256(path + NUL + SHA-256(file contents)), excluding docs/reference/t8-acceptance-report.json, before this report was written.",
-  "environment": "macOS host Python 3.13, Docker Compose 5.4.0, PostgreSQL 16.14, Redis 7.4.11, MinIO, Celery 5.7.0, Phoenix 22.0.1, controlled OpenAI-compatible model, Chromium",
+  "environment": "macOS host Python 3.13, Docker Compose 5.4.0, PostgreSQL 16.14, Redis 7.4.11, Bitnami MinIO 2025.5.24, Celery 5.7.0, Phoenix 22.0.1, controlled OpenAI-compatible model, Chromium",
   "product_release_status": "BLOCKED",
   "evidence": [
     "T1–T7 progress ledger and runtime reports",
@@ -41,7 +41,9 @@
     "python3 scripts/golden.py validate: PASS (60 records, 30 pairs, 22 lifecycle); scorer contract: 6 passed.",
     "RUN_COMPOSE_RELEASE_TESTS=true python -m pytest backend/tests/integration/test_compose_release.py -q: 5 passed in 34.17s.",
     "docs/reference/license-audit-summary.json: 182 Python and 184 npm packages; every package has an identifiable license after resolving schemasheets to Apache-2.0.",
-    "Fresh Chromium workbench flow: `python frontend/tests/unification_workbench.spec.py` with Vite on 5173 and inline FastAPI on 8765 passed (exit 0)."
+    "Fresh Chromium workbench flow: `python frontend/tests/unification_workbench.spec.py` with Vite on 5173 and inline FastAPI on 8765 passed (exit 0).",
+    "GitHub Actions run 45208713317: backend and frontend passed; compose-config failed because minio/minio is not anonymously pullable on a clean runner.",
+    "After the MinIO image fix: RUN_COMPOSE_RELEASE_TESTS=true python -m pytest backend/tests/integration/test_compose_release.py -q: 5 passed in 27.09s; L13/L14: 1 passed in 32.72s; full backend 149 passed/6 skipped; frontend build passed; Compose config passed."
   ],
   "gates": [
     {
@@ -171,8 +173,8 @@
     },
     {
       "id": "DEPLOY-01",
-      "status": "PASS",
-      "note": "Isolated clean Compose with generated credentials, real login, PostgreSQL, Celery, MinIO and frontend proxy. GPT-6.1 Sol reconciled the evidence."
+      "status": "BLOCKED",
+      "note": "Local clean Compose with generated credentials, real login, PostgreSQL, Celery, MinIO and frontend proxy passed. GitHub Actions exposed that the official MinIO image is not anonymously pullable on a clean runner. The fix uses bitnamilegacy/minio and local Compose release/L13-L14 pass; a clean remote rerun is pending."
     },
     {
       "id": "DEPLOY-02",
@@ -192,12 +194,12 @@
     {
       "id": "OSS-01",
       "status": "PASS",
-      "note": "LICENSE is Apache-2.0 and permits commercial use. docs/reference/license-audit-summary.json covers 182 Python and 184 npm packages plus pinned container images. Every package has an identifiable license; schemasheets metadata gap resolved from its upstream Apache-2.0 LICENSE. Copyleft/source-available obligations are recorded for rfc3987, psycopg2-binary, MPL packages, MinIO, Phoenix and Redis 7.4. The audit is an inventory, not legal clearance."
+      "note": "LICENSE is Apache-2.0 and permits commercial use. docs/reference/license-audit-summary.json covers 182 Python and 184 npm packages plus pinned container images. Every package has an identifiable license; schemasheets metadata gap resolved from its upstream Apache-2.0 LICENSE. Copyleft/source-available obligations are recorded for rfc3987, psycopg2-binary, MPL packages, MinIO, Phoenix and Redis 7.4. The audit is an inventory, not legal clearance. The MinIO container now uses bitnamilegacy/minio:latest (MinIO 2025.5.24, AGPL-3.0) because the official image is no longer anonymously pullable; the legacy namespace may not receive updates."
     },
     {
       "id": "OSS-02",
       "status": "BLOCKED",
-      "note": "GitHub Actions has not run on GitHub. .github/workflows/ci.yml defines backend, frontend and compose-config jobs; local equivalents pass: 149 backend tests, frontend production build, Golden checks, Compose config and release tests, and a fresh Chromium workbench flow. Missing external condition: a clean remote CI run."
+      "note": "GitHub Actions run 45208713317 passed backend and frontend but failed compose-config because the official MinIO image is not anonymously pullable on a clean runner. The image was replaced with bitnamilegacy/minio, a healthcheck was added, and local Compose release/L13-L14 passed. BLOCKED until the rerun on the fixed commit is green."
     }
   ],
   "lifecycle": [
@@ -317,7 +319,20 @@
     "Run recovery is driven by Celery redelivery and the lease-recovery service. No periodic stale-run sweeper is scheduled.",
     "The license audit is an inventory, not legal clearance. Review obligations for GPL-3.0-or-later rfc3987, AGPL-3.0 MinIO, ELv2 Phoenix and Redis 7.4 source-available terms before distributing a combined binary or hosted service.",
     "MATCH-02 evidence uses the public 30-pair Golden set. It is a regression baseline, not a production accuracy claim.",
-    "MySQL, standalone DuckDB and MongoDB live connector tests remain untested and are documented as such."
+    "MySQL, standalone DuckDB and MongoDB live connector tests remain untested and are documented as such.",
+    "The Compose deployment uses the Bitnami legacy MinIO image because the official image is no longer anonymously pullable. The namespace may not receive updates; plan a maintained S3-compatible replacement."
   ],
-  "release_blocker": "OSS-02: GitHub Actions has not run on GitHub; clean remote CI evidence is missing."
+  "release_blocker": "OSS-02: GitHub Actions has not run on GitHub; clean remote CI evidence is missing.",
+  "remote_ci": {
+    "run": "https://github.com/jingw2/open-semantic-unifier/actions/runs/45208713317",
+    "status": "FAIL",
+    "passed_jobs": [
+      "backend",
+      "frontend"
+    ],
+    "failed_job": "compose-config",
+    "failure": "pull access denied for minio/minio on a clean GitHub runner",
+    "fix": "Replaced the image with bitnamilegacy/minio:latest@sha256:451fe6858cb770cc9d0e77ba811ce287420f781c7c1b806a386f6896471a349c, added an S3 healthcheck and service_healthy dependencies, and documented the /bitnami/minio/data path.",
+    "rerun": "pending"
+  }
 }

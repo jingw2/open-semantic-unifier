@@ -32,6 +32,11 @@
       "status": "PASS",
       "report": "docs/reference/license-audit-summary.json",
       "note": "182 Python packages, 184 npm packages, pinned container images. Every package has an identifiable license. This is an inventory, not legal clearance."
+    },
+    "github_actions": {
+      "status": "FAIL",
+      "run": "https://github.com/jingw2/open-semantic-unifier/actions/runs/45208713317",
+      "note": "backend and frontend passed; compose-config failed because the official minio/minio image is not anonymously pullable on a clean runner. Fix pushed; rerun pending."
     }
   },
   "gates": [
@@ -269,10 +274,11 @@
     {
       "id": "DEPLOY-01",
       "stage": "V0.1",
-      "status": "PASS",
+      "status": "BLOCKED",
       "evidence": [
-        "Isolated clean Compose with generated credentials, real login, PostgreSQL, Celery, MinIO and frontend proxy. GPT-6.1 Sol reconciled the evidence.",
-        "docs/reference/t8-acceptance-report.json"
+        "Local clean Compose with generated credentials, real login, PostgreSQL, Celery, MinIO and frontend proxy passed.",
+        "GitHub Actions run 45208713317 failed compose-config because the official minio/minio image is not anonymously pullable on a clean runner. The fix uses bitnamilegacy/minio; local Compose release 5 passed and L13/L14 1 passed.",
+        "BLOCKED until the clean remote rerun is green."
       ]
     },
     {
@@ -311,6 +317,7 @@
       "evidence": [
         "LICENSE is Apache-2.0 and permits commercial use. docs/reference/license-audit-summary.json covers 182 Python and 184 npm packages plus pinned images; every package now has an identifiable license.",
         "schemasheets 0.4.0 metadata gap resolved from the upstream Apache-2.0 LICENSE. Copyleft/source-available obligations are recorded for rfc3987, psycopg2-binary, MPL packages, MinIO, Phoenix and Redis 7.4.",
+        "The MinIO container uses bitnamilegacy/minio:latest (MinIO 2025.5.24, AGPL-3.0) because the official image is no longer anonymously pullable. The legacy namespace may not receive updates.",
         "The audit is an inventory, not legal clearance."
       ]
     },
@@ -319,8 +326,9 @@
       "stage": "V0.1",
       "status": "BLOCKED",
       "evidence": [
-        "BLOCKED: GitHub Actions has not run on GitHub. .github/workflows/ci.yml defines backend, frontend and compose-config jobs; local equivalents pass: 149 backend tests, frontend production build, Golden checks, Compose config and release tests, and a fresh Chromium workbench flow (exit 0).",
-        "Missing external condition: a clean remote CI run."
+        "GitHub Actions run 45208713317: backend and frontend passed; compose-config failed because the official minio/minio image is not anonymously pullable on a clean runner.",
+        "Replaced it with bitnamilegacy/minio:latest@sha256:451fe6858cb770cc9d0e77ba811ce287420f781c7c1b806a386f6896471a349c, added a MinIO healthcheck, and documented the data path. Local Compose release 5 passed and L13/L14 1 passed.",
+        "BLOCKED until the rerun on the fixed commit is green. The workflow also covers local-path-free backend, frontend and compose-config jobs."
       ]
     },
     {

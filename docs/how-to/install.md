@@ -23,7 +23,7 @@ The API applies Alembic migrations on startup. Confirm readiness at `http://loca
 
 ## Data and restart behavior
 
-PostgreSQL, MinIO, and optional Phoenix use named volumes. `docker compose restart` or `docker compose down` preserves these volumes. `docker compose down -v` removes them and permanently deletes stored workspace data, uploaded objects, and traces.
+PostgreSQL, MinIO, and optional Phoenix use named volumes. The MinIO volume mounts at `/bitnami/minio/data` in the Bitnami-published image. `docker compose restart` or `docker compose down` preserves these volumes. `docker compose down -v` removes them and permanently deletes stored workspace data, uploaded objects, and traces. A pre-release volume created with the previous `/data` path must be migrated or recreated before upgrading.
 
 ## Optional Phoenix tracing
 

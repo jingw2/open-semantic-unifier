@@ -11,7 +11,7 @@ The audit flags these obligations:
 - `rfc3987` 1.3.8 uses GPL-3.0-or-later. It is transitive through LinkML. A combined binary distribution may require GPL compliance.
 - `psycopg2-binary` 2.9.13 uses LGPL with exceptions.
 - `certifi`, `fqdn`, and `tqdm` use MPL-2.0 terms.
-- The MinIO image uses AGPL-3.0. Review obligations before redistributing a modified image or offering it as a hosted service.
+- The Compose deployment uses `bitnamilegacy/minio:latest` for MinIO 2025.5.24. MinIO uses AGPL-3.0. The official `minio/minio` image is no longer anonymously pullable, and the Bitnami legacy namespace may not receive updates. Review obligations before redistributing a modified image or offering it as a hosted service, and plan a maintained replacement.
 - The Phoenix image uses Elastic License 2.0, which limits providing it to others as a managed service. Phoenix is optional and self-hosted.
 - Redis 7.4.11 uses RSALv2 or SSPLv1, not the earlier BSD terms.
 

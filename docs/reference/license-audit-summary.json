@@ -104,10 +104,10 @@
       "note": "Source-available. The ELv2 limits providing the software to others as a managed service. Phoenix is optional and self-hosted."
     },
     {
-      "image": "minio/minio:RELEASE.2025-09-07T16-13-09Z",
-      "version": "RELEASE.2025-09-07T16-13-09Z",
+      "image": "bitnamilegacy/minio:latest",
+      "version": "2025.5.24",
       "upstream_license": "AGPL-3.0",
-      "note": "Strong copyleft with a network-use clause. Review obligations before offering a modified MinIO build or hosted service."
+      "note": "Bitnami-published legacy image for MinIO 2025.5.24. The official minio/minio image is no longer anonymously pullable from Docker Hub, Quay, or GHCR. The bitnamilegacy namespace may not receive updates; plan a maintained S3-compatible replacement before long-term distribution. AGPL-3.0 network-use obligations still apply."
     },
     {
       "image": "python:3.12-slim",
