@@ -1,0 +1,9 @@
+id: https://w3id.org/open-semantic-unifier/schemas/base
+name: osu_contract_base
+prefixes:
+  linkml: https://w3id.org/linkml/
+  osu_contract_base: https://w3id.org/open-semantic-unifier/schemas/base/
+default_prefix: osu_contract_base
+imports:
+  - linkml:types
+default_range: string

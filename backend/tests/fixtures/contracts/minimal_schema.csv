@@ -1,0 +1,7 @@
+class,slot,range,multivalued,required,identifier,enum,permissible_value,description
+>class,slot,range,multivalued,required,identifier,enum,permissible_value,description
+Task,task_id,string,false,true,true,,,Unique task identifier
+Task,title,string,false,true,false,,,Short human-readable title
+Task,status,TaskStatus,false,false,false,,,Current task state
+,,,,,,TaskStatus,OPEN,Available for work
+,,,,,,TaskStatus,DONE,Completed

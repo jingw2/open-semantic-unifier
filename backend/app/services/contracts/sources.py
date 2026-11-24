@@ -11,9 +11,8 @@ from sqlalchemy.orm import Session
 
 from app.models.contracts import ContractSource
 from app.models.entities import DataSource
+from app.services.contracts.limits import MAX_CONTRACT_SOURCE_BYTES
 from app.services.storage import StorageError, storage
-
-MAX_CONTRACT_SOURCE_BYTES = 5 * 1024 * 1024
 
 CONTRACT_SOURCE_FORMATS = {
     ".yaml": "linkml_yaml",
