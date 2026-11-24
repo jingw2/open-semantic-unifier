@@ -13,13 +13,15 @@ from app.services.unification.telemetry import current_trace_id, start_span
 logger = logging.getLogger(__name__)
 
 BUILTIN_PROVIDERS: list[dict[str, str]] = [
-    {"provider_key": "offline", "name": "Offline (rules only)", "base_url": "", "default_model": "offline"},
-    {"provider_key": "deepseek", "name": "DeepSeek", "base_url": "https://api.deepseek.com/v1", "default_model": "deepseek-chat"},
-    {"provider_key": "qwen", "name": "Qwen (DashScope)", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "default_model": "qwen-plus"},
-    {"provider_key": "openai", "name": "OpenAI", "base_url": "https://api.openai.com/v1", "default_model": "gpt-4o-mini"},
-    {"provider_key": "zhipu", "name": "Zhipu GLM", "base_url": "https://open.bigmodel.cn/api/paas/v4", "default_model": "glm-4-flash"},
-    {"provider_key": "moonshot", "name": "Moonshot", "base_url": "https://api.moonshot.cn/v1", "default_model": "moonshot-v1-8k"},
-    {"provider_key": "ollama", "name": "Ollama (local/private deployment)", "base_url": "http://127.0.0.1:11434/v1", "default_model": "qwen3.5:4b-local"},
+    {"provider_key": "offline", "name": "Offline (rules only)", "base_url": "", "default_model": "offline", "provider_kind": "openai_compatible"},
+    {"provider_key": "deepseek", "name": "DeepSeek", "base_url": "https://api.deepseek.com/v1", "default_model": "deepseek-chat", "provider_kind": "openai_compatible"},
+    {"provider_key": "qwen", "name": "Qwen (DashScope)", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "default_model": "qwen-plus", "provider_kind": "openai_compatible"},
+    {"provider_key": "openai", "name": "OpenAI", "base_url": "https://api.openai.com/v1", "default_model": "gpt-4o-mini", "provider_kind": "openai_compatible"},
+    {"provider_key": "zhipu", "name": "Zhipu GLM", "base_url": "https://open.bigmodel.cn/api/paas/v4", "default_model": "glm-4-flash", "provider_kind": "openai_compatible"},
+    {"provider_key": "moonshot", "name": "Moonshot", "base_url": "https://api.moonshot.cn/v1", "default_model": "moonshot-v1-8k", "provider_kind": "openai_compatible"},
+    {"provider_key": "ollama", "name": "Ollama (local/private deployment)", "base_url": "http://127.0.0.1:11434/v1", "default_model": "qwen3.5:4b-local", "provider_kind": "openai_compatible"},
+    {"provider_key": "perplexity", "name": "Perplexity Decisions", "base_url": "https://api.perplexity.ai", "default_model": "pplx-decider-flash-latest", "provider_kind": "perplexity_decisions"},
+    {"provider_key": "typesafe", "name": "TypeSafe Jev", "base_url": "https://api.typesafe.ai", "default_model": "jev-latest", "provider_kind": "typesafe_jev"},
 ]
 
 

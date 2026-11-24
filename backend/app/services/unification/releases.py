@@ -15,6 +15,7 @@ from app.core.security import decrypt_secret
 from app.services.llm_client import JudgeRequest, JudgeResult, ModelError, ProviderConfig, judge_pair
 
 from app.models.unification import (
+    DecisionModelCall,
     IdentityChangeRecord,
     IdentityDecisionRecord,
     ProjectSnapshotState,
@@ -25,6 +26,7 @@ from app.models.unification import (
     UnificationRun,
     UnificationSnapshot,
 )
+from app.services.decision_models.contracts import DecisionSuggestion
 from app.services.unification.identity import (
     DecisionInput,
     IdentityConflict as IdentityOperationConflict,
@@ -86,7 +88,8 @@ def _model_judge_for_run(db: Session, project_id: str, run: UnificationRun, sche
         base_url=provider.base_url,
         api_key=api_key,
         name=provider.name,
-        timeout_seconds=settings.llm_timeout_seconds,
+        timeout_seconds=provider.timeout_seconds or settings.llm_timeout_seconds,
+        max_retries=provider.max_retries,
     )
 
     def judge(left: SourceRevision, right: SourceRevision, active_scheme: MatchScheme) -> JudgeResult:
@@ -103,6 +106,41 @@ def _model_judge_for_run(db: Session, project_id: str, run: UnificationRun, sche
             right=canonical_attributes(right),
         ), config)
     return judge
+
+
+def _persist_decision_model_calls(db: Session, run: UnificationRun, pairs) -> None:
+    """Stage one audit row per pair with a typed decision; the rows commit with the run."""
+    for pair in pairs:
+        decision = pair.decision
+        if decision is None:
+            continue
+        common = dict(
+            project_id=run.project_id,
+            run_id=run.id,
+            left_source_revision_id=pair.left_source_revision_id,
+            right_source_revision_id=pair.right_source_revision_id,
+            provider_kind=decision.provider_kind,
+            provider_key=decision.provider_key,
+            model_version=decision.model_version,
+            prompt_version=decision.prompt_version,
+            latency_ms=decision.latency_ms,
+            trace_id=decision.trace_id,
+        )
+        if isinstance(decision, DecisionSuggestion):
+            db.add(DecisionModelCall(**common,
+                verdict=decision.verdict.value,
+                confidence=decision.confidence,
+                distribution_json={str(key): value for key, value in decision.distribution.items()} if decision.distribution else None,
+                explanation=decision.explanation,
+                usage_json=dict(decision.usage) if decision.usage else None,
+                cost_usd=decision.cost_usd,
+            ))
+        else:
+            db.add(DecisionModelCall(**common,
+                error_code=decision.code,
+                error_message=decision.message[:2000],
+                retryable=decision.retryable,
+            ))
 
 
 def _stable_hash(value: dict) -> str:
@@ -301,6 +339,7 @@ def _execute_unification_run(db: Session, run_id: str, *, max_attempts: int = 3)
             result = match_records(revisions, scheme, explicit_constraints, judge=judge)
             match_span.set_attribute("unification.input_record_count", len(revisions))
             match_span.set_attribute("unification.pair_count", len(result.pairs))
+        _persist_decision_model_calls(db, run, result.pairs)
         model_errors = [pair.model_error for pair in result.pairs if pair.model_error]
         if model_errors and scheme.model_failure_policy == "FAIL":
             raise ModelFailure(f"configured model judgment failed: {model_errors[0]}")

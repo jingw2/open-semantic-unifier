@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_user, require_resource_access, require_role
 from app.core.db import get_db
-from app.models.unification import IdentityChangeRecord, IdentityConflictRecord, IdentityDecisionRecord, ProjectSnapshotState, SourceRecord, SourceRevision, UnifiedEntity, UnificationRun, UnificationSchemeVersion, UnificationSnapshot
+from app.models.unification import DecisionModelCall, IdentityChangeRecord, IdentityConflictRecord, IdentityDecisionRecord, ProjectSnapshotState, SourceRecord, SourceRevision, UnifiedEntity, UnificationRun, UnificationSchemeVersion, UnificationSnapshot
 from app.services.unification.identity import DecisionInput, IdentityConflict, apply_decision, find_current_member_conflicts, record_identity_conflict, resolve_entity_id, set_attribute_override, split_entity, undo_identity_change
 from app.services.unification.schemes import (
     CatalogEntity,
@@ -737,6 +737,52 @@ def _run_payload(run: UnificationRun) -> dict[str, Any]:
         "created_at": run.created_at.isoformat(),
         "updated_at": run.updated_at.isoformat(),
         "result": run.result_json,
+    }
+
+
+@router.get("/projects/{project_id}/unification/model-calls")
+def list_decision_model_calls(
+    project_id: str,
+    run_id: str | None = Query(default=None, min_length=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    ctx: dict[str, str] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    statement = select(DecisionModelCall).where(DecisionModelCall.project_id == project_id)
+    if run_id:
+        statement = statement.where(DecisionModelCall.run_id == run_id)
+    total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
+    rows = db.scalars(statement.order_by(
+        DecisionModelCall.created_at.desc(), DecisionModelCall.id.desc(),
+    ).offset(offset).limit(limit)).all()
+    return {
+        "items": [{
+            "id": item.id,
+            "project_id": item.project_id,
+            "run_id": item.run_id,
+            "left_source_revision_id": item.left_source_revision_id,
+            "right_source_revision_id": item.right_source_revision_id,
+            "provider_kind": item.provider_kind,
+            "provider_key": item.provider_key,
+            "model_version": item.model_version,
+            "prompt_version": item.prompt_version,
+            "verdict": item.verdict,
+            "confidence": item.confidence,
+            "distribution": item.distribution_json,
+            "explanation": item.explanation,
+            "latency_ms": item.latency_ms,
+            "usage": item.usage_json,
+            "cost_usd": item.cost_usd,
+            "error_code": item.error_code,
+            "error_message": item.error_message,
+            "retryable": item.retryable,
+            "trace_id": item.trace_id,
+            "created_at": item.created_at.isoformat(),
+        } for item in rows],
+        "limit": limit,
+        "offset": offset,
+        "total": total,
     }
 
 
