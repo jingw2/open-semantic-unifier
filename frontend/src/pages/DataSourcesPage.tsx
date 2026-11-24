@@ -130,7 +130,6 @@ export default function DataSourcesPage({ projectId, onRouteReady }: Props) {
             <option value="">✨ 自动智能判断路线</option>
             <option value="L1">指定目标：L1 小表清洗对齐</option>
             <option value="L2">指定目标：L2 跨库大表 + AI 认亲</option>
-            <option value="L3">指定目标：L3 源头契约防幻觉</option>
             <option value="L4">指定目标：L4 统一指标口径</option>
           </select>
         </div>
@@ -174,10 +173,10 @@ export default function DataSourcesPage({ projectId, onRouteReady }: Props) {
                 <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                   <Sparkles className="w-4 h-4 text-brand-600" /> 一键加载内置高仿真示例
                 </div>
-                <p className="text-xs text-slate-500 mt-1">秒级体验 L1–L4 完整企业语义统一实战数据</p>
+                <p className="text-xs text-slate-500 mt-1">秒级体验 L1 / L2 / L4 示例数据；L3 契约统一请在契约统一工作台使用真实契约文件。</p>
               </div>
               <div className="grid grid-cols-2 gap-2 mt-3">
-                {(['L1', 'L2', 'L3', 'L4'] as const).map((st) => (
+                {(['L1', 'L2', 'L4'] as const).map((st) => (
                   <button
                     key={st}
                     disabled={busy}

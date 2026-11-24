@@ -603,6 +603,7 @@ def execute_l3(
     tsv_text: Optional[str] = None,
     progress_cb: Optional[Callable[[int, str], None]] = None,
 ) -> Dict[str, Any]:
+    """Legacy L4 demo seed. The public L3 workflow uses app.services.contracts."""
     if progress_cb:
         progress_cb(25, "正在调用 LinkML 编译 YAML 本体、SQL DDL、JSON Schema 与 ER 图...")
 

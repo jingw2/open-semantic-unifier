@@ -18,7 +18,6 @@ from app.models.entities import DataSource, Project
 from app.services.connectors import SAFE_PROFILE_SAMPLE_LIMIT, load_file, read_db_dataframe, test_db_connection
 from app.services.engines import (
     DEFAULT_METRICS_YAML,
-    DEFAULT_SCHEMASHEET_TSV,
     build_demo_cross_db_tables,
     build_demo_dirty_suppliers,
 )
@@ -211,17 +210,10 @@ def load_demo_datasource(
             db.flush()
             ds_ids.append(ds.id)
     elif st == "L3":
-        obj_key, _ = storage.put_bytes(f"projects/{project_id}/uploads/demo_schema.tsv", DEFAULT_SCHEMASHEET_TSV.encode("utf-8"))
-        with tempfile.TemporaryDirectory() as tmp:
-            p = os.path.join(tmp, "demo_schema.tsv")
-            open(p, "w", encoding="utf-8").write(DEFAULT_SCHEMASHEET_TSV)
-            items = [load_file(p)]
-        prof = profile_items(items)
-        rt = recommend_pipeline(prof)
-        ds = DataSource(project_id=project_id, name="demo_schema.tsv", source_type="file", object_key=obj_key, profile_json=prof, routing_json=rt)
-        db.add(ds)
-        db.flush()
-        ds_ids.append(ds.id)
+        raise HTTPException(
+            status_code=410,
+            detail="L3 契约示例已停用；请在契约统一工作台选择真实契约文件。",
+        )
     elif st == "L4":
         obj_key, _ = storage.put_bytes(f"projects/{project_id}/uploads/demo_metrics.yaml", DEFAULT_METRICS_YAML.encode("utf-8"))
         items = [{"kind": "yaml", "name": "demo_metrics.yaml", "text": DEFAULT_METRICS_YAML}]
