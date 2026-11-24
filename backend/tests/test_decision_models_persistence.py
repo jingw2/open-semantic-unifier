@@ -44,7 +44,7 @@ def _install_judge(monkeypatch, outcome):
     import app.services.unification.releases as releases
 
     def fake_judge_for_run(db, project_id, run, scheme):
-        def judge(left, right, active_scheme):
+        def judge(left, right, active_scheme, evidence_codes, evidence):
             return outcome() if callable(outcome) else outcome
         return judge
 

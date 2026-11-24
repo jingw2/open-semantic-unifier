@@ -14,7 +14,9 @@ from app.core.config import settings
 from app.core.db import SessionLocal, get_db
 from app.core.security import decrypt_secret, encrypt_secret, mask_secret
 from app.models.entities import DataSource, Job, LLMProvider
-from app.services.llm_client import BUILTIN_PROVIDERS, test_llm_connectivity
+from app.services.decision_models.contracts import DecisionError, DecisionRequest, DecisionSuggestion
+from app.services.decision_models.providers import adapter_for_kind
+from app.services.llm_client import BUILTIN_PROVIDERS, ProviderConfig, test_llm_connectivity
 from app.workers.tasks import dispatch_job
 
 router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_resource_access)], tags=["LLM Providers & Async Jobs"])
@@ -166,7 +168,7 @@ def test_saved_provider(
     if not p:
         raise HTTPException(status_code=404, detail="Provider 不存在")
     if p.provider_kind in DECISION_PROVIDER_KINDS:
-        return {"status": "error", "message": f"connectivity checks for {p.provider_kind} decision providers are not available yet"}
+        return _test_decision_provider(p)
     try:
         return test_llm_connectivity(
             {
@@ -179,6 +181,50 @@ def test_saved_provider(
         )
     except Exception as e:
         return {"status": "error", "message": f"连接失败: {e}"}
+
+
+def _test_decision_provider(p: LLMProvider) -> dict[str, Any]:
+    """Run one controlled Acme/Acme sample pair through a configured decision provider."""
+    adapter = adapter_for_kind(p.provider_kind)
+    if adapter is None:
+        return {"status": "error", "message": f"unsupported provider kind {p.provider_kind}"}
+    try:
+        api_key = decrypt_secret(p.encrypted_api_key) if p.encrypted_api_key else ""
+    except Exception:
+        return {"status": "error", "message": "credential_unavailable: provider credentials cannot be decrypted"}
+    outcome = adapter.invoke(DecisionRequest(
+        project_id="provider-test",
+        run_id="provider-test",
+        input_version="provider-test",
+        scheme_revision="provider-test",
+        prompt_version=p.prompt_version or DEFAULT_PROMPT_VERSION,
+        entity_type="organization",
+        identity_granularity="legal_entity",
+        left={"name": "Acme"},
+        right={"name": "Acme"},
+        field_names=tuple(p.send_fields_json) if p.send_fields_json else ("name",),
+    ), ProviderConfig(
+        provider_key=p.provider_key,
+        model=p.default_model,
+        base_url=p.base_url,
+        api_key=api_key,
+        name=p.name,
+        timeout_seconds=p.timeout_seconds or settings.llm_timeout_seconds,
+        max_retries=p.max_retries,
+    ))
+    if isinstance(outcome, DecisionSuggestion):
+        return {
+            "status": "ok",
+            "message": f"{p.provider_kind} returned {outcome.verdict.value} with confidence {outcome.confidence}",
+            "verdict": outcome.verdict.value,
+            "confidence": outcome.confidence,
+            "model": outcome.model_version,
+            "provider_kind": outcome.provider_kind,
+            "prompt_version": outcome.prompt_version,
+        }
+    if isinstance(outcome, DecisionError):
+        return {"status": "error", "message": f"{outcome.code}: {outcome.message}", "code": outcome.code, "retryable": outcome.retryable}
+    return {"status": "error", "message": "decision provider returned no verdict and is disabled"}
 
 
 @router.post("/projects/{project_id}/jobs")

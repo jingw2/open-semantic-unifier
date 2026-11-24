@@ -269,7 +269,7 @@ def test_choices_map_to_verdicts_with_full_metadata(provider, choice_server, cho
     assert outcome.provider_kind == spec["kind"]
     assert outcome.provider_key == "test-provider"
     assert outcome.model_version == "response-model"
-    assert outcome.prompt_version == "entity-pair-choice-v1"
+    assert outcome.prompt_version == "pair-v1"
     assert outcome.latency_ms >= 0
     assert outcome.usage == {"input_tokens": 120, "output_tokens": 3}
     assert outcome.cost_usd is None
@@ -283,6 +283,22 @@ def test_missing_usage_stays_none_and_cost_never_estimated(provider, choice_serv
     assert isinstance(outcome, DecisionSuggestion)
     assert outcome.usage is None
     assert outcome.cost_usd is None
+
+
+def test_suggestion_records_the_requests_prompt_version(provider, choice_server):
+    adapter, spec = provider
+    outcome = _invoke(adapter, choice_server, prompt_version="configured-pair-v7")
+    assert isinstance(outcome, DecisionSuggestion)
+    assert outcome.prompt_version == "configured-pair-v7"
+
+
+def test_errors_record_the_requests_prompt_version(provider, choice_server):
+    adapter, spec = provider
+    _ControlledHandler.status = 500
+    _ControlledHandler.payload = {"error": {"message": "provider failure"}}
+    outcome = _invoke(adapter, choice_server, prompt_version="configured-pair-v8")
+    assert isinstance(outcome, DecisionError)
+    assert outcome.prompt_version == "configured-pair-v8"
 
 
 def test_missing_credentials_error_without_http_request(provider, choice_server):
@@ -311,7 +327,7 @@ def test_http_errors_map_to_typed_decision_errors(provider, choice_server, statu
     assert outcome.code == expected_code
     assert outcome.retryable is retryable
     assert outcome.model_version == "error-response-model"
-    assert outcome.prompt_version == "entity-pair-choice-v1"
+    assert outcome.prompt_version == "pair-v1"
     assert "decision-body-secret-must-not-appear" not in outcome.message
     assert "test-secret" not in outcome.message
 
@@ -442,7 +458,7 @@ def test_successful_span_carries_metadata_without_records_or_credentials(provide
         assert attributes["llm.provider"] == "test-provider"
         assert attributes["llm.provider_kind"] == spec["kind"]
         assert attributes["llm.model_name"] == spec["default_model"]
-        assert attributes["prompt_version"] == "entity-pair-choice-v1"
+        assert attributes["prompt_version"] == "pair-v1"
         assert attributes["scheme.prompt_version"] == "pair-v1"
         assert attributes["decision.input_fields"] == "name"
         assert "llm.request.duration_ms" in attributes

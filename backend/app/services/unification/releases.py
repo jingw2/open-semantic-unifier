@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.models.entities import LLMProvider, Project
 from app.core.config import settings
 from app.core.security import decrypt_secret
-from app.services.llm_client import JudgeRequest, JudgeResult, ModelError, ProviderConfig, judge_pair
+from app.services.llm_client import ProviderConfig
 
 from app.models.unification import (
     DecisionModelCall,
@@ -26,7 +26,13 @@ from app.models.unification import (
     UnificationRun,
     UnificationSnapshot,
 )
-from app.services.decision_models.contracts import DecisionSuggestion
+from app.services.decision_models.contracts import (
+    DecisionError,
+    DecisionOutcome,
+    DecisionRequest,
+    DecisionSuggestion,
+)
+from app.services.decision_models.providers import adapter_for_kind
 from app.services.unification.identity import (
     DecisionInput,
     IdentityConflict as IdentityOperationConflict,
@@ -68,18 +74,49 @@ def _model_judge_for_run(db: Session, project_id: str, run: UnificationRun, sche
             LLMProvider.workspace_id == project.workspace_id,
         ))
     if provider is None:
-        def missing_provider(_left, _right, _scheme):
-            return JudgeResult(
-                status="ERROR", error=ModelError("provider_missing", "model provider is unavailable in this workspace", False),
+        def missing_provider(_left, _right, _active_scheme, _evidence_codes, _evidence):
+            return DecisionError(
+                code="provider_missing",
+                message="model provider is unavailable in this workspace",
+                retryable=False,
+                provider_kind="openai_compatible",
+                provider_key=scheme.model_provider_id or "unconfigured",
+                model_version="",
+                prompt_version=scheme.prompt_version,
+                latency_ms=0.0,
+                trace_id=current_trace_id(),
             )
         return missing_provider
+    provider_kind = provider.provider_kind or "openai_compatible"
+    adapter = adapter_for_kind(provider_kind)
+    if adapter is None:
+        def invalid_provider(_left, _right, _active_scheme, _evidence_codes, _evidence):
+            return DecisionError(
+                code="invalid_provider",
+                message=f"provider kind {provider_kind!r} is not supported",
+                retryable=False,
+                provider_kind=provider_kind,
+                provider_key=provider.provider_key or provider_kind,
+                model_version=provider.default_model or "",
+                prompt_version=provider.prompt_version or scheme.prompt_version,
+                latency_ms=0.0,
+                trace_id=current_trace_id(),
+            )
+        return invalid_provider
     try:
         api_key = decrypt_secret(provider.encrypted_api_key) if provider.encrypted_api_key else ""
     except Exception:
-        def unavailable_credential(_left, _right, _scheme):
-            return JudgeResult(
-                status="ERROR", error=ModelError("credential_unavailable", "provider credentials cannot be decrypted", False),
-                model=provider.default_model,
+        def unavailable_credential(_left, _right, _active_scheme, _evidence_codes, _evidence):
+            return DecisionError(
+                code="credential_unavailable",
+                message="provider credentials cannot be decrypted",
+                retryable=False,
+                provider_kind=provider_kind,
+                provider_key=provider.provider_key or provider_kind,
+                model_version=provider.default_model or "",
+                prompt_version=provider.prompt_version or scheme.prompt_version,
+                latency_ms=0.0,
+                trace_id=current_trace_id(),
             )
         return unavailable_credential
     config = ProviderConfig(
@@ -92,18 +129,21 @@ def _model_judge_for_run(db: Session, project_id: str, run: UnificationRun, sche
         max_retries=provider.max_retries,
     )
 
-    def judge(left: SourceRevision, right: SourceRevision, active_scheme: MatchScheme) -> JudgeResult:
-        def canonical_attributes(revision: SourceRevision) -> dict[str, Any]:
-            return {canonical: revision.attributes.get(source) for canonical, source in active_scheme.field_map.items()}
-        return judge_pair(JudgeRequest(
+    def judge(left: SourceRevision, right: SourceRevision, active_scheme: MatchScheme,
+              evidence_codes: tuple[str, ...], evidence: tuple[dict[str, Any], ...]) -> DecisionOutcome:
+        field_names = tuple(provider.send_fields_json) if provider.send_fields_json else tuple(active_scheme.field_map.values())
+        return adapter.invoke(DecisionRequest(
             project_id=project_id,
             run_id=run.id,
             input_version=run.input_version,
             scheme_revision=run.scheme_revision,
-            prompt_version=active_scheme.prompt_version,
+            prompt_version=provider.prompt_version or active_scheme.prompt_version,
             entity_type=active_scheme.entity_type,
-            left=canonical_attributes(left),
-            right=canonical_attributes(right),
+            identity_granularity=active_scheme.identity_granularity,
+            left=dict(left.attributes),
+            right=dict(right.attributes),
+            field_names=field_names,
+            evidence=tuple(evidence),
         ), config)
     return judge
 

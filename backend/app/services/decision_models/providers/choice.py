@@ -27,8 +27,6 @@ from app.services.decision_models.contracts import (
 )
 from app.services.unification.telemetry import current_trace_id, start_span
 
-PROMPT_VERSION = "entity-pair-choice-v1"
-
 VERDICT_NAMES = frozenset({"SAME", "DIFFERENT", "UNKNOWN"})
 
 CHOICE_INSTRUCTIONS = (
@@ -71,7 +69,7 @@ class ChoiceAdapter:
                 provider_kind=self.provider_kind,
                 provider_key=config.provider_key.strip() or self.provider_kind,
                 model_version=config.model.strip() or self.default_model,
-                prompt_version=PROMPT_VERSION,
+                prompt_version=request.prompt_version,
                 latency_ms=round((time.monotonic() - started) * 1000, 2),
                 trace_id=current_trace_id(),
             )
@@ -85,7 +83,7 @@ class ChoiceAdapter:
             "run_id": request.run_id,
             "input_version": request.input_version,
             "scheme_revision": request.scheme_revision,
-            "prompt_version": PROMPT_VERSION,
+            "prompt_version": request.prompt_version,
             "scheme.prompt_version": request.prompt_version,
             "llm.provider": config.provider_key,
             "llm.provider_kind": self.provider_kind,
@@ -96,7 +94,7 @@ class ChoiceAdapter:
             if not config.api_key.strip():
                 return self._fail(
                     span, "missing_credentials", "provider credentials are required",
-                    retryable=False, provider_key=provider_key, model_version=model, started=started,
+                    retryable=False, provider_key=provider_key, model_version=model, prompt_version=request.prompt_version, started=started,
                 )
             timeout = config.timeout_seconds if config.timeout_seconds > 0 else 10.0
             try:
@@ -112,12 +110,12 @@ class ChoiceAdapter:
             except httpx.TimeoutException:
                 return self._fail(
                     span, "timeout", "provider request timed out",
-                    retryable=True, provider_key=provider_key, model_version=model, started=started,
+                    retryable=True, provider_key=provider_key, model_version=model, prompt_version=request.prompt_version, started=started,
                 )
             except (httpx.HTTPError, httpx.InvalidURL) as exc:
                 return self._fail(
                     span, "provider_error", f"provider request failed ({type(exc).__name__})",
-                    retryable=True, provider_key=provider_key, model_version=model, started=started,
+                    retryable=True, provider_key=provider_key, model_version=model, prompt_version=request.prompt_version, started=started,
                 )
             self._record_request_id(span, response)
             span.set_attribute("llm.request.duration_ms", round((time.monotonic() - started) * 1000, 2))
@@ -126,17 +124,17 @@ class ChoiceAdapter:
                 model_version = self._model_from_text(response.text, model)
                 return self._fail(
                     span, code, message,
-                    retryable=retryable, provider_key=provider_key, model_version=model_version, started=started,
+                    retryable=retryable, provider_key=provider_key, model_version=model_version, prompt_version=request.prompt_version, started=started,
                 )
             try:
                 payload = json.loads(response.text)
             except (TypeError, json.JSONDecodeError):
                 return self._fail(
                     span, "invalid_json", "provider response was not valid JSON",
-                    retryable=False, provider_key=provider_key, model_version=model, started=started,
+                    retryable=False, provider_key=provider_key, model_version=model, prompt_version=request.prompt_version, started=started,
                 )
             model_version = self._model_from_payload(payload, model)
-            return self._map_payload(span, payload, provider_key, model_version, started)
+            return self._map_payload(span, payload, provider_key, model_version, request.prompt_version, started)
 
     @staticmethod
     def _status_outcome(status_code: int) -> tuple[str, bool, str]:
@@ -152,12 +150,12 @@ class ChoiceAdapter:
             return "provider_error", False, f"provider returned HTTP {status_code}"
         return "provider_error", True, f"provider returned HTTP {status_code}"
 
-    def _map_payload(self, span, payload, provider_key: str, model_version: str, started: float) -> DecisionOutcome:
+    def _map_payload(self, span, payload, provider_key: str, model_version: str, prompt_version: str, started: float) -> DecisionOutcome:
         parsed = self._parse_payload(payload)
         if parsed is None:
             return self._fail(
                 span, "invalid_response", "provider response does not match the choice contract",
-                retryable=False, provider_key=provider_key, model_version=model_version, started=started,
+                retryable=False, provider_key=provider_key, model_version=model_version, prompt_version=prompt_version, started=started,
             )
         verdict, confidence, distribution = parsed
         usage = dict(payload["usage"]) if isinstance(payload.get("usage"), Mapping) else None
@@ -169,7 +167,7 @@ class ChoiceAdapter:
             provider_kind=self.provider_kind,
             provider_key=provider_key,
             model_version=model_version,
-            prompt_version=PROMPT_VERSION,
+            prompt_version=prompt_version,
             latency_ms=round((time.monotonic() - started) * 1000, 2),
             usage=usage,
             cost_usd=None,
@@ -211,7 +209,7 @@ class ChoiceAdapter:
         return DecisionVerdict(choice), float(confidence), distribution
 
     def _fail(self, span, code: str, message: str, *, retryable: bool,
-              provider_key: str, model_version: str, started: float) -> DecisionError:
+              provider_key: str, model_version: str, prompt_version: str, started: float) -> DecisionError:
         span.set_attribute("error.code", code)
         span.set_status(Status(StatusCode.ERROR, code))
         span.set_attribute("llm.request.duration_ms", round((time.monotonic() - started) * 1000, 2))
@@ -222,7 +220,7 @@ class ChoiceAdapter:
             provider_kind=self.provider_kind,
             provider_key=provider_key,
             model_version=model_version,
-            prompt_version=PROMPT_VERSION,
+            prompt_version=prompt_version,
             latency_ms=round((time.monotonic() - started) * 1000, 2),
             trace_id=current_trace_id(),
         )

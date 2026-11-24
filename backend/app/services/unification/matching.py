@@ -29,7 +29,14 @@ class CannotLink:
 
 
 class ModelJudge(Protocol):
-    def __call__(self, left: SourceRevision, right: SourceRevision, scheme: MatchScheme) -> dict[str, Any] | JudgeResult | DecisionOutcome: ...
+    def __call__(
+        self,
+        left: SourceRevision,
+        right: SourceRevision,
+        scheme: MatchScheme,
+        evidence_codes: tuple[str, ...],
+        evidence: tuple[dict[str, Any], ...],
+    ) -> dict[str, Any] | JudgeResult | DecisionOutcome: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,7 +191,7 @@ def _pair_match(
     if candidate and judge is not None:
         try:
             with start_span("unification.model_recommendation", {"left_source_revision_id": left.id, "right_source_revision_id": right.id}):
-                judged = judge(left, right, scheme)
+                judged = judge(left, right, scheme, tuple(evidence_codes), tuple(evidence))
             if isinstance(judged, DecisionSuggestion):
                 recommendation = {
                     "verdict": judged.verdict.value,

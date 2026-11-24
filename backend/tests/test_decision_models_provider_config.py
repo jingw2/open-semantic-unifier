@@ -113,16 +113,6 @@ def test_invalid_provider_configuration_is_rejected(public_api, payload):
     assert response.status_code == 422, response.text
 
 
-def test_decision_provider_test_endpoint_reports_unavailable(public_api):
-    client, _, _ = public_api
-    provider = client.post("/api/v1/providers", json={
-        "provider_key": "perplexity", "name": "Perplexity", "provider_kind": "perplexity_decisions", "api_key": "pk",
-    }).json()
-    result = client.post(f"/api/v1/providers/{provider['id']}/test").json()
-    assert result["status"] == "error"
-    assert "not available" in result["message"]
-
-
 def test_openai_compatible_test_endpoint_stays_unchanged(public_api):
     client, _, _ = public_api
     provider = client.post("/api/v1/providers", json={
