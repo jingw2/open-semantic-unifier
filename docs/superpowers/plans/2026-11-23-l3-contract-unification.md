@@ -136,9 +136,30 @@ publish_contract(db, *, project_id: str, model_id: str, expected_current_version
 | 真实服务 | 真实文件编译、PostgreSQL 迁移、浏览器流程 |
 | 契约 | L3-01 端到端，非示例输入 |
 
-## 未决问题
+## 本轮决策（2026-11-24）
 
-- 契约文件的首发格式是 LinkML YAML 加 schemasheet TSV，还是只支持一种？
-- 契约模型如何映射到实体快照中的实体类型：按名称、显式映射表，还是两者都支持？
-- LinkML 编译器的 GPL 依赖是否要求隔离进程或替换实现？
-- 旧 L3 演示页面是否保留只读样例入口，还是完全删除？
+- 首发格式：LinkML YAML、schemasheet TSV、CSV 都支持；CSV 转换为 TSV 后编译。
+- 实体映射：class 名必须匹配已发布快照的 entity_type，或列入 `allowed_new_entity_types`；显式映射表留待后续。
+- LinkML 依赖：编译器在子进程执行；`rfc3987` 等 GPL 依赖已在 `license-audit-summary.json` 标记，分发前仍需复核。
+- 旧 L3 入口：旧作业、示例数据源和前端入口退役；新入口是契约统一工作台。旧 `execute_l3` 仅作为 L4 演示种子保留。
+- 关系与引用：LinkML 1.12.1 的 `gen-sqlddl` 不接受自定义 `references` 字段；关系使用 class range，未定义目标报 `UNKNOWN_RANGE`。
+
+## 实施状态（2026-11-24）
+
+| 任务 | 状态 | 证据 |
+| --- | --- | --- |
+| T-L3-1 契约源 | 完成 | `9b4168f`；11 tests；真实 HTTP 上传、选择、哈希复用 |
+| T-L3-2 编译 | 完成 | `4699dd8`；19 tests；YAML/TSV/CSV 真实编译 |
+| T-L3-3 校验 | 完成 | `00cc7e4`、`55ede8f`；21 tests；canonical JSON |
+| T-L3-4 版本/发布/导出 | 完成 | `50f9bf1`；19 release tests；真实 uvicorn 冒烟 |
+| T-L3-5 API/权限 | 完成，契约源列表未分页 | contracts router；版本和审计分页；viewer 403 |
+| T-L3-6 工作台 | 完成，viewer 只读未跑浏览器 | `aa46d97`；Chromium happy path 和校验错误；生产构建 |
+| T-L3-7 切换 | 完成 | `aa46d97`；旧 L3 作业/示例/UI 退役；L4 演示种子保留 |
+| T-L3-8 L3-01 | BLOCKED | 合成 supplier contract 端到端通过；缺客户真实契约 |
+
+其他偏差：
+- 契约产物存 DB JSON，单产物上限 10 MiB。
+- 契约源列表未分页；版本和审计已分页。
+- 工作台 viewer 只读由 `canEdit` 禁用控件；后端 403 已测，浏览器流程只覆盖 editor。
+
+证据：`docs/reference/l3-acceptance-report.json`；全后端 220 passed / 6 skipped；前端生产构建；两个 Chromium 流程。
