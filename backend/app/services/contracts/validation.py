@@ -176,10 +176,6 @@ def _collect_model(document: dict, classes: dict) -> dict:
             "is_a": _parent_names(class_def.get("is_a")),
         }
 
-    all_slot_names = {
-        name for class_model in classes_model.values() for name in class_model["attributes"]
-    }
-
     enums_model = {}
     for enum_name, enum_def in enums_raw.items():
         values = None
@@ -193,7 +189,6 @@ def _collect_model(document: dict, classes: dict) -> dict:
         "classes": classes_model,
         "enums": enums_model,
         "enum_names": enum_names,
-        "all_slot_names": all_slot_names,
         "default_range": default_range,
     }
 
@@ -241,12 +236,7 @@ def _check_attribute(
             path=path, code="UNKNOWN_RANGE",
             message=f"range '{resolved}' is not a supported built-in type, class, or enum",
         ))
-    references = definition.get("references")
-    if isinstance(references, str) and references not in model["all_slot_names"]:
-        issues.append(ContractIssue(
-            path=path, code="UNKNOWN_REFERENCE",
-            message=f"attribute references undefined slot '{references}'",
-        ))
+
 
 
 def _check_enums(issues: list[ContractIssue], enums_model: dict) -> None:
@@ -340,9 +330,6 @@ def _canonical_model(model: dict) -> dict:
                 entry["required"] = True
             if definition.get("multivalued") is True:
                 entry["multivalued"] = True
-            references = definition.get("references")
-            if isinstance(references, str):
-                entry["references"] = references
             description = definition.get("description")
             if isinstance(description, str):
                 entry["description"] = description

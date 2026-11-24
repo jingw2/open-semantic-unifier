@@ -238,20 +238,18 @@ def test_canonical_json_includes_inheritance():
     assert "is_a" not in canonical["classes"]["Base"]
 
 
-def test_self_reference_range_is_allowed_but_unknown_references_slot_is_rejected():
+def test_self_reference_range_is_allowed():
     yaml_text = (
         "classes:\n"
         "  Task:\n"
         "    attributes:\n"
         "      parent:\n"
         "        range: Task\n"
-        "        references: missing_slot\n"
     )
     report = _validate(yaml_text)
-    assert report.accepted is False
-    assert "UNKNOWN_RANGE" not in {issue.code for issue in report.issues}
-    issue = _issue(report, "UNKNOWN_REFERENCE")
-    assert issue.path == "classes.Task.parent"
+    assert report.accepted is True
+    canonical = json.loads(report.canonical_model_json)
+    assert canonical["relations"] == {"Task": ["Task"]}
 
 
 def test_entity_type_check_uses_known_and_allowed_new_sets():
@@ -366,7 +364,6 @@ def test_all_structural_issues_are_reported_in_one_pass():
         "    attributes:\n"
         "      status:\n"
         "        range: Bogus\n"
-        "        references: missing_slot\n"
         "      task_id: {identifier: true}\n"
         "      alternate_id: {identifier: true}\n"
         "  A:\n"
@@ -382,7 +379,6 @@ def test_all_structural_issues_are_reported_in_one_pass():
     codes = {issue.code for issue in report.issues}
     assert codes == {
         "UNKNOWN_RANGE",
-        "UNKNOWN_REFERENCE",
         "MULTIPLE_IDENTIFIERS",
         "CIRCULAR_INHERITANCE",
         "EMPTY_ENUM",
