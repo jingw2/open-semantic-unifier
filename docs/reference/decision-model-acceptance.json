@@ -1,0 +1,71 @@
+{
+  "scope": "Decision model adapters (T-DM-1 through T-DM-9)",
+  "branch": "codex/decision-models-l3",
+  "head": "09e9eeb37563a0412505d7ba868823f7be0b0507",
+  "as_of": "2026-11-24",
+  "environment": "Isolated SQLite database, inline FastAPI on 127.0.0.1:8765, Vite on 127.0.0.1:5173, and a controlled ThreadingHTTPServer for provider responses. No external network.",
+  "note": "DM-01 through DM-05 PASS. DM-06 and DM-07 BLOCKED: no real Perplexity or TypeSafe API keys and no independent holdout evaluation. This record does not change the V0.1 or L3 product status.",
+  "checks": {
+    "dm_01_contracts": {
+      "status": "PASS",
+      "command": "python -m pytest backend/tests/test_decision_models_contracts.py -q",
+      "evidence": "Suggestion, error, and disabled outcomes are distinct; UNKNOWN is distinct from SAME and DIFFERENT; missing distribution and explanation stay unknown; confidence range, distribution keys and sums, model version, prompt version, latency, and request field names are validated."
+    },
+    "dm_02_precedence": {
+      "status": "PASS",
+      "command": "python -m pytest backend/tests/test_decision_models_precedence.py -q",
+      "evidence": "A SAME suggestion cannot override a configured conflict constraint, a human cannot-link, or a transitive conflict; weak-evidence SAME stays REVIEW; a DIFFERENT suggestion does not create a persistent rejection; rules, conflicts, and human decisions remain authoritative."
+    },
+    "dm_03_failure_fallback": {
+      "status": "PASS",
+      "command": "python -m pytest backend/tests/test_decision_models_adapters.py backend/tests/test_decision_models_providers.py backend/tests/test_decision_models_run_integration.py -q",
+      "evidence": "Timeout, invalid JSON, missing credentials, 401/403/422/429/5xx, and adapter exceptions map to typed DecisionError outcomes; retries are bounded; missing provider, credential-decrypt failure, and unknown kind follow the configured REVIEW or FAIL policy."
+    },
+    "dm_04_security": {
+      "status": "PASS",
+      "command": "python -m pytest backend/tests/test_decision_models_provider_config.py backend/tests/test_decision_models_persistence.py backend/tests/test_decision_models_providers.py backend/tests/test_decision_models_run_integration.py -q",
+      "evidence": "Credentials are Fernet-encrypted at rest, masked on list, and excluded from logs, exports, audit rows, spans, and error messages; provider test redacts credentials. A decision provider requires at least one send field at save. Dispatch sends only the configured send fields, and it removes value, left, and right from evidence entries for fields outside them. A legacy decision provider with no send fields returns a typed missing_send_fields error and never calls the provider. The run test sends tax_id TAX-SECRET-9 in the scheme and asserts that it appears nowhere in the outbound body while a configured name value does."
+    },
+    "dm_05_observability_audit": {
+      "status": "PASS",
+      "command": "python -m pytest backend/tests/test_decision_models_persistence.py -q",
+      "evidence": "Each typed call persists provider kind/key, model version, prompt version, verdict or error, latency, usage, and trace reference; model-call rows survive trace shutdown and are project-scoped, viewer-readable, and redacted; spans carry provider metadata without records or credentials."
+    },
+    "dm_06_evaluation": {
+      "status": "BLOCKED",
+      "reason": "No independent golden/holdout evaluation exists yet. Scores are not treated as calibrated probabilities and no automatic merge threshold is set."
+    },
+    "dm_07_real_service_smoke": {
+      "status": "BLOCKED",
+      "reason": "No real Perplexity or TypeSafe API keys are available. A controlled ThreadingHTTPServer proves the adapter mapping; it cannot substitute for a real-service smoke."
+    }
+  },
+  "ui_browser_flow": {
+    "status": "PASS",
+    "command": "python frontend/tests/decision_models_workbench.spec.py",
+    "evidence": "Chromium created a perplexity_decisions provider against the controlled server, the test button showed verdict SAME with provider kind perplexity_decisions and model controlled-flash, and the review panel showed the SAME badge, 90% confidence, 80/15/5 distribution, provider kind/key, model version, and no alert banner. The same run put a tax_id value in the scheme evidence and asserts that the whole outbound body carries only name in left and right, removes tax_id value from evidence, and contains no TAX-SECRET-9, SECRET-1, or SECRET-2 value.",
+    "regression_specs": [
+      "python frontend/tests/unification_workbench.spec.py",
+      "python frontend/tests/contracts_workbench.spec.py"
+    ],
+    "regression_result": "Both pass on the same build."
+  },
+  "backend_suite": {
+    "command": "python -m pytest backend/tests/test_decision_models_contracts.py backend/tests/test_decision_models_adapters.py backend/tests/test_decision_models_providers.py backend/tests/test_decision_models_precedence.py backend/tests/test_decision_models_persistence.py backend/tests/test_decision_models_provider_config.py backend/tests/test_decision_models_run_integration.py backend/tests/test_decision_models_migrations.py -q",
+    "result": "201 passed, 2 warnings in 57.91s"
+  },
+  "full_backend_suite": {
+    "command": "python -m pytest backend/tests -q",
+    "result": "421 passed, 6 skipped, 2 warnings in 112.12s"
+  },
+  "frontend_build": {
+    "command": "npm run build (frontend)",
+    "result": "tsc and vite build passed; 1585 modules transformed."
+  },
+  "limitations": [
+    "Direct fetches of the official provider documentation remain blocked by the fetch proxy; the adapter shape is derived from the user-provided TypeSafe models URL, the official typesafe-sdk 0.7.5 schema, and the Perplexity Decisions documentation.",
+    "Confidence is not a calibrated probability and is never used as an automatic merge threshold.",
+    "A missing distribution or explanation is displayed as unknown rather than fabricated.",
+    "Perplexity flash (pplx-decider-flash-latest) is the intended first provider; the real-service smoke and evaluation stay BLOCKED until credentials and a frozen holdout set exist."
+  ]
+}
