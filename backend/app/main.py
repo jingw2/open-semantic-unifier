@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1 import auth_team, projects_sources, providers_jobs, reviews_serving, unification
+from app.api.v1 import auth_team, contracts, projects_sources, providers_jobs, reviews_serving, unification
 from app.core.config import settings
 from app.core.db import init_db_and_seed
 
@@ -32,6 +32,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_team.router)
+app.include_router(contracts.router)
 app.include_router(projects_sources.router)
 app.include_router(providers_jobs.router)
 app.include_router(reviews_serving.router)
