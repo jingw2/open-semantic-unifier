@@ -2,12 +2,12 @@
 
 from typing import Dict
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.security import decode_access_token, hash_api_key
-from app.models.entities import Project, ProjectApiKey, User, WorkspaceMember
+from app.models.entities import ArtifactVersion, Job, ReviewItem, Project, ProjectApiKey, User, WorkspaceMember
 
 
 def get_current_user(
@@ -68,3 +68,25 @@ def verify_serving_api_key(
     if not rec:
         raise HTTPException(status_code=401, detail="无效或已吊销的项目 API Key。")
     return proj
+
+
+def require_resource_access(
+    request: Request,
+    ctx: Dict[str, str] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> None:
+    project_id = request.path_params.get("project_id")
+    for parameter, model in (
+        ("artifact_id", ArtifactVersion), ("job_id", Job),
+        ("review_id", ReviewItem), ("key_id", ProjectApiKey),
+    ):
+        resource_id = request.path_params.get(parameter)
+        if resource_id:
+            resource = db.query(model).filter(model.id == resource_id).first()
+            if not resource:
+                raise HTTPException(status_code=404, detail="资源不存在")
+            project_id = resource.project_id
+    if project_id and not db.query(Project).filter(
+        Project.id == project_id, Project.workspace_id == ctx["workspace_id"]
+    ).first():
+        raise HTTPException(status_code=404, detail="项目不存在")

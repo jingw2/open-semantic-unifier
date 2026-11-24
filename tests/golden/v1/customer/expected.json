@@ -1,0 +1,92 @@
+[
+  {
+    "case_id": "customer-01-verified_id",
+    "left": "customer:erp:01",
+    "right": "customer:secondary:01",
+    "truth": "SAME",
+    "expected_action": "AUTO_MATCH",
+    "required_candidate": true,
+    "reason": "可信身份引用相同"
+  },
+  {
+    "case_id": "customer-02-name_only",
+    "left": "customer:erp:02",
+    "right": "customer:secondary:02",
+    "truth": "SAME",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "同名不是强标识"
+  },
+  {
+    "case_id": "customer-03-id_conflict",
+    "left": "customer:erp:03",
+    "right": "customer:secondary:03",
+    "truth": "DIFFERENT",
+    "expected_action": "DISTINCT",
+    "required_candidate": false,
+    "reason": "可信身份引用冲突"
+  },
+  {
+    "case_id": "customer-04-shared_phone",
+    "left": "customer:erp:04",
+    "right": "customer:secondary:04",
+    "truth": "DIFFERENT",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "家庭共享号码不表示同一人"
+  },
+  {
+    "case_id": "customer-05-shared_email",
+    "left": "customer:erp:05",
+    "right": "customer:secondary:05",
+    "truth": "DIFFERENT",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "共享邮箱不能自动合并"
+  },
+  {
+    "case_id": "customer-06-missing_id",
+    "left": "customer:erp:06",
+    "right": "customer:secondary:06",
+    "truth": "UNRESOLVED",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "缺失的身份引用不相等"
+  },
+  {
+    "case_id": "customer-07-recycled_phone",
+    "left": "customer:erp:07",
+    "right": "customer:secondary:07",
+    "truth": "DIFFERENT",
+    "expected_action": "DISTINCT",
+    "required_candidate": false,
+    "reason": "号码相同不能覆盖可信身份冲突"
+  },
+  {
+    "case_id": "customer-08-rename",
+    "left": "customer:erp:08",
+    "right": "customer:secondary:08",
+    "truth": "SAME",
+    "expected_action": "AUTO_MATCH",
+    "required_candidate": true,
+    "reason": "姓名变化不改变可信身份"
+  },
+  {
+    "case_id": "customer-09-sparse",
+    "left": "customer:erp:09",
+    "right": "customer:secondary:09",
+    "truth": "UNRESOLVED",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "数据不足时保留未决"
+  },
+  {
+    "case_id": "customer-10-address_similarity",
+    "left": "customer:erp:10",
+    "right": "customer:secondary:10",
+    "truth": "SAME",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "地址近似只形成候选"
+  }
+]

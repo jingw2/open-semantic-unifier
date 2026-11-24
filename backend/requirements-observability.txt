@@ -1,0 +1,2 @@
+-r requirements.txt
+arize-phoenix-client==3.7.0

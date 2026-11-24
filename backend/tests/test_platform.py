@@ -21,18 +21,12 @@ BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
-# 测试前隔离测试库与本地存储
-os.environ["DATABASE_URL"] = "sqlite:///./test_platform.db"
-os.environ["LOCAL_STORAGE_DIR"] = "./test_storage"
-os.environ["CELERY_ENABLED"] = "false"
-os.environ["STORAGE_BACKEND"] = "local"
-
-if os.path.exists(os.path.join(BACKEND_DIR, "test_platform.db")):
-    os.remove(os.path.join(BACKEND_DIR, "test_platform.db"))
+# 测试数据库与文件存储由 tests/conftest.py 隔离到临时目录。
 
 from app.core.db import SessionLocal, init_db_and_seed  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models.entities import LLMProvider  # noqa: E402
+from app.models import SourceRecord, SourceRevision, UnifiedEntity  # noqa: E402,F401
 
 init_db_and_seed()
 client = TestClient(app)
@@ -213,3 +207,63 @@ def test_04_end_to_end_l1_l2_hitl_l3_l4_publish_and_serving():
     s_met = client.post(f"/api/v1/serve/{slug}/metrics/query", headers=serve_headers, json={"metric_name": "net_gmv", "group_by": "order_channel"})
     assert s_met.status_code == 200
     assert len(s_met.json()["rows"]) == 3
+
+
+def test_05_resource_access_is_scoped_to_workspace():
+    from app.models.entities import (
+        ArtifactVersion, DataSource, Job, Project, ProjectApiKey,
+        ReviewItem, Workspace, LLMProvider,
+    )
+    from app.services.storage import storage
+
+    headers = _login()
+    own = client.get('/api/v1/projects', headers=headers).json()[0]
+    db = SessionLocal()
+    ws = Workspace(name='Isolated workspace', slug='isolated-workspace')
+    db.add(ws)
+    db.flush()
+    project = Project(workspace_id=ws.id, name='Private project', slug='private-project')
+    db.add(project)
+    db.flush()
+    job = Job(project_id=project.id, stage='L1')
+    db.add(job)
+    db.flush()
+    object_key, _ = storage.put_bytes('security/private.csv', b'private data')
+    artifact = ArtifactVersion(project_id=project.id, job_id=job.id, artifact_type='clean_csv', filename='private.csv', object_key=object_key)
+    source = DataSource(project_id=project.id, name='Private source', source_type='file')
+    review = ReviewItem(project_id=project.id, job_id=job.id, stage='L1', left_text='private', right_text='private')
+    key = ProjectApiKey(project_id=project.id, name='private', key_prefix='private', key_hash='private')
+    provider = LLMProvider(workspace_id=ws.id, provider_key='private', name='private')
+    db.add_all([artifact, source, review, key, provider])
+    db.commit()
+    pid, aid, jid, rid, kid, sid, provider_id = project.id, artifact.id, job.id, review.id, key.id, source.id, provider.id
+
+    assert client.get(f'/api/v1/artifacts/{aid}/content').status_code == 401
+    assert client.get(f'/api/v1/jobs/{jid}/stream').status_code == 401
+    for path in [f'/projects/{pid}/datasources', f'/projects/{pid}/jobs', f'/projects/{pid}/reviews', f'/projects/{pid}/artifacts', f'/projects/{pid}/api-keys', f'/artifacts/{aid}/content', f'/jobs/{jid}', f'/jobs/{jid}/stream']:
+        assert client.get('/api/v1' + path, headers=headers).status_code == 404, path
+    for path, payload in [
+        (f'/projects/{pid}/api-keys', {'name': 'unauthorized'}),
+        (f'/projects/{pid}/jobs', {'stage': 'L1'}),
+        (f'/projects/{pid}/datasources/demo/L1', {}),
+        (f'/artifacts/{aid}/publish', {}),
+        (f'/reviews/{rid}/decide', {'decision': 'APPROVED'}),
+        (f"/projects/{own['id']}/jobs", {'stage': 'L1', 'datasource_ids': [sid]}),
+        (f"/projects/{own['id']}/jobs", {'stage': 'L1', 'provider_id': provider_id}),
+    ]:
+        assert client.post('/api/v1' + path, headers=headers, json=payload).status_code == 404, path
+    assert client.delete(f'/api/v1/api-keys/{kid}', headers=headers).status_code == 404
+    db.refresh(artifact)
+    db.refresh(key)
+    assert artifact.release_status == 'DRAFT'
+    assert key.is_active
+    assert db.query(Job).filter(Job.project_id == project.id).count() == 1
+
+    artifact.project_id = own['id']
+    db.commit()
+    response = client.get(f'/api/v1/artifacts/{aid}/content', headers=headers)
+    assert response.status_code == 200
+    assert response.content == b'private data'
+    # Public Serving endpoints continue to use their dedicated API-key dependency.
+    assert client.post('/api/v1/serve/private-project/reconcile', json={'query': 'private'}).status_code == 401
+    db.close()

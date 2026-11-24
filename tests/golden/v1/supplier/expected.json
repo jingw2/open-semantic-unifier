@@ -1,0 +1,92 @@
+[
+  {
+    "case_id": "supplier-01-verified_id",
+    "left": "supplier:erp:01",
+    "right": "supplier:secondary:01",
+    "truth": "SAME",
+    "expected_action": "AUTO_MATCH",
+    "required_candidate": true,
+    "reason": "经配置认可的税号相同，无冲突"
+  },
+  {
+    "case_id": "supplier-02-name_only",
+    "left": "supplier:erp:02",
+    "right": "supplier:secondary:02",
+    "truth": "SAME",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "名称相似但无强标识，真实为同一实体也须复核"
+  },
+  {
+    "case_id": "supplier-03-tax_conflict",
+    "left": "supplier:erp:03",
+    "right": "supplier:secondary:03",
+    "truth": "DIFFERENT",
+    "expected_action": "DISTINCT",
+    "required_candidate": false,
+    "reason": "相同名称不能覆盖税号冲突"
+  },
+  {
+    "case_id": "supplier-04-shared_phone",
+    "left": "supplier:erp:04",
+    "right": "supplier:secondary:04",
+    "truth": "DIFFERENT",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "共享总机不是法人身份"
+  },
+  {
+    "case_id": "supplier-05-unicode",
+    "left": "supplier:erp:05",
+    "right": "supplier:secondary:05",
+    "truth": "SAME",
+    "expected_action": "AUTO_MATCH",
+    "required_candidate": true,
+    "reason": "名称规范化不影响强标识"
+  },
+  {
+    "case_id": "supplier-06-missing_id",
+    "left": "supplier:erp:06",
+    "right": "supplier:secondary:06",
+    "truth": "UNRESOLVED",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "空值不能互相当作相等标识"
+  },
+  {
+    "case_id": "supplier-07-branch",
+    "left": "supplier:erp:07",
+    "right": "supplier:secondary:07",
+    "truth": "DIFFERENT",
+    "expected_action": "DISTINCT",
+    "required_candidate": false,
+    "reason": "此方案按法人识别，不把集团关系当同一实体"
+  },
+  {
+    "case_id": "supplier-08-rename",
+    "left": "supplier:erp:08",
+    "right": "supplier:secondary:08",
+    "truth": "SAME",
+    "expected_action": "AUTO_MATCH",
+    "required_candidate": true,
+    "reason": "更名仍可由可信税号识别"
+  },
+  {
+    "case_id": "supplier-09-sparse",
+    "left": "supplier:erp:09",
+    "right": "supplier:secondary:09",
+    "truth": "UNRESOLVED",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "不能由缺失信息推断同一实体"
+  },
+  {
+    "case_id": "supplier-10-typo",
+    "left": "supplier:erp:10",
+    "right": "supplier:secondary:10",
+    "truth": "SAME",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "错别字和地址规范化只形成候选"
+  }
+]

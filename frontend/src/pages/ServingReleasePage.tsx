@@ -1,3 +1,4 @@
+import { ArtifactDownload } from '../components/ArtifactAccess'
 import React, { useEffect, useState } from 'react'
 import { Rocket, KeyRound, Download, RotateCcw, Copy } from 'lucide-react'
 import { apiFetch, ProjectItem } from '../lib/api'
@@ -101,9 +102,9 @@ export default function ServingReleasePage({ project }: Props) {
                           {a.release_status === 'ARCHIVED' ? '回滚到此版本' : '发布到线上 API'}
                         </button>
                       )}
-                      <a href={`/api/v1/artifacts/${a.id}/content`} className="px-2.5 py-1 border border-slate-200 rounded-md font-semibold flex items-center gap-1">
+                      <ArtifactDownload id={a.id} filename={a.filename} className="px-2.5 py-1 border border-slate-200 rounded-md font-semibold flex items-center gap-1">
                         <Download className="w-3 h-3" /> 下载
-                      </a>
+                      </ArtifactDownload>
                     </td>
                   </tr>
                 ))}
@@ -165,7 +166,12 @@ export default function ServingReleasePage({ project }: Props) {
         </div>
 
         <pre className="bg-slate-900 text-slate-100 p-4 rounded-xl text-xs overflow-x-auto leading-relaxed">
-{`# 1. 标准实体对齐 API（优先命中人工沉淀字典）
+{`# 1. 统一实体解析 API（必须传入要读取的已发布 snapshot_id）
+curl -X POST http://localhost:8080/api/v1/serve/${project.slug}/unification/resolve \\
+  -H "X-API-Key: <YOUR_KEY>" -H "Content-Type: application/json" \\
+  -d '{"snapshot_id": "<SNAPSHOT_ID>", "source_system": "erp", "dataset": "suppliers", "source_record_id": "S-1001"}'
+
+# 兼容旧版别名字典 API（不读取实体统一快照）
 curl -X POST http://localhost:8080/api/v1/serve/${project.slug}/reconcile \\
   -H "X-API-Key: <YOUR_KEY>" -H "Content-Type: application/json" \\
   -d '{"query": "星云制造科技"}'

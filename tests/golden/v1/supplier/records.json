@@ -1,0 +1,200 @@
+[
+  {
+    "record_ref": "supplier:erp:01",
+    "source_system": "erp",
+    "dataset": "supplier",
+    "source_record_id": "L01",
+    "attributes": {
+      "name": "测试星河制造有限公司",
+      "tax_id": "TEST-TAX-001"
+    }
+  },
+  {
+    "record_ref": "supplier:secondary:01",
+    "source_system": "secondary",
+    "dataset": "supplier",
+    "source_record_id": "R01",
+    "attributes": {
+      "name": " 星河制造 ",
+      "tax_id": "TEST-TAX-001"
+    }
+  },
+  {
+    "record_ref": "supplier:erp:02",
+    "source_system": "erp",
+    "dataset": "supplier",
+    "source_record_id": "L02",
+    "attributes": {
+      "name": "测试远山科技有限公司"
+    }
+  },
+  {
+    "record_ref": "supplier:secondary:02",
+    "source_system": "secondary",
+    "dataset": "supplier",
+    "source_record_id": "R02",
+    "attributes": {
+      "name": "远山科技"
+    }
+  },
+  {
+    "record_ref": "supplier:erp:03",
+    "source_system": "erp",
+    "dataset": "supplier",
+    "source_record_id": "L03",
+    "attributes": {
+      "name": "测试同名商贸",
+      "tax_id": "TEST-TAX-003"
+    }
+  },
+  {
+    "record_ref": "supplier:secondary:03",
+    "source_system": "secondary",
+    "dataset": "supplier",
+    "source_record_id": "R03",
+    "attributes": {
+      "name": "测试同名商贸",
+      "tax_id": "TEST-TAX-004"
+    }
+  },
+  {
+    "record_ref": "supplier:erp:04",
+    "source_system": "erp",
+    "dataset": "supplier",
+    "source_record_id": "L04",
+    "attributes": {
+      "name": "测试甲贸易",
+      "phone": "TEST-PHONE-01"
+    }
+  },
+  {
+    "record_ref": "supplier:secondary:04",
+    "source_system": "secondary",
+    "dataset": "supplier",
+    "source_record_id": "R04",
+    "attributes": {
+      "name": "测试乙贸易",
+      "phone": "TEST-PHONE-01"
+    }
+  },
+  {
+    "record_ref": "supplier:erp:05",
+    "source_system": "erp",
+    "dataset": "supplier",
+    "source_record_id": "L05",
+    "attributes": {
+      "name": "ＴＥＳＴ 科技",
+      "tax_id": "TEST-TAX-005"
+    }
+  },
+  {
+    "record_ref": "supplier:secondary:05",
+    "source_system": "secondary",
+    "dataset": "supplier",
+    "source_record_id": "R05",
+    "attributes": {
+      "name": "TEST科技",
+      "tax_id": "TEST-TAX-005"
+    }
+  },
+  {
+    "record_ref": "supplier:erp:06",
+    "source_system": "erp",
+    "dataset": "supplier",
+    "source_record_id": "L06",
+    "attributes": {
+      "name": "测试晨光物流",
+      "tax_id": null
+    }
+  },
+  {
+    "record_ref": "supplier:secondary:06",
+    "source_system": "secondary",
+    "dataset": "supplier",
+    "source_record_id": "R06",
+    "attributes": {
+      "name": "测试晨光物流",
+      "tax_id": ""
+    }
+  },
+  {
+    "record_ref": "supplier:erp:07",
+    "source_system": "erp",
+    "dataset": "supplier",
+    "source_record_id": "L07",
+    "attributes": {
+      "name": "测试海岸集团",
+      "tax_id": "TEST-TAX-007"
+    }
+  },
+  {
+    "record_ref": "supplier:secondary:07",
+    "source_system": "secondary",
+    "dataset": "supplier",
+    "source_record_id": "R07",
+    "attributes": {
+      "name": "测试海岸集团分公司",
+      "tax_id": "TEST-TAX-008"
+    }
+  },
+  {
+    "record_ref": "supplier:erp:08",
+    "source_system": "erp",
+    "dataset": "supplier",
+    "source_record_id": "L08",
+    "attributes": {
+      "name": "测试旧名公司",
+      "tax_id": "TEST-TAX-009"
+    }
+  },
+  {
+    "record_ref": "supplier:secondary:08",
+    "source_system": "secondary",
+    "dataset": "supplier",
+    "source_record_id": "R08",
+    "attributes": {
+      "name": "测试新名公司",
+      "tax_id": "TEST-TAX-009"
+    }
+  },
+  {
+    "record_ref": "supplier:erp:09",
+    "source_system": "erp",
+    "dataset": "supplier",
+    "source_record_id": "L09",
+    "attributes": {
+      "name": null,
+      "tax_id": null
+    }
+  },
+  {
+    "record_ref": "supplier:secondary:09",
+    "source_system": "secondary",
+    "dataset": "supplier",
+    "source_record_id": "R09",
+    "attributes": {
+      "name": "",
+      "tax_id": null
+    }
+  },
+  {
+    "record_ref": "supplier:erp:10",
+    "source_system": "erp",
+    "dataset": "supplier",
+    "source_record_id": "L10",
+    "attributes": {
+      "name": "测试云杉设备有限公司",
+      "address": "测试园区一号"
+    }
+  },
+  {
+    "record_ref": "supplier:secondary:10",
+    "source_system": "secondary",
+    "dataset": "supplier",
+    "source_record_id": "R10",
+    "attributes": {
+      "name": "测试云衫设备有限责任公司",
+      "address": "测试园区1号"
+    }
+  }
+]

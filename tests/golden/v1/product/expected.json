@@ -1,0 +1,92 @@
+[
+  {
+    "case_id": "product-01-verified_id",
+    "left": "product:erp:01",
+    "right": "product:secondary:01",
+    "truth": "SAME",
+    "expected_action": "AUTO_MATCH",
+    "required_candidate": true,
+    "reason": "经配置认可的商品标识一致且规格无冲突"
+  },
+  {
+    "case_id": "product-02-name_only",
+    "left": "product:erp:02",
+    "right": "product:secondary:02",
+    "truth": "SAME",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "名称近似不足以自动确认"
+  },
+  {
+    "case_id": "product-03-spec_conflict",
+    "left": "product:erp:03",
+    "right": "product:secondary:03",
+    "truth": "DIFFERENT",
+    "expected_action": "DISTINCT",
+    "required_candidate": false,
+    "reason": "电压不同为不同商品"
+  },
+  {
+    "case_id": "product-04-unit_equivalent",
+    "left": "product:erp:04",
+    "right": "product:secondary:04",
+    "truth": "SAME",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "规范化后相等仍需其他身份依据"
+  },
+  {
+    "case_id": "product-05-supplier_sku",
+    "left": "product:erp:05",
+    "right": "product:secondary:05",
+    "truth": "DIFFERENT",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "SKU 在不同供应商命名空间内可重复"
+  },
+  {
+    "case_id": "product-06-missing_id",
+    "left": "product:erp:06",
+    "right": "product:secondary:06",
+    "truth": "UNRESOLVED",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "空商品标识不能触发合并"
+  },
+  {
+    "case_id": "product-07-bad_strong_id",
+    "left": "product:erp:07",
+    "right": "product:secondary:07",
+    "truth": "DIFFERENT",
+    "expected_action": "DISTINCT",
+    "required_candidate": true,
+    "reason": "强标识疑似污染，规格冲突拥有否决权"
+  },
+  {
+    "case_id": "product-08-rename",
+    "left": "product:erp:08",
+    "right": "product:secondary:08",
+    "truth": "SAME",
+    "expected_action": "AUTO_MATCH",
+    "required_candidate": true,
+    "reason": "仅改名，不改变商品身份"
+  },
+  {
+    "case_id": "product-09-sparse",
+    "left": "product:erp:09",
+    "right": "product:secondary:09",
+    "truth": "UNRESOLVED",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "信息不足不自动判断"
+  },
+  {
+    "case_id": "product-10-pack_conflict",
+    "left": "product:erp:10",
+    "right": "product:secondary:10",
+    "truth": "DIFFERENT",
+    "expected_action": "DISTINCT",
+    "required_candidate": false,
+    "reason": "包装数量是本方案的商品身份组成部分"
+  }
+]

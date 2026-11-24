@@ -1,0 +1,25 @@
+{
+  "version": "1.0.0",
+  "provenance": "Hand-authored synthetic fixtures; no personal or production data",
+  "purpose": "public development regression; not a hidden holdout or population accuracy benchmark",
+  "record_count": 60,
+  "pair_case_count": 30,
+  "lifecycle_case_count": 22,
+  "domains": [
+    "supplier",
+    "customer",
+    "product"
+  ],
+  "files": {
+    "customer/expected.json": "e24ee7f643f00361ac530c795c51f7e270dca855ed3b0bac5d607688497fa6be",
+    "customer/records.json": "f223badd03bdf771a8ff54695b2d0b99c34696f8bd1517fc1cfca21a625ba1eb",
+    "customer/scheme.json": "cfed26068487c5a68e4c1506d46a4ab30b62ab8419df168650b91593a937c27a",
+    "lifecycle.json": "4d57ea4e9392303727314105c4b8ef5ed5af15a03fb05f6bd724e65197f0c268",
+    "product/expected.json": "3a1ff23cb98926473c1674c1554378db36223f298620a875a9894173f73da428",
+    "product/records.json": "8372a128f647400c99a04691070ff6c3d681fa1d4f6107190edfe5f42151f470",
+    "product/scheme.json": "5dbbc7bd4e777722272c6505be489f37fcd7dc32674e99a9caa34363f609d0fe",
+    "supplier/expected.json": "93885a4374e427e5edb0236bba9b017b031e3deef539cb0ef433e320570c134a",
+    "supplier/records.json": "885074fa29cfe48b034eb697ac24b9a6a5cbe7f2c8a7ca32b6a7f19751cb2e77",
+    "supplier/scheme.json": "3e705c778b79cae0a072fce522f938063e35280c4ead1bf0b568b6dd6f346b57"
+  }
+}

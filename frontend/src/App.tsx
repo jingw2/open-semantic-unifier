@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Bot, CheckSquare, Database, LogOut, Plus, Rocket, Sparkles, Users } from 'lucide-react'
+import { Bot, CheckSquare, Database, LogOut, Plus, Rocket, Sparkles, Users, GitMerge } from 'lucide-react'
 import { apiFetch, clearAuth, getStoredUser, getToken, ProjectItem, UserInfo } from './lib/api'
 import LoginPage from './pages/LoginPage'
 import DataSourcesPage from './pages/DataSourcesPage'
@@ -8,8 +8,9 @@ import ReviewQueuePage from './pages/ReviewQueuePage'
 import ServingReleasePage from './pages/ServingReleasePage'
 import ProvidersPage from './pages/ProvidersPage'
 import TeamAdminPage from './pages/TeamAdminPage'
+import UnificationPage from './pages/UnificationPage'
 
-type NavKey = 'datasources' | 'workbench' | 'reviews' | 'serving' | 'providers' | 'team'
+type NavKey = 'datasources' | 'workbench' | 'unification' | 'reviews' | 'serving' | 'providers' | 'team'
 
 export default function App() {
   const [user, setUser] = useState<UserInfo | null>(() => (getToken() ? getStoredUser() : null))
@@ -49,6 +50,7 @@ export default function App() {
   const navItems: { key: NavKey; label: string; icon: React.ReactNode }[] = [
     { key: 'datasources', label: '数据源中心', icon: <Database className="w-4 h-4" /> },
     { key: 'workbench', label: '智能路由工作台', icon: <Sparkles className="w-4 h-4" /> },
+    { key: 'unification', label: '实体统一工作台', icon: <GitMerge className="w-4 h-4" /> },
     { key: 'reviews', label: '人工复核队列', icon: <CheckSquare className="w-4 h-4" /> },
     { key: 'serving', label: '发布与对外 API', icon: <Rocket className="w-4 h-4" /> },
     { key: 'providers', label: '模型 Provider', icon: <Bot className="w-4 h-4" /> },
@@ -141,6 +143,8 @@ export default function App() {
               activeRouting={activeRouting}
               onGoDataSources={() => setNav('datasources')}
             />
+          ) : nav === 'unification' ? (
+            <UnificationPage projectId={activeProject.id} canEdit={user.role !== 'viewer'} />
           ) : nav === 'reviews' ? (
             <ReviewQueuePage projectId={activeProject.id} />
           ) : nav === 'serving' ? (

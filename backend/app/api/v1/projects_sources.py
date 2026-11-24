@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, require_role
+from app.api.deps import require_resource_access, get_current_user, require_role
 from app.core.db import get_db
 from app.core.security import encrypt_secret
 from app.models.entities import DataSource, Project
@@ -25,7 +25,7 @@ from app.services.engines import (
 from app.services.profiler import profile_items, recommend_pipeline
 from app.services.storage import storage
 
-router = APIRouter(prefix="/api/v1", tags=["Projects & DataSources"])
+router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_resource_access)], tags=["Projects & DataSources"])
 
 
 class CreateProjectRequest(BaseModel):
@@ -189,6 +189,7 @@ def load_demo_datasource(
         items = [{"kind": "table", "name": "dirty_suppliers.csv (示例250行)", "df": df}]
         prof = profile_items(items)
         rt = recommend_pipeline(prof)
+        rt["demo_catalog_key"] = "supplier_master_demo_v1"
         ds = DataSource(project_id=project_id, name=items[0]["name"], source_type="file", object_key=obj_key, profile_json=prof, routing_json=rt)
         db.add(ds)
         db.flush()
