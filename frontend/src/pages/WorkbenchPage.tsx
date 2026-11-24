@@ -3,16 +3,23 @@ import React, { useEffect, useState } from 'react'
 import { Play, Download, Sparkles, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { apiFetch, JobItem } from '../lib/api'
 
+type WorkbenchStage = 'L1' | 'L2' | 'L4'
+
+function normalizeStage(value: unknown): WorkbenchStage {
+  return value === 'L2' || value === 'L4' ? value : 'L1'
+}
+
 interface Props {
   projectId: string
   activeDsIds: string[]
   activeProfile: any
   activeRouting: any
   onGoDataSources: () => void
+  onGoContracts: () => void
 }
 
-export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, activeRouting, onGoDataSources }: Props) {
-  const [stage, setStage] = useState<'L1' | 'L2' | 'L3' | 'L4'>(activeRouting?.recommended_stage || 'L1')
+export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, activeRouting, onGoDataSources, onGoContracts }: Props) {
+  const [stage, setStage] = useState<WorkbenchStage>(normalizeStage(activeRouting?.recommended_stage))
   const [providers, setProviders] = useState<any[]>([])
   const [providerId, setProviderId] = useState('')
   const [metricName, setMetricName] = useState('net_gmv')
@@ -23,7 +30,7 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
 
   useEffect(() => {
     if (activeRouting?.recommended_stage) {
-      setStage(activeRouting.recommended_stage)
+      setStage(normalizeStage(activeRouting.recommended_stage))
     }
   }, [activeRouting])
 
@@ -107,7 +114,7 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
 
         <div className="flex flex-col items-end gap-2 shrink-0">
           <div className="flex gap-1.5">
-            {(['L1', 'L2', 'L3', 'L4'] as const).map((s) => (
+            {(['L1', 'L2', 'L4'] as const).map((s) => (
               <button
                 key={s}
                 onClick={() => setStage(s)}
@@ -128,6 +135,18 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
           </button>
         </div>
       </div>
+
+      {activeRouting?.recommended_stage === 'L3' && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 md:flex-row md:items-center md:justify-between">
+          <div>
+            <b>L3 契约统一已迁移到契约统一工作台。</b>
+            <span className="ml-1">请选择真实契约文件和已发布实体快照生成版本；旧 L3 作业入口已停用。</span>
+          </div>
+          <button onClick={onGoContracts} className="shrink-0 rounded-lg bg-amber-700 px-4 py-2 text-xs font-bold text-white hover:bg-amber-800">
+            前往契约统一
+          </button>
+        </div>
+      )}
 
       {/* 阶段参数微调 */}
       <div className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-wrap items-center gap-4 text-xs">
@@ -219,20 +238,6 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
                   <ArtifactPreview id={wf.id} className="w-full h-96 border-0" />
                 </div>
               ))}
-            </div>
-          )}
-
-          {/* L3 结果 */}
-          {job.status === 'SUCCESS' && job.stage === 'L3' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <div className="text-xs font-bold text-slate-700 mb-1.5">自动派生 SQL DDL（已生成 DRAFT v{job.result.contract_version}，可前往发布中心发布）</div>
-                <pre className="bg-slate-900 text-slate-100 p-4 rounded-xl text-xs overflow-x-auto max-h-72">{job.result.sql_text}</pre>
-              </div>
-              <div>
-                <div className="text-xs font-bold text-slate-700 mb-1.5">自动派生 Mermaid ER 图</div>
-                <pre className="bg-slate-900 text-slate-100 p-4 rounded-xl text-xs overflow-x-auto max-h-72">{job.result.er_text}</pre>
-              </div>
             </div>
           )}
 

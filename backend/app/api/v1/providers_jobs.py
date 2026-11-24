@@ -132,7 +132,12 @@ def submit_job(
     db: Session = Depends(get_db),
 ):
     st = req.stage.upper()
-    if st not in ("L1", "L2", "L3", "L4"):
+    if st == "L3":
+        raise HTTPException(
+            status_code=410,
+            detail="L3 契约统一已迁移到 Contracts API；请在契约统一工作台创建版本，旧 L3 作业入口已停用。",
+        )
+    if st not in ("L1", "L2", "L4"):
         raise HTTPException(status_code=400, detail=f"不支持的阶段: {req.stage}")
 
     source_ids = set(req.datasource_ids)

@@ -1,0 +1,37 @@
+id: https://example.org/contracts/supplier
+name: supplier_contract
+prefixes:
+  linkml: https://w3id.org/linkml/
+  supplier_contract: https://example.org/contracts/supplier/
+default_prefix: supplier_contract
+imports:
+  - linkml:types
+default_range: string
+classes:
+  Supplier:
+    attributes:
+      supplier_id:
+        identifier: true
+        required: true
+      name:
+        required: true
+      tax_id:
+        required: true
+      status:
+        range: SupplierStatus
+      parent:
+        range: Supplier
+      country:
+        range: Country
+  Country:
+    attributes:
+      country_code:
+        identifier: true
+        required: true
+      name:
+        required: true
+enums:
+  SupplierStatus:
+    permissible_values:
+      ACTIVE:
+      INACTIVE:

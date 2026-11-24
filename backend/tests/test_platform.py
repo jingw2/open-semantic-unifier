@@ -4,7 +4,7 @@
 1. 私有化安全：超管自动初始化登录、关闭公开自助注册（403）、Admin 创建 Editor 成员 & RBAC 拦截 Viewer
 2. 凭据加密：新增自定义 LLM Provider，验证 DB 密文存储且接口返回脱敏掩码
 3. 多源数据接入：SQLite & DuckDB 5,000 行安全抽样体检 + 自定义 SELECT 过滤 + 拦截非 SELECT 写入语句
-4. L1–L4 全引擎异步流水线：Smart Router 自动路由、任务状态流转、产物版本递增
+4. L1/L2/L4 异步流水线：Smart Router 自动路由、任务状态流转、产物版本递增；L3 作业入口已退役（410）
 5. 人工复核闭环（HITL）：L2 灰色样本“同意合并”自动沉淀 CanonicalMapping，并立即被对外 Serving API 优先命中
 6. 草稿 / 发布 / 回滚与对外 Serving API：未发布时返回 409 → 发布 v1 后 X-API-Key 鉴权调通 /reconcile、/validate、/metrics/query → 发布 v2 → 一键回滚 v1
 """
@@ -128,7 +128,7 @@ def test_03_db_safe_sampling_and_readonly_sql_guard(tmp_path):
     assert ok.json()["routing"]["recommended_stage"] == "L1"
 
 
-def test_04_end_to_end_l1_l2_hitl_l3_l4_publish_and_serving():
+def test_04_end_to_end_l1_l2_hitl_l4_publish_and_serving():
     headers = _login()
     proj = client.get("/api/v1/projects", headers=headers).json()[0]
     pid, slug = proj["id"], proj["slug"]
@@ -158,14 +158,18 @@ def test_04_end_to_end_l1_l2_hitl_l3_l4_publish_and_serving():
     assert dec.status_code == 200
     assert dec.json()["mapping_saved"]["canonical_id"] == "ENT-TENCENT"
 
-    # 4. 跑 L3 & L4（产出 DRAFT 版本）
-    j3 = client.post(f"/api/v1/projects/{pid}/jobs", headers=headers, json={"stage": "L3"})
-    assert j3.status_code == 200 and j3.json()["status"] == "SUCCESS"
-    l3_art_id = j3.json()["result"]["contract_artifact_id"]
+    # 4. L3 作业入口已退役；L4 的演示种子仍会生成旧契约产物。
+    l3_retired = client.post(f"/api/v1/projects/{pid}/jobs", headers=headers, json={"stage": "L3"})
+    assert l3_retired.status_code == 410, l3_retired.text
+    assert "契约" in l3_retired.json()["detail"]
+    demo_l3 = client.post(f"/api/v1/projects/{pid}/datasources/demo/L3", headers=headers)
+    assert demo_l3.status_code == 410, demo_l3.text
 
     j4 = client.post(f"/api/v1/projects/{pid}/jobs", headers=headers, json={"stage": "L4", "params": {"metric_name": "net_gmv", "group_by": "order_channel"}})
     assert j4.status_code == 200 and j4.json()["status"] == "SUCCESS"
     l4_art_id = j4.json()["result"]["metrics_artifact_id"]
+    artifacts = client.get(f"/api/v1/projects/{pid}/artifacts", headers=headers).json()
+    l3_art_id = next(item["id"] for item in artifacts if item["artifact_type"] == "l3_contract")
 
     # 5. 签发项目级 Serving API Key
     k_res = client.post(f"/api/v1/projects/{pid}/api-keys", headers=headers, json={"name": "生产 Agent Key"})
@@ -267,3 +271,26 @@ def test_05_resource_access_is_scoped_to_workspace():
     # Public Serving endpoints continue to use their dedicated API-key dependency.
     assert client.post('/api/v1/serve/private-project/reconcile', json={'query': 'private'}).status_code == 401
     db.close()
+
+
+def test_06_retired_l3_job_is_marked_failed():
+    from app.models.entities import Job
+    from app.workers.tasks import run_job_sync
+
+    headers = _login()
+    own = client.get('/api/v1/projects', headers=headers).json()[0]
+    with SessionLocal() as db:
+        job = Job(project_id=own['id'], stage='L3', status='PENDING', progress=0,
+                  stage_message='queued before retirement', params_json={})
+        db.add(job)
+        db.commit()
+        job_id = job.id
+
+    with pytest.raises(ValueError, match='retired'):
+        run_job_sync(job_id)
+
+    with SessionLocal() as db:
+        job = db.get(Job, job_id)
+        assert job is not None
+        assert job.status == 'FAILED'
+        assert 'retired' in (job.error_message or '')

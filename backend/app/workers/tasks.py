@@ -17,7 +17,6 @@ from app.services.engines import (
     build_demo_cross_db_tables,
     execute_l1,
     execute_l2,
-    execute_l3,
     execute_l4,
 )
 from app.services.storage import storage
@@ -125,7 +124,7 @@ def run_job_sync(job_id: str) -> Dict[str, Any]:
             result = execute_l2(db, job.project_id, job.id, dfs, params=params, llm_cfg=llm_cfg, progress_cb=cb)
 
         elif job.stage == "L3":
-            result = execute_l3(db, job.project_id, job.id, tsv_text=params.get("tsv_text"), progress_cb=cb)
+            raise ValueError("L3 job execution is retired; use the contracts workflow")
 
         elif job.stage == "L4":
             result = execute_l4(

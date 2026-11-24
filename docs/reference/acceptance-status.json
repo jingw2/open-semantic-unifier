@@ -3,7 +3,7 @@
   "golden_version": "1.0.0",
   "as_of": "2026-11-24",
   "product_release_status": "PASS",
-  "note": "All V0.1 gates have PASS evidence, including a clean GitHub Actions run. Per-gate evidence is summarized here and in t8-acceptance-report.json. LINEAGE-01 remains a later L4 item.",
+  "note": "All V0.1 gates have PASS evidence. L3-01 passes with the project supplier contract fixture; a customer contract remains recommended. L3 is experimental.",
   "definition_checks": {
     "fixture_integrity": "PASS",
     "scorer_contract_tests": {
@@ -46,6 +46,11 @@
         "compose-config": "PASS"
       },
       "note": "Clean GitHub runner. Backend, frontend and compose-config passed on both the push and pull_request runs."
+    },
+    "l3_contract_flow": {
+      "status": "PASS",
+      "note": "Synthetic supplier contract compiles, validates, publishes, and exports with 2 classes, 8 attributes, 1 enum, and 2 relations through both the API and Chromium. The input is a project fixture, not a customer contract.",
+      "report": "docs/reference/l3-acceptance-report.json"
     }
   },
   "gates": [
@@ -341,11 +346,22 @@
       ]
     },
     {
+      "id": "L3-01",
+      "stage": "后续 L3",
+      "status": "PASS",
+      "evidence": [
+        "Chromium acceptance selected supplier_contract.yaml, compiled it against a Supplier/Country entity snapshot, published it, and exported a model with 2 classes, 8 attributes, 1 enum, 2 relations, and the expected enum values.",
+        "Live API acceptance independently produced the same counts and version-bound exports.",
+        "The input is the project supplier_contract.yaml fixture, not a customer-provided contract. Provenance is recorded in the report; a customer contract remains recommended for production validation.",
+        "docs/reference/l3-acceptance-report.json"
+      ]
+    },
+    {
       "id": "LINEAGE-01",
       "stage": "后续 L4",
       "status": "NOT_RUN",
       "evidence": []
     }
   ],
-  "release_note": "All V0.1 gates have PASS evidence. Merge and deployment were not performed and remain subject to user authorization."
+  "release_note": "All V0.1 gates have PASS evidence. Merge and deployment were not performed and remain subject to user authorization. L3 is experimental; L3-01 passed with the project supplier contract fixture."
 }
