@@ -70,7 +70,8 @@ def test_default_provider_configuration_values(public_api):
 def test_decision_kinds_fill_preset_base_url_and_model(public_api):
     client, _, _ = public_api
     response = client.post("/api/v1/providers", json={
-        "provider_key": "perplexity", "name": "Perplexity", "provider_kind": "perplexity_decisions", "api_key": "pk",
+        "provider_key": "perplexity", "name": "Perplexity", "provider_kind": "perplexity_decisions",
+        "api_key": "pk", "send_fields": ["name"],
     })
     assert response.status_code == 200, response.text
     payload = response.json()
@@ -78,6 +79,7 @@ def test_decision_kinds_fill_preset_base_url_and_model(public_api):
     assert payload["default_model"] == "pplx-decider-flash-latest"
     response = client.post("/api/v1/providers", json={
         "provider_key": "typesafe", "name": "Jev", "provider_kind": "typesafe_jev",
+        "send_fields": ["name"],
     })
     assert response.status_code == 200, response.text
     payload = response.json()
@@ -90,11 +92,33 @@ def test_decision_kinds_keep_explicit_endpoint_and_model(public_api):
     response = client.post("/api/v1/providers", json={
         "provider_key": "perplexity", "name": "Perplexity self-hosted", "provider_kind": "perplexity_decisions",
         "base_url": "https://decisions.internal.example", "default_model": "decider-v2", "api_key": "pk",
+        "send_fields": ["name"],
     })
     assert response.status_code == 200, response.text
     payload = response.json()
     assert payload["base_url"] == "https://decisions.internal.example"
     assert payload["default_model"] == "decider-v2"
+
+
+@pytest.mark.parametrize("kind", ["perplexity_decisions", "typesafe_jev"])
+def test_decision_kinds_require_explicit_send_fields(public_api, kind):
+    client, _, _ = public_api
+    provider_key = "perplexity" if kind == "perplexity_decisions" else "typesafe"
+    for send_fields in ({}, {"send_fields": []}, {"send_fields": ["  "]}):
+        response = client.post("/api/v1/providers", json={
+            "provider_key": provider_key, "name": "Decision provider",
+            "provider_kind": kind, "api_key": "pk", **send_fields,
+        })
+        assert response.status_code == 422, (send_fields, response.text)
+
+
+def test_openai_compatible_keeps_empty_send_fields(public_api):
+    client, _, _ = public_api
+    response = client.post("/api/v1/providers", json={
+        "provider_key": "local", "name": "Local", "provider_kind": "openai_compatible",
+    })
+    assert response.status_code == 200, response.text
+    assert response.json()["send_fields"] == []
 
 
 @pytest.mark.parametrize("payload", [

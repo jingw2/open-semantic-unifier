@@ -140,14 +140,15 @@ def _provider(kind, base_url, *, send_fields=(), prompt_version="pair-v9", api_k
     )
 
 
-def _submit_model_run(maker, *, provider, failure_policy="REVIEW", scheme_key="model-orgs", input_version="input-v1"):
+def _submit_model_run(maker, *, provider, failure_policy="REVIEW", scheme_key="model-orgs", input_version="input-v1",
+                      candidate_rules=None, records=None):
     with maker() as session:
         session.add(provider)
         session.flush()
         scheme = MatchScheme.model_validate({
             "entity_type": "organization", "identity_granularity": "legal_entity",
             "field_map": {"name": "name", "tax_id": "tax_id", "phone": "phone"},
-            "candidate_rules": [{"kind": "exact", "fields": ["name"]}],
+            "candidate_rules": candidate_rules or [{"kind": "exact", "fields": ["name"]}],
             "model_judgment_enabled": True, "model_provider_id": provider.id,
             "model_failure_policy": failure_policy, "prompt_version": "scheme-pair-v1",
         })
@@ -156,7 +157,7 @@ def _submit_model_run(maker, *, provider, failure_policy="REVIEW", scheme_key="m
             UnificationSchemeVersion.project_id == "project",
             UnificationSchemeVersion.scheme_key == scheme_key,
         ))
-        imported = ingest_batch(session, project_id="project", records=[
+        imported = ingest_batch(session, project_id="project", records=records or [
             SourceRecordInput("project", "erp", "vendors", "1", {"name": "Acme", "tax_id": None, "phone": "SECRET-PHONE-1"}),
             SourceRecordInput("project", "crm", "vendors", "2", {"name": "Acme", "tax_id": None, "phone": "SECRET-PHONE-2"}),
         ], mode=IngestMode.SYNC, input_version=input_version)
@@ -217,7 +218,7 @@ def test_choice_provider_is_selected_for_the_run(db, choice_server, kind):
         assert row.confidence == 0.9
 
 
-def test_send_fields_filter_the_request_and_scheme_fields_are_the_fallback(db, choice_server):
+def test_send_fields_filter_the_request(db, choice_server):
     _engine, maker = db
     run = _submit_model_run(maker, provider=_provider(
         "perplexity_decisions", f"http://127.0.0.1:{choice_server.server_port}", send_fields=["name"],
@@ -231,17 +232,47 @@ def test_send_fields_filter_the_request_and_scheme_fields_are_the_fallback(db, c
     serialized = json.dumps(body)
     assert "SECRET-PHONE" not in serialized
     assert "test-secret-key" not in serialized
-    # Without send_fields the scheme field_map's source fields are dispatched.
+
+
+def test_decision_provider_without_send_fields_never_calls_the_provider(db, choice_server):
+    _engine, maker = db
     run = _submit_model_run(maker, provider=_provider(
         "typesafe_jev", f"http://127.0.0.1:{choice_server.server_port}", send_fields=[],
-    ), scheme_key="model-orgs-fallback", input_version="input-v2")
+    ), scheme_key="model-orgs-no-fields", input_version="input-v2")
     completed, error = _execute(maker, run.id)
     assert error is None and completed.status == "SUCCEEDED"
-    state = ChoiceProviderHandler.bodies[-1]["state"]
-    assert state["left"]["name"] == "Acme"
-    assert state["right"]["name"] == "Acme"
-    assert state["left"]["tax_id"] is None and state["right"]["tax_id"] is None
-    assert {state["left"]["phone"], state["right"]["phone"]} == {"SECRET-PHONE-1", "SECRET-PHONE-2"}
+    assert ChoiceProviderHandler.calls == 0
+    pair = completed.result_json["pairs"][0]
+    assert pair["recommendation"] is None
+    assert "missing_send_fields" in pair["model_error"]
+
+
+def test_evidence_values_for_unlisted_fields_never_leave_the_workspace(db, choice_server):
+    _engine, maker = db
+    run = _submit_model_run(
+        maker,
+        provider=_provider("perplexity_decisions", f"http://127.0.0.1:{choice_server.server_port}", send_fields=["name"]),
+        candidate_rules=[{"kind": "exact", "fields": ["name", "tax_id"]}],
+        records=[
+            SourceRecordInput("project", "erp", "vendors", "1", {"name": "Acme", "tax_id": "TAX-SECRET-9", "phone": "SECRET-PHONE-1"}),
+            SourceRecordInput("project", "crm", "vendors", "2", {"name": "Acme", "tax_id": "TAX-SECRET-9", "phone": "SECRET-PHONE-2"}),
+        ],
+    )
+    completed, error = _execute(maker, run.id)
+    assert error is None and completed.status == "SUCCEEDED"
+    pair = completed.result_json["pairs"][0]
+    assert pair["recommendation"]["verdict"] == "SAME"
+    body = ChoiceProviderHandler.bodies[-1]
+    state = body["state"]
+    assert state["left"] == {"name": "Acme"}
+    assert state["right"] == {"name": "Acme"}
+    serialized = json.dumps(body)
+    assert "TAX-SECRET-9" not in serialized
+    assert "SECRET-PHONE" not in serialized
+    name_evidence = [item for item in state["evidence"] if item.get("rule") == "exact" and item.get("field") == "name"]
+    tax_evidence = [item for item in state["evidence"] if item.get("rule") == "exact" and item.get("field") == "tax_id"]
+    assert name_evidence and name_evidence[0]["value"] == "Acme"
+    assert tax_evidence and "value" not in tax_evidence[0]
 
 
 def test_decision_request_carries_the_configured_evidence(db, choice_server):
@@ -378,7 +409,7 @@ def test_provider_test_endpoint_errors_for_a_missing_key(public_api, choice_serv
         "provider_key": "typesafe", "name": "Jev controlled",
         "provider_kind": "typesafe_jev",
         "base_url": f"http://127.0.0.1:{choice_server.server_port}",
-        "api_key": "",
+        "api_key": "", "send_fields": ["name"],
     }).json()
     ChoiceProviderHandler.calls = 0
     result = client.post(f"/api/v1/providers/{provider['id']}/test").json()
@@ -393,7 +424,7 @@ def test_provider_test_endpoint_reports_credential_decrypt_failure(public_api, c
         "provider_key": "perplexity", "name": "Perplexity controlled",
         "provider_kind": "perplexity_decisions",
         "base_url": f"http://127.0.0.1:{choice_server.server_port}",
-        "api_key": "test-secret-key",
+        "api_key": "test-secret-key", "send_fields": ["name"],
     }).json()
     with maker() as db:
         db.execute(update(LLMProvider).values(encrypted_api_key="not-valid-fernet-token"))
@@ -411,7 +442,7 @@ def test_provider_test_endpoint_never_reports_success_without_a_typed_suggestion
     client, _maker, _identity = public_api
     provider = client.post("/api/v1/providers", json={
         "provider_key": "perplexity", "name": "Perplexity",
-        "provider_kind": "perplexity_decisions", "api_key": "test-secret-key",
+        "provider_kind": "perplexity_decisions", "api_key": "test-secret-key", "send_fields": ["name"],
     }).json()
 
     class DisabledAdapter:

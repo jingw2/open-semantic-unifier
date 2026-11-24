@@ -8,6 +8,8 @@ from app.services.decision_models.providers.choice import ChoiceAdapter
 from app.services.decision_models.providers.perplexity import PerplexityDecisionsAdapter
 from app.services.decision_models.providers.typesafe import TypeSafeJevAdapter
 
+DECISION_PROVIDER_KINDS = frozenset({"perplexity_decisions", "typesafe_jev"})
+
 _ADAPTERS_BY_KIND: dict[str, DecisionAdapter] = {
     "openai_compatible": OpenAICompatibleAdapter(),
     "perplexity_decisions": PerplexityDecisionsAdapter(),
@@ -20,4 +22,10 @@ def adapter_for_kind(provider_kind: str) -> DecisionAdapter | None:
     return _ADAPTERS_BY_KIND.get(provider_kind)
 
 
-__all__ = ["ChoiceAdapter", "PerplexityDecisionsAdapter", "TypeSafeJevAdapter", "adapter_for_kind"]
+__all__ = [
+    "DECISION_PROVIDER_KINDS",
+    "ChoiceAdapter",
+    "PerplexityDecisionsAdapter",
+    "TypeSafeJevAdapter",
+    "adapter_for_kind",
+]

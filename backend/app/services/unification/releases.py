@@ -32,7 +32,7 @@ from app.services.decision_models.contracts import (
     DecisionRequest,
     DecisionSuggestion,
 )
-from app.services.decision_models.providers import adapter_for_kind
+from app.services.decision_models.providers import DECISION_PROVIDER_KINDS, adapter_for_kind
 from app.services.unification.identity import (
     DecisionInput,
     IdentityConflict as IdentityOperationConflict,
@@ -131,7 +131,22 @@ def _model_judge_for_run(db: Session, project_id: str, run: UnificationRun, sche
 
     def judge(left: SourceRevision, right: SourceRevision, active_scheme: MatchScheme,
               evidence_codes: tuple[str, ...], evidence: tuple[dict[str, Any], ...]) -> DecisionOutcome:
-        field_names = tuple(provider.send_fields_json) if provider.send_fields_json else tuple(active_scheme.field_map.values())
+        if provider_kind in DECISION_PROVIDER_KINDS:
+            if not provider.send_fields_json:
+                return DecisionError(
+                    code="missing_send_fields",
+                    message="decision provider has no configured send fields",
+                    retryable=False,
+                    provider_kind=provider_kind,
+                    provider_key=provider.provider_key or provider_kind,
+                    model_version=provider.default_model or "",
+                    prompt_version=provider.prompt_version or active_scheme.prompt_version,
+                    latency_ms=0.0,
+                    trace_id=current_trace_id(),
+                )
+            field_names = tuple(provider.send_fields_json)
+        else:
+            field_names = tuple(provider.send_fields_json) if provider.send_fields_json else tuple(active_scheme.field_map.values())
         return adapter.invoke(DecisionRequest(
             project_id=project_id,
             run_id=run.id,

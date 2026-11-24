@@ -40,6 +40,23 @@ CHOICE_CRITERIA = {
     "UNKNOWN": "The supplied evidence is insufficient to decide.",
 }
 
+EVIDENCE_VALUE_KEYS = ("value", "left", "right")
+
+
+def _evidence_without_unlisted_values(
+    evidence: tuple[Mapping[str, object], ...], field_names: tuple[str, ...],
+) -> list[dict[str, object]]:
+    """Keep rule and field names, drop values for fields outside field_names."""
+    allowed = set(field_names)
+    filtered = []
+    for item in evidence:
+        entry = dict(item)
+        if entry.get("field") not in allowed:
+            for key in EVIDENCE_VALUE_KEYS:
+                entry.pop(key, None)
+        filtered.append(entry)
+    return filtered
+
 
 class ChoiceAdapter:
     """Maps one choice-protocol provider onto typed decision outcomes."""
@@ -235,7 +252,7 @@ class ChoiceAdapter:
                 "identity_granularity": request.identity_granularity,
                 "left": left,
                 "right": right,
-                "evidence": list(request.evidence),
+                "evidence": _evidence_without_unlisted_values(request.evidence, request.field_names),
             },
             "questions": {
                 "entity_match": {

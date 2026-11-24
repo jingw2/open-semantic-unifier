@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_resource_access, get_current_user, require_role
@@ -15,14 +15,13 @@ from app.core.db import SessionLocal, get_db
 from app.core.security import decrypt_secret, encrypt_secret, mask_secret
 from app.models.entities import DataSource, Job, LLMProvider
 from app.services.decision_models.contracts import DecisionError, DecisionRequest, DecisionSuggestion
-from app.services.decision_models.providers import adapter_for_kind
+from app.services.decision_models.providers import DECISION_PROVIDER_KINDS, adapter_for_kind
 from app.services.llm_client import BUILTIN_PROVIDERS, ProviderConfig, test_llm_connectivity
 from app.workers.tasks import dispatch_job
 
 router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_resource_access)], tags=["LLM Providers & Async Jobs"])
 
 PROVIDER_KINDS = {"openai_compatible", "perplexity_decisions", "typesafe_jev"}
-DECISION_PROVIDER_KINDS = {"perplexity_decisions", "typesafe_jev"}
 DEFAULT_PROMPT_VERSION = "entity-pair-choice-v1"
 
 
@@ -60,6 +59,12 @@ class SaveProviderRequest(BaseModel):
         if not value.strip():
             raise ValueError("prompt_version must be non-empty")
         return value
+
+    @model_validator(mode="after")
+    def validate_decision_send_fields(self):
+        if self.provider_kind in DECISION_PROVIDER_KINDS and not self.send_fields:
+            raise ValueError("decision providers require at least one send field")
+        return self
 
 
 class SubmitJobRequest(BaseModel):
