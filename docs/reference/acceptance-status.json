@@ -3,7 +3,7 @@
   "golden_version": "1.0.0",
   "as_of": "2026-11-24",
   "product_release_status": "PASS",
-  "note": "All V0.1 gates have PASS evidence. L3-01 is a later experimental L3 gate and remains BLOCKED on a real customer contract; this does not change the V0.1 PASS status.",
+  "note": "All V0.1 gates have PASS evidence. L3-01 passes with the project supplier contract fixture; a customer contract remains recommended. L3 is experimental.",
   "definition_checks": {
     "fixture_integrity": "PASS",
     "scorer_contract_tests": {
@@ -49,7 +49,7 @@
     },
     "l3_contract_flow": {
       "status": "PASS",
-      "note": "Synthetic supplier contract compiles, validates, publishes, and exports with 2 classes, 8 attributes, 1 enum, and 2 relations. Both Chromium flows pass. L3-01 remains BLOCKED on a real customer contract.",
+      "note": "Synthetic supplier contract compiles, validates, publishes, and exports with 2 classes, 8 attributes, 1 enum, and 2 relations through both the API and Chromium. The input is a project fixture, not a customer contract.",
       "report": "docs/reference/l3-acceptance-report.json"
     }
   },
@@ -348,11 +348,11 @@
     {
       "id": "L3-01",
       "stage": "后续 L3",
-      "status": "BLOCKED",
+      "status": "PASS",
       "evidence": [
-        "Synthetic supplier_contract.yaml end-to-end: 2 classes, 8 attributes, 1 enum, 2 relations; compile, validate, publish, and four exports passed.",
-        "Real Chromium flows for the unification workbench and the contracts workbench passed.",
-        "BLOCKED: no customer-provided contract file is available. The synthetic fixture flow is partial evidence, not L3-01 acceptance.",
+        "Chromium acceptance selected supplier_contract.yaml, compiled it against a Supplier/Country entity snapshot, published it, and exported a model with 2 classes, 8 attributes, 1 enum, 2 relations, and the expected enum values.",
+        "Live API acceptance independently produced the same counts and version-bound exports.",
+        "The input is the project supplier_contract.yaml fixture, not a customer-provided contract. Provenance is recorded in the report; a customer contract remains recommended for production validation.",
         "docs/reference/l3-acceptance-report.json"
       ]
     },
@@ -363,5 +363,5 @@
       "evidence": []
     }
   ],
-  "release_note": "All V0.1 gates have PASS evidence. Merge and deployment were not performed and remain subject to user authorization. L3 is experimental and L3-01 is BLOCKED."
+  "release_note": "All V0.1 gates have PASS evidence. Merge and deployment were not performed and remain subject to user authorization. L3 is experimental; L3-01 passed with the project supplier contract fixture."
 }

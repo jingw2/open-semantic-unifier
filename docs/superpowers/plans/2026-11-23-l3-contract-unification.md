@@ -143,6 +143,7 @@ publish_contract(db, *, project_id: str, model_id: str, expected_current_version
 - LinkML 依赖：编译器在子进程执行；`rfc3987` 等 GPL 依赖已在 `license-audit-summary.json` 标记，分发前仍需复核。
 - 旧 L3 入口：旧作业、示例数据源和前端入口退役；新入口是契约统一工作台。旧 `execute_l3` 仅作为 L4 演示种子保留。
 - 关系与引用：LinkML 1.12.1 的 `gen-sqlddl` 不接受自定义 `references` 字段；关系使用 class range，未定义目标报 `UNKNOWN_RANGE`。
+- L3-01 输入：按用户指示，使用项目内 `supplier_contract.yaml` 夹具完成端到端验收。该输入不是客户合同，报告已记录来源；客户合同仍建议作为后续生产验证。
 
 ## 实施状态（2026-11-24）
 
@@ -155,11 +156,12 @@ publish_contract(db, *, project_id: str, model_id: str, expected_current_version
 | T-L3-5 API/权限 | 完成，契约源列表未分页 | contracts router；版本和审计分页；viewer 403 |
 | T-L3-6 工作台 | 完成，viewer 只读未跑浏览器 | `aa46d97`；Chromium happy path 和校验错误；生产构建 |
 | T-L3-7 切换 | 完成 | `aa46d97`；旧 L3 作业/示例/UI 退役；L4 演示种子保留 |
-| T-L3-8 L3-01 | BLOCKED | 合成 supplier contract 端到端通过；缺客户真实契约 |
+| T-L3-8 L3-01 | PASS（supplier contract fixture） | supplier 契约浏览器验收 + API 冒烟；输入为项目夹具，非客户合同 |
 
 其他偏差：
 - 契约产物存 DB JSON，单产物上限 10 MiB。
 - 契约源列表未分页；版本和审计已分页。
 - 工作台 viewer 只读由 `canEdit` 禁用控件；后端 403 已测，浏览器流程只覆盖 editor。
+- L3-01 的验收输入是项目内 `supplier_contract.yaml` 夹具，不是客户合同；按用户指示完成，来源已记录，客户合同仍建议用于生产验证。
 
 证据：`docs/reference/l3-acceptance-report.json`；全后端 220 passed / 6 skipped；前端生产构建；两个 Chromium 流程。

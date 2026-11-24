@@ -2,20 +2,25 @@
   "baseline_id": "open-semantic-unifier-l3-v1.0.0",
   "date": "2026-11-24",
   "branch": "codex/l3-contracts",
-  "code_commit": "55ede8f022a5b86356e9fef6b6c22c0a29a1ceb3",
-  "worktree_sha256": "0068307be0d378a0b2348c3c56c3ed5a182f4b3388a599a2f4edd16b074d029c",
+  "code_commit": "4d92c26217a60b7870c1f4cdf31a0d3bacb6e7b4",
+  "worktree_sha256": "9ee0e1d8faac8a4c5c3700b3e9d241fbce1477d79ab476def5c41eb00fd9ab4d",
   "worktree_hash_method": "SHA-256 over sorted `git ls-files --cached --others --exclude-standard` relative paths, each file hashed as SHA-256(path + NUL + SHA-256(file contents)), excluding docs/reference/l3-acceptance-report.json, before this report was written.",
   "product_release_status": "V0.1 PASS on main (separate). L3 is experimental and is not a product release claim.",
-  "implementation_status": "T-L3-1 through T-L3-7 implemented. L3-01 is BLOCKED on a real customer contract.",
-  "l3_status": "BLOCKED",
+  "implementation_status": "T-L3-1 through T-L3-7 implemented. L3-01 PASS with the project supplier contract fixture.",
+  "l3_status": "PASS",
   "gate": {
     "id": "L3-01",
-    "status": "BLOCKED",
-    "missing": "A customer-provided contract file with real field types, enums, relations, and references. The available supplier_contract.yaml and minimal_schema.yaml are synthetic fixtures.",
-    "partial_evidence": [
-      "Synthetic supplier contract end-to-end: 2 classes, 8 attributes, 1 enum, 2 relations; compile, validate, publish, and four exports passed.",
-      "Contracts Chromium flow: source selection, version creation, validation-error rendering, publish, audit, and model download passed.",
-      "Unification Chromium flow passed after the contracts navigation and legacy-entry cutover."
+    "status": "PASS",
+    "input_provenance": {
+      "path": "backend/tests/fixtures/contracts/supplier_contract.yaml",
+      "sha256": "a98a137d8a77fd69dc48613ca4b93f0d6cb5651c82bcd04c2f8d473aed26dc58",
+      "note": "Project fixture selected through the Contracts workbench. It is not a customer-provided contract; a customer contract remains recommended for production validation."
+    },
+    "evidence": [
+      "Chromium acceptance selected supplier_contract.yaml, compiled it against a Supplier/Country entity snapshot, asserted 2 classes, 8 attributes, 1 enum, 2 relations, published it, downloaded the model export, and verified canonical relations and enum values.",
+      "Live API acceptance independently produced the same counts and version-bound exports.",
+      "The existing contracts flow covers validation-error rendering; release tests cover publish/rollback idempotency, stale 409, and historical export immutability.",
+      "docs/reference/l3-acceptance-report.json"
     ]
   },
   "implementation": {
@@ -25,7 +30,8 @@
     "T-L3-4": "Immutable contract model versions, per-project release pointer, PUBLISH/ROLLBACK audit with trace references, idempotent republish, archived-version rollback, and four version-bound exports. Commit 50f9bf1; 19 tests.",
     "T-L3-5": "Contracts API under the existing project auth dependency: sources, versions, publish, rollback, release, audit, and exports. Versions and audit are paginated; the source list is not.",
     "T-L3-6": "Contracts workbench page with source registration, compile/validate, version history, release control, audit, and exports. Commit aa46d97; production build and Chromium flow passed.",
-    "T-L3-7": "Legacy L3 job, demo data source, and workbench/data-source UI entries retired; 410 responses point to the contracts workflow. The legacy execute_l3 helper remains only as an internal L4 demo seed. Commit aa46d97."
+    "T-L3-7": "Legacy L3 job, demo data source, and workbench/data-source UI entries retired; 410 responses point to the contracts workflow. The legacy execute_l3 helper remains only as an internal L4 demo seed. Commit aa46d97.",
+    "T-L3-8": "L3-01 PASS with the supplier contract fixture. Browser and API acceptance cover types, enums, relations, version binding, publish, and exports; the input provenance is recorded."
   },
   "checks": {
     "backend_full": "python -m pytest backend/tests -q: 220 passed, 6 skipped",
@@ -36,7 +42,7 @@
     "migrations": "python -m pytest backend/tests/test_unification_migrations.py -q: 5 passed; Alembic head c17dbecd1a30",
     "frontend_build": "npm --prefix frontend run build: passed",
     "browser_unification": "python frontend/tests/unification_workbench.spec.py: exit 0",
-    "browser_contracts": "python frontend/tests/contracts_workbench.spec.py: exit 0 (source selection, compile, validation error, publish, audit, model export)",
+    "browser_contracts": "python frontend/tests/contracts_workbench.spec.py: exit 0 (minimal contract selection/compile/publish/audit/export, validation-error rendering, and supplier contract acceptance)",
     "supplier_api_acceptance": {
       "input": "backend/tests/fixtures/contracts/supplier_contract.yaml",
       "counts": {
@@ -62,24 +68,25 @@
       "result": "L3_ACCEPTANCE_SMOKE_OK"
     },
     "ci": {
-      "commit": "55ede8f022a5b86356e9fef6b6c22c0a29a1ceb3",
+      "commit": "4d92c26217a60b7870c1f4cdf31a0d3bacb6e7b4",
       "runs": [
         {
-          "id": 45308421009,
+          "id": 45309646669,
           "event": "push",
           "backend": "PASS",
           "frontend": "PASS",
           "compose_config": "PASS"
         },
         {
-          "id": 45308427292,
+          "id": 45309654905,
           "event": "pull_request",
           "backend": "PASS",
           "frontend": "PASS",
           "compose_config": "PASS"
         }
       ]
-    }
+    },
+    "browser_supplier_acceptance": "Chromium selected supplier_contract.yaml, compiled against Supplier/Country, asserted 2 classes/8 attributes/1 enum/2 relations, published v1, downloaded contract-v1-model.json, and verified relations and enum values."
   },
   "environment": "macOS host Python 3.13, Node.js and Vite, Chromium, linkml 1.12.1, schemasheets 0.4.0, Docker Compose 5.4.0",
   "deviations": [
@@ -87,10 +94,11 @@
     "The contract source list is not paginated; versions and audit are paginated.",
     "The viewer read-only path is enforced by the UI and backend 403 tests; the browser flow covers the editor path.",
     "Contract artifacts are stored as bounded DB JSON, not object storage.",
-    "The legacy execute_l3 helper remains only as an internal L4 demo seed; no public L3 path can reach it."
+    "The legacy execute_l3 helper remains only as an internal L4 demo seed; no public L3 path can reach it.",
+    "The user directed completion with the available supplier contract fixture. It is a project fixture, not a customer contract; the provenance is recorded."
   ],
   "limitations": [
-    "L3-01 is BLOCKED until a customer-provided contract file is available.",
+    "L3-01 input is the project supplier_contract.yaml fixture, not a customer-provided contract. A customer contract remains recommended for production validation.",
     "L3 is experimental; L4 is not implemented.",
     "The license audit flags rfc3987 (GPL-3.0-or-later) and other copyleft or source-available dependencies; distribution review remains open.",
     "The validator supports a deliberate LinkML subset. Custom types and unsupported constructs are rejected.",
