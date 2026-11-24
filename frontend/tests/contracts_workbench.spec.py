@@ -153,5 +153,107 @@ def test_contracts_workbench_real_browser_flow_selects_compiles_publishes_and_ex
         database_path.unlink(missing_ok=True)
 
 
+def test_contracts_acceptance_with_supplier_contract():
+    database_path = Path("/tmp") / f"open-semantic-unifier-contracts-acceptance-{uuid.uuid4().hex}.db"
+    engine = create_engine(f"sqlite:///{database_path}", connect_args={"check_same_thread": False, "timeout": 30})
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    maker = sessionmaker(bind=engine, expire_on_commit=False)
+    fixture = BACKEND / "tests" / "fixtures" / "contracts" / "supplier_contract.yaml"
+    object_key = "projects/project-acceptance/uploads/supplier_contract.yaml"
+    storage.put_bytes(object_key, fixture.read_bytes())
+    with maker() as db:
+        db.add(Workspace(id="workspace-acceptance", name="Contracts Acceptance", slug="contracts-acceptance"))
+        db.flush()
+        db.add(Project(id="project-acceptance", workspace_id="workspace-acceptance", name="Supplier contracts", slug="supplier-contracts", description=""))
+        db.flush()
+        db.add(DataSource(id="ds-supplier", project_id="project-acceptance", name="supplier_contract.yaml", source_type="file", object_key=object_key))
+        db.add(UnificationSnapshot(
+            id="snapshot-supplier", project_id="project-acceptance", version=1,
+            snapshot_json={"entities": {
+                "e1": {"entity_type": "Supplier"},
+                "e2": {"entity_type": "Country"},
+            }},
+            actor_id="acceptance",
+        ))
+        db.commit()
+
+    def test_db():
+        with maker() as db:
+            yield db
+
+    app.dependency_overrides[get_db] = test_db
+    app.dependency_overrides[get_current_user] = lambda: {
+        "user_id": "acceptance-editor", "email": "acceptance@example.test", "display_name": "Acceptance Editor",
+        "workspace_id": "workspace-acceptance", "role": "editor",
+    }
+    app.dependency_overrides[require_resource_access] = lambda: None
+
+    api_port = 8765
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=api_port, log_level="error", lifespan="off"))
+    server_thread = Thread(target=server.run, daemon=True)
+    server_thread.start()
+    try:
+        for _ in range(100):
+            try:
+                urllib.request.urlopen(f"http://127.0.0.1:{api_port}/health", timeout=0.2).read()
+                break
+            except Exception:
+                time.sleep(0.1)
+        else:
+            raise RuntimeError("FastAPI test server did not become ready")
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            page = browser.new_page(accept_downloads=True)
+            page.add_init_script("""
+              localStorage.setItem('su_access_token', 'browser-test-token');
+              localStorage.setItem('su_user_info', JSON.stringify({
+                id: 'acceptance-editor', email: 'acceptance@example.test', display_name: 'Acceptance Editor',
+                role: 'editor', workspace_id: 'workspace-acceptance'
+              }));
+            """)
+            page.goto("http://127.0.0.1:5173")
+            page.wait_for_load_state("networkidle")
+            page.get_by_role("button", name="契约统一").click()
+            expect(page.get_by_role("heading", name="契约统一工作台")).to_be_visible()
+
+            page.get_by_label("文件数据源").select_option("ds-supplier")
+            page.get_by_role("button", name="添加契约源").click()
+            expect(page.get_by_role("status")).to_contain_text("契约源已登记")
+            expect(page.get_by_role("cell", name="supplier_contract.yaml")).to_be_visible()
+
+            page.get_by_label("契约源").select_option(index=1)
+            page.get_by_label("实体快照").select_option(index=1)
+            page.get_by_role("button", name="编译并校验").click()
+            expect(page.get_by_role("status")).to_contain_text("模型版本 v1 已创建", timeout=30000)
+            expect(page.get_by_role("cell", name="类 2 · 属性 8 · 枚举 1 · 关系 2")).to_be_visible()
+
+            page.get_by_role("button", name="发布与审计 尚未发布").click()
+            page.get_by_label("目标版本").select_option(index=1)
+            page.get_by_label("发布原因").fill("L3-01 acceptance")
+            page.get_by_role("button", name="发布版本").click()
+            expect(page.get_by_text("当前发布：v1")).to_be_visible()
+            expect(page.get_by_role("cell", name="PUBLISH")).to_be_visible()
+
+            page.get_by_role("button", name="版本历史 1 个版本").click()
+            with page.expect_download() as download_event:
+                page.get_by_role("button", name="model", exact=True).click()
+            download = download_event.value
+            assert download.suggested_filename == "contract-v1-model.json"
+            content = Path(download.path()).read_text(encoding="utf-8")
+            assert '"relations":{"Supplier":["Country","Supplier"]}' in content, content
+            assert '"SupplierStatus"' in content and '"Country"' in content
+            expect(page.get_by_role("alert")).to_have_count(0)
+            browser.close()
+    finally:
+        server.should_exit = True
+        server_thread.join(timeout=3)
+        app.dependency_overrides.clear()
+        engine.dispose()
+        database_path.unlink(missing_ok=True)
+
+
 if __name__ == "__main__":
     test_contracts_workbench_real_browser_flow_selects_compiles_publishes_and_exports()
+    test_contracts_acceptance_with_supplier_contract()
