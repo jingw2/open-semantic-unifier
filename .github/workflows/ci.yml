@@ -49,6 +49,7 @@ jobs:
           for i in {1..30}; do curl -fsS http://127.0.0.1:5173/ > /dev/null && break; sleep 1; done
           python frontend/tests/unification_workbench.spec.py
           python frontend/tests/contracts_workbench.spec.py
+          python frontend/tests/decision_models_workbench.spec.py
 
   compose-config:
     runs-on: ubuntu-latest

@@ -2,6 +2,24 @@ import React, { useEffect, useState } from 'react'
 import { Bot, Plus, Trash2, Zap } from 'lucide-react'
 import { apiFetch } from '../lib/api'
 
+type ProviderTestResult = {
+  status?: string
+  message?: string
+  verdict?: string
+  confidence?: number | null
+  model?: string
+  provider_kind?: string
+  prompt_version?: string
+  code?: string
+  retryable?: boolean
+}
+
+const PROVIDER_KIND_OPTIONS = [
+  { value: 'openai_compatible', label: 'OpenAI 兼容（通用 LLM）' },
+  { value: 'perplexity_decisions', label: 'Perplexity Decisions（决策模型）' },
+  { value: 'typesafe_jev', label: 'TypeSafe Jev（决策模型）' },
+]
+
 export default function ProvidersPage() {
   const [presets, setPresets] = useState<any[]>([])
   const [configured, setConfigured] = useState<any[]>([])
@@ -11,6 +29,11 @@ export default function ProvidersPage() {
   const [model, setModel] = useState('deepseek-chat')
   const [apiKey, setApiKey] = useState('')
   const [isDefault, setIsDefault] = useState(true)
+  const [providerKind, setProviderKind] = useState('openai_compatible')
+  const [sendFields, setSendFields] = useState('')
+  const [timeoutSeconds, setTimeoutSeconds] = useState('')
+  const [maxRetries, setMaxRetries] = useState('0')
+  const [promptVersion, setPromptVersion] = useState('entity-pair-choice-v1')
   const [testMsg, setTestMsg] = useState<Record<string, string>>({})
 
   const load = async () => {
@@ -28,6 +51,18 @@ export default function ProvidersPage() {
     setName(p.name)
     setBaseUrl(p.base_url)
     setModel(p.default_model)
+    setProviderKind(p.provider_kind || 'openai_compatible')
+  }
+
+  const changeKind = (kind: string) => {
+    setProviderKind(kind)
+    if (kind === 'perplexity_decisions') {
+      setBaseUrl('https://api.perplexity.ai')
+      setModel('pplx-decider-flash-latest')
+    } else if (kind === 'typesafe_jev') {
+      setBaseUrl('https://api.typesafe.ai')
+      setModel('jev-latest')
+    }
   }
 
   const saveProvider = async (e: React.FormEvent) => {
@@ -42,16 +77,32 @@ export default function ProvidersPage() {
         api_key: apiKey,
         is_custom: !presets.some((x) => x.provider_key === providerKey),
         is_default: isDefault,
+        provider_kind: providerKind,
+        send_fields: sendFields.split(',').map((s) => s.trim()).filter(Boolean),
+        timeout_seconds: timeoutSeconds.trim() ? Number(timeoutSeconds) : null,
+        max_retries: maxRetries.trim() ? Number(maxRetries) : 0,
+        prompt_version: promptVersion.trim() || 'entity-pair-choice-v1',
       }),
     })
     setApiKey('')
+    setSendFields('')
     await load()
   }
 
   const testProvider = async (id: string) => {
     setTestMsg((prev) => ({ ...prev, [id]: '测试中...' }))
-    const res = await apiFetch<{ status: string; message: string }>(`/api/v1/providers/${id}/test`, { method: 'POST' })
-    setTestMsg((prev) => ({ ...prev, [id]: (res.status === 'ok' ? '✅ ' : '❌ ') + res.message }))
+    try {
+      const res = await apiFetch<ProviderTestResult>(`/api/v1/providers/${id}/test`, { method: 'POST' })
+      if (res.verdict) {
+        setTestMsg((prev) => ({ ...prev, [id]: `✅ ${res.provider_kind || ''} → ${res.verdict}（置信度 ${res.confidence ?? '—'}）· 模型 ${res.model || '—'}` }))
+      } else if (res.status === 'error' || res.code) {
+        setTestMsg((prev) => ({ ...prev, [id]: `❌ ${res.code || 'error'}: ${res.message}` }))
+      } else {
+        setTestMsg((prev) => ({ ...prev, [id]: res.message || '无结果' }))
+      }
+    } catch (err) {
+      setTestMsg((prev) => ({ ...prev, [id]: `❌ ${err instanceof Error ? err.message : '测试失败'}` }))
+    }
   }
 
   const removeProvider = async (id: string) => {
@@ -66,7 +117,7 @@ export default function ProvidersPage() {
           <Bot className="w-5 h-5 text-brand-600" /> 多模型 Provider 中心（支持自定义新增 + Fernet 加密存库）
         </h2>
         <p className="text-xs text-slate-500 mt-1 mb-4">
-          点击下方主流预设一键填充，或直接输入任意 OpenAI 兼容地址（SiliconFlow / vLLM / OneAPI / Azure）新增自定义 Provider。
+          点击下方主流预设一键填充，或直接输入任意 OpenAI 兼容地址（SiliconFlow / vLLM / OneAPI / Azure）新增自定义 Provider。决策模型（Perplexity Decisions / TypeSafe Jev）返回 SAME / DIFFERENT / UNKNOWN 的复核建议。
         </p>
 
         <div className="flex flex-wrap gap-2 mb-4">
@@ -83,26 +134,50 @@ export default function ProvidersPage() {
         </div>
 
         <form onSubmit={saveProvider} className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">Provider 标识（自定义可填如 siliconflow）</label>
-            <input value={providerKey} onChange={(e) => setProviderKey(e.target.value)} required className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white" />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">显示名称</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} required className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white" />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">Base URL</label>
-            <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.deepseek.com/v1" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white font-mono" />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">默认模型名称</label>
+          <label className="block text-xs font-semibold text-slate-600">
+            <span className="block mb-1">Provider 标识（自定义可填如 siliconflow）</span>
+            <input value={providerKey} onChange={(e) => setProviderKey(e.target.value)} required className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white font-normal" />
+          </label>
+          <label className="block text-xs font-semibold text-slate-600">
+            <span className="block mb-1">显示名称</span>
+            <input value={name} onChange={(e) => setName(e.target.value)} required className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white font-normal" />
+          </label>
+          <label className="block text-xs font-semibold text-slate-600">
+            <span className="block mb-1">Provider 类型</span>
+            <select value={providerKind} onChange={(e) => changeKind(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white font-normal">
+              {PROVIDER_KIND_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-xs font-semibold text-slate-600">
+            <span className="block mb-1">默认模型名称</span>
             <input value={model} onChange={(e) => setModel(e.target.value)} required className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white font-mono" />
-          </div>
-          <div className="md:col-span-2">
-            <label className="block text-xs font-semibold text-slate-600 mb-1">API Key（服务端 Fernet 加密存储，接口永不明文返回）</label>
-            <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-...（离线模式或 Ollama 可留空）" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white" />
-          </div>
+          </label>
+          <label className="block text-xs font-semibold text-slate-600">
+            <span className="block mb-1">Base URL</span>
+            <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.deepseek.com/v1" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white font-mono" />
+          </label>
+          <label className="block text-xs font-semibold text-slate-600">
+            <span className="block mb-1">发送字段（决策模型必填，逗号分隔）</span>
+            <input value={sendFields} onChange={(e) => setSendFields(e.target.value)} required={providerKind !== 'openai_compatible'} placeholder="name, tax_id" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white font-mono" />
+          </label>
+          <label className="block text-xs font-semibold text-slate-600">
+            <span className="block mb-1">超时（秒）</span>
+            <input type="number" min="0" step="0.5" value={timeoutSeconds} onChange={(e) => setTimeoutSeconds(e.target.value)} placeholder="留空使用服务端默认" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white font-normal" />
+          </label>
+          <label className="block text-xs font-semibold text-slate-600">
+            <span className="block mb-1">最大重试次数</span>
+            <input type="number" min="0" step="1" value={maxRetries} onChange={(e) => setMaxRetries(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white font-normal" />
+          </label>
+          <label className="block text-xs font-semibold text-slate-600 md:col-span-2">
+            <span className="block mb-1">提示词版本</span>
+            <input value={promptVersion} onChange={(e) => setPromptVersion(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white font-mono" />
+          </label>
+          <label className="block text-xs font-semibold text-slate-600 md:col-span-2">
+            <span className="block mb-1">API Key（服务端 Fernet 加密存储，接口永不明文返回）</span>
+            <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-...（离线模式或 Ollama 可留空）" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white font-normal" />
+          </label>
           <div className="md:col-span-2 flex items-center justify-between pt-1">
             <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
               <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} /> 设为工作空间默认模型
@@ -129,6 +204,9 @@ export default function ProvidersPage() {
                   </div>
                   <div className="text-xs text-slate-500 font-mono mt-1">
                     {p.base_url || '(offline)'} · {p.default_model} · Key: {p.api_key_masked || '无'}
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-1">
+                    类型 {p.provider_kind || 'openai_compatible'} · 发送字段 {Array.isArray(p.send_fields) && p.send_fields.length ? p.send_fields.join(', ') : '—'} · 提示词版本 {p.prompt_version || '—'}
                   </div>
                   {testMsg[p.id] && <div className="text-xs mt-1 font-semibold">{testMsg[p.id]}</div>}
                 </div>

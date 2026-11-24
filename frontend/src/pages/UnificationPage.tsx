@@ -16,8 +16,31 @@ type ReviewPair = {
   action: string
   evidence_codes?: string[]
   evidence?: Array<Record<string, unknown>>
-  recommendation?: { reason?: string; is_same_entity?: boolean; confidence?: number } | null
+  recommendation?: {
+    verdict?: string
+    is_same_entity?: boolean | null
+    confidence?: number | null
+    distribution?: Record<string, number> | null
+    reason?: string | null
+    model?: string
+    provider_kind?: string
+    provider_key?: string
+    prompt_version?: string
+    latency_ms?: number
+    usage?: Record<string, unknown> | null
+    cost_usd?: number | null
+    trace_id?: string | null
+  } | null
   model_error?: string | null
+}
+type ConfiguredProvider = {
+  id: string
+  provider_key: string
+  name: string
+  provider_kind?: string
+  default_model?: string
+  prompt_version?: string
+  send_fields?: string[]
 }
 type SnapshotEntities = {
   snapshot_id: string
@@ -78,6 +101,22 @@ function isConflictConstraint(value: unknown): value is { field: string; action:
   return isRecord(value) && typeof value.field === 'string' && value.action === 'veto_auto_merge'
 }
 
+const VERDICT_ORDER = ['SAME', 'DIFFERENT', 'UNKNOWN'] as const
+
+function verdictLabel(recommendation: ReviewPair['recommendation']): string | null {
+  if (!recommendation) return null
+  if (recommendation.verdict) return recommendation.verdict
+  if (recommendation.is_same_entity === true) return 'SAME'
+  if (recommendation.is_same_entity === false) return 'DIFFERENT'
+  return null
+}
+
+function verdictTone(verdict: string): string {
+  if (verdict === 'SAME') return 'bg-emerald-100 text-emerald-800'
+  if (verdict === 'DIFFERENT') return 'bg-rose-100 text-rose-800'
+  return 'bg-amber-100 text-amber-900'
+}
+
 function parseBatch(text: string, mode: 'sync' | 'exploration'): BatchRecord[] {
   const value: unknown = JSON.parse(text)
   if (!Array.isArray(value) || value.length === 0) throw new Error('批次必须是至少包含一条记录的 JSON 数组。')
@@ -108,6 +147,7 @@ export default function UnificationPage({ projectId, canEdit }: { projectId: str
   const [candidateRulesDraft, setCandidateRulesDraft] = useState(JSON.stringify(starterScheme.candidate_rules, null, 2))
   const [conflictConstraintsDraft, setConflictConstraintsDraft] = useState(JSON.stringify(starterScheme.conflict_constraints, null, 2))
   const [schemes, setSchemes] = useState<UnificationScheme[]>([])
+  const [providers, setProviders] = useState<ConfiguredProvider[]>([])
   const [recordsText, setRecordsText] = useState(starterRecords)
   const [inputVersion, setInputVersion] = useState(`input-${new Date().toISOString().slice(0, 10)}`)
   const [ingestMode, setIngestMode] = useState<'sync' | 'exploration'>('sync')
@@ -135,11 +175,12 @@ export default function UnificationPage({ projectId, canEdit }: { projectId: str
   const loadWorkspace = async () => {
     setError('')
     try {
-      const [schemeList, runPage, snapshotPage, changePage] = await Promise.all([
+      const [schemeList, runPage, snapshotPage, changePage, providerPage] = await Promise.all([
         apiFetch<UnificationScheme[]>(`${base}/schemes`),
         apiFetch<{ items: UnificationRun[] }>(`${base}/runs?limit=20&offset=0`),
         apiFetch<{ items: UnificationSnapshot[]; current_snapshot_id: string | null; current_version: number }>(`${base}/snapshots?limit=20&offset=0`),
         apiFetch<{ items: IdentityChange[] }>(`${base}/identity-changes?limit=50&offset=0`),
+        apiFetch<{ configured: ConfiguredProvider[] }>('/api/v1/providers'),
       ])
       setSchemes(schemeList)
       setRuns(runPage.items)
@@ -147,6 +188,7 @@ export default function UnificationPage({ projectId, canEdit }: { projectId: str
       setCurrentSnapshotId(snapshotPage.current_snapshot_id)
       setCurrentSnapshotVersion(snapshotPage.current_version)
       setIdentityChanges(changePage.items)
+      setProviders(providerPage.configured)
       const found = schemeList.find((item) => item.scheme_key === schemeKey)
       if (found) {
         setScheme(found)
@@ -529,6 +571,35 @@ export default function UnificationPage({ projectId, canEdit }: { projectId: str
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900 sm:col-span-2">
                 强标识缺失或冲突会进入保守判断；名称相似和模型建议不会绕过硬冲突或人工“保持分离”裁决。
               </div>
+              <div className="rounded-xl border border-slate-200 p-3 sm:col-span-2">
+                <label className="flex items-center gap-2 text-xs font-bold text-slate-800">
+                  <input type="checkbox" checked={!!scheme.model_judgment_enabled} onChange={(event) => updateScheme({ model_judgment_enabled: event.target.checked })} /> 启用决策模型建议
+                </label>
+                <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                  决策模型仅返回 SAME / DIFFERENT / UNKNOWN 的复核建议；规则冲突、人工“保持分离”和已确认裁决始终优先，建议默认进入复核，不会自动合并。
+                </p>
+                {scheme.model_judgment_enabled && (
+                  <div className="mt-3 grid gap-3 md:grid-cols-3">
+                    <label className="text-xs font-semibold text-slate-700">决策 Provider
+                      <select aria-label="决策 Provider" value={scheme.model_provider_id || ''} onChange={(event) => updateScheme({ model_provider_id: event.target.value || null })} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-xs">
+                        <option value="">选择 Provider</option>
+                        {providers.map((provider) => (
+                          <option key={provider.id} value={provider.id}>{provider.name} · {provider.provider_kind || 'openai_compatible'}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold text-slate-700">失败策略
+                      <select aria-label="失败策略" value={scheme.model_failure_policy || 'REVIEW'} onChange={(event) => updateScheme({ model_failure_policy: event.target.value === 'FAIL' ? 'FAIL' : 'REVIEW' })} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-xs">
+                        <option value="REVIEW">REVIEW（送审）</option>
+                        <option value="FAIL">FAIL（运行失败）</option>
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold text-slate-700">提示词版本
+                      <input value={scheme.prompt_version || 'entity-pair-choice-v1'} onChange={(event) => updateScheme({ prompt_version: event.target.value })} className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-xs font-mono" />
+                    </label>
+                  </div>
+                )}
+              </div>
               <details className="rounded-xl border border-slate-200 p-3 sm:col-span-2">
                 <summary className="cursor-pointer text-xs font-bold text-slate-800">高级匹配设置：候选规则与冲突约束</summary>
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -662,7 +733,43 @@ export default function UnificationPage({ projectId, canEdit }: { projectId: str
                 </div>
                 {pair.evidence_codes && <div className="mt-3 flex flex-wrap gap-1.5">{pair.evidence_codes.map((code) => <span key={code} className="rounded bg-slate-100 px-2 py-1 font-mono text-[10px] text-slate-600">{code}</span>)}</div>}
                 {pair.evidence && <div className="mt-3 grid gap-2 md:grid-cols-2">{pair.evidence.map((evidence, index) => <pre key={index} className="overflow-x-auto rounded-lg bg-slate-950 p-3 font-mono text-[10px] leading-4 text-cyan-100">{JSON.stringify(evidence, null, 2)}</pre>)}</div>}
-                {pair.recommendation?.reason && <p className="mt-3 border-l-2 border-violet-400 pl-3 text-xs text-slate-600">模型建议：{pair.recommendation.reason}（仍需人工或规则裁定）</p>}
+                {pair.recommendation && (() => {
+                  const verdict = verdictLabel(pair.recommendation)
+                  const distribution = pair.recommendation.distribution || {}
+                  const hasDistribution = Object.keys(distribution).length > 0
+                  return (
+                    <div className="mt-3 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {verdict && <span className={`rounded-md px-2 py-1 text-[10px] font-bold ${verdictTone(verdict)}`}>模型建议 · {verdict}</span>}
+                        {typeof pair.recommendation.confidence === 'number' && <span className="text-[11px] font-semibold text-slate-600">置信度 {(pair.recommendation.confidence * 100).toFixed(0)}%</span>}
+                        {pair.recommendation.model && <span className="font-mono text-[10px] text-slate-400">模型 {pair.recommendation.model}</span>}
+                      </div>
+                      {hasDistribution && (
+                        <div className="flex flex-wrap items-center gap-3 text-[10px] text-slate-500">
+                          {VERDICT_ORDER.map((key) => {
+                            const value = distribution[key]
+                            return (
+                              <div key={key} className="flex items-center gap-1.5">
+                                <span className="w-14 font-mono">{key}</span>
+                                <div className="h-2 w-24 overflow-hidden rounded bg-slate-100">
+                                  <div className="h-full rounded bg-cyan-600" style={{ width: `${Math.round((value ?? 0) * 100)}%` }} />
+                                </div>
+                                <span className="font-mono">{typeof value === 'number' ? `${(value * 100).toFixed(0)}%` : '—'}</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-400">
+                        {pair.recommendation.provider_kind && <span>类型 {pair.recommendation.provider_kind}</span>}
+                        {pair.recommendation.provider_key && <span>Provider {pair.recommendation.provider_key}</span>}
+                        {pair.recommendation.prompt_version && <span>提示词 {pair.recommendation.prompt_version}</span>}
+                        {typeof pair.recommendation.latency_ms === 'number' && <span>耗时 {pair.recommendation.latency_ms}ms</span>}
+                      </div>
+                      {pair.recommendation.reason && <p className="border-l-2 border-violet-400 pl-3 text-xs text-slate-600">模型建议：{pair.recommendation.reason}（仍需人工或规则裁定）</p>}
+                    </div>
+                  )
+                })()}
                 {pair.model_error && <p className="mt-3 text-xs text-rose-700">模型未给出建议：{pair.model_error}</p>}
               </article>)}
             </div>
