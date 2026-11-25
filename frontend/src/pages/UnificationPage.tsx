@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { ArrowDownToLine, ArrowRight, Check, CircleAlert, GitBranch, LoaderCircle, Play, RotateCcw, Save, ScanSearch, ShieldCheck } from 'lucide-react'
 import { apiFetch, downloadApi, UnificationRun, UnificationScheme, UnificationSnapshot } from '../lib/api'
+import EntityReviewCard, { ReviewPair } from '../components/EntityReviewCard'
 
 type Tab = 'configure' | 'run' | 'review' | 'release'
 type BatchRecord = {
@@ -8,30 +9,6 @@ type BatchRecord = {
   dataset: string
   source_record_id?: string
   attributes: Record<string, unknown>
-}
-type ReviewPair = {
-  left_source_revision_id: string
-  right_source_revision_id: string
-  candidate: boolean
-  action: string
-  evidence_codes?: string[]
-  evidence?: Array<Record<string, unknown>>
-  recommendation?: {
-    verdict?: string
-    is_same_entity?: boolean | null
-    confidence?: number | null
-    distribution?: Record<string, number> | null
-    reason?: string | null
-    model?: string
-    provider_kind?: string
-    provider_key?: string
-    prompt_version?: string
-    latency_ms?: number
-    usage?: Record<string, unknown> | null
-    cost_usd?: number | null
-    trace_id?: string | null
-  } | null
-  model_error?: string | null
 }
 type ConfiguredProvider = {
   id: string
@@ -101,22 +78,6 @@ function isConflictConstraint(value: unknown): value is { field: string; action:
   return isRecord(value) && typeof value.field === 'string' && value.action === 'veto_auto_merge'
 }
 
-const VERDICT_ORDER = ['SAME', 'DIFFERENT', 'UNKNOWN'] as const
-
-function verdictLabel(recommendation: ReviewPair['recommendation']): string | null {
-  if (!recommendation) return null
-  if (recommendation.verdict) return recommendation.verdict
-  if (recommendation.is_same_entity === true) return 'SAME'
-  if (recommendation.is_same_entity === false) return 'DIFFERENT'
-  return null
-}
-
-function verdictTone(verdict: string): string {
-  if (verdict === 'SAME') return 'bg-emerald-100 text-emerald-800'
-  if (verdict === 'DIFFERENT') return 'bg-rose-100 text-rose-800'
-  return 'bg-amber-100 text-amber-900'
-}
-
 function parseBatch(text: string, mode: 'sync' | 'exploration'): BatchRecord[] {
   const value: unknown = JSON.parse(text)
   if (!Array.isArray(value) || value.length === 0) throw new Error('批次必须是至少包含一条记录的 JSON 数组。')
@@ -156,6 +117,7 @@ export default function UnificationPage({ projectId, canEdit, initialRunId }: { 
   const [runs, setRuns] = useState<UnificationRun[]>([])
   const [activeRun, setActiveRun] = useState<UnificationRun | null>(null)
   const [reviewPairs, setReviewPairs] = useState<ReviewPair[]>([])
+  const [autoSeparated, setAutoSeparated] = useState<ReviewPair[]>([])
   const [snapshots, setSnapshots] = useState<UnificationSnapshot[]>([])
   const [currentSnapshotId, setCurrentSnapshotId] = useState<string | null>(null)
   const [currentSnapshotVersion, setCurrentSnapshotVersion] = useState(0)
@@ -237,8 +199,11 @@ export default function UnificationPage({ projectId, canEdit, initialRunId }: { 
       setReviewPairs([])
       return
     }
-    apiFetch<{ items: ReviewPair[] }>(`${base}/reviews?run_id=${encodeURIComponent(activeRun.run_id)}&limit=100&offset=0`)
-      .then((result) => setReviewPairs(result.items))
+    apiFetch<{ items: ReviewPair[]; auto_separated?: ReviewPair[] }>(`${base}/reviews?run_id=${encodeURIComponent(activeRun.run_id)}&limit=100&offset=0`)
+      .then((result) => {
+        setReviewPairs(result.items)
+        setAutoSeparated(result.auto_separated || [])
+      })
       .catch((caught: unknown) => setError(errorText(caught)))
   }, [activeRun?.run_id, activeRun?.status, projectId])
 
@@ -376,8 +341,9 @@ export default function UnificationPage({ projectId, canEdit, initialRunId }: { 
       })
       setNotice(action === 'MERGE' ? '已记录合并裁决。' : '已记录保持分离的裁决。')
       await loadWorkspace()
-      const remaining = await apiFetch<{ items: ReviewPair[] }>(`${base}/reviews?run_id=${encodeURIComponent(activeRun.run_id)}&limit=100&offset=0`)
+      const remaining = await apiFetch<{ items: ReviewPair[]; auto_separated?: ReviewPair[] }>(`${base}/reviews?run_id=${encodeURIComponent(activeRun.run_id)}&limit=100&offset=0`)
       setReviewPairs(remaining.items)
+      setAutoSeparated(remaining.auto_separated || [])
     } catch (caught) {
       setError(errorText(caught))
     } finally {
@@ -461,8 +427,9 @@ export default function UnificationPage({ projectId, canEdit, initialRunId }: { 
       setNotice('已撤销该身份变更，新的身份版本已写入审计记录。')
       await loadWorkspace()
       if (activeRun) {
-        const remaining = await apiFetch<{ items: ReviewPair[] }>(`${base}/reviews?run_id=${encodeURIComponent(activeRun.run_id)}&limit=100&offset=0`)
+        const remaining = await apiFetch<{ items: ReviewPair[]; auto_separated?: ReviewPair[] }>(`${base}/reviews?run_id=${encodeURIComponent(activeRun.run_id)}&limit=100&offset=0`)
         setReviewPairs(remaining.items)
+        setAutoSeparated(remaining.auto_separated || [])
       }
     } catch (caught) {
       setError(errorText(caught))
@@ -720,53 +687,30 @@ export default function UnificationPage({ projectId, canEdit, initialRunId }: { 
           </div>
           {!activeRun || activeRun.status !== 'SUCCEEDED' ? <div className="rounded-xl border border-dashed border-neutral-300 p-8 text-center text-sm text-neutral-500">选择一条已完成的运行，查看其待复核配对。</div> : reviewPairs.length === 0 ? <div className="rounded-xl border border-dashed border-emerald-200 bg-emerald-50 p-8 text-center text-sm text-emerald-800">该运行没有待复核配对。</div> : (
             <div className="space-y-3">
-              {reviewPairs.map((pair) => <article key={`${pair.left_source_revision_id}:${pair.right_source_revision_id}`} className="rounded-xl border border-neutral-200 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex flex-wrap items-center gap-2"><span className="rounded-md bg-amber-100 px-2 py-1 text-[10px] font-medium text-amber-900">REVIEW</span><span className="font-mono text-[10px] text-neutral-500">{pair.left_source_revision_id.slice(0, 10)} ↔ {pair.right_source_revision_id.slice(0, 10)}</span><span className="text-[10px] text-neutral-400">{pair.candidate ? '候选已召回' : '未召回'}</span></div>
-                  {canEdit && <div className="flex gap-2"><button disabled={busy} onClick={() => void decideReview(pair, 'MERGE')} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-800 disabled:opacity-50">确认同一实体</button><button disabled={busy} onClick={() => void decideReview(pair, 'KEEP_DISTINCT')} className="rounded-lg border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50">保持分离</button></div>}
-                </div>
-                {pair.evidence_codes && <div className="mt-3 flex flex-wrap gap-1.5">{pair.evidence_codes.map((code) => <span key={code} className="rounded bg-neutral-100 px-2 py-1 font-mono text-[10px] text-neutral-600">{code}</span>)}</div>}
-                {pair.evidence && <div className="mt-3 grid gap-2 md:grid-cols-2">{pair.evidence.map((evidence, index) => <pre key={index} className="overflow-x-auto rounded-lg bg-neutral-950 p-3 font-mono text-[10px] leading-4 text-neutral-100">{JSON.stringify(evidence, null, 2)}</pre>)}</div>}
-                {pair.recommendation && (() => {
-                  const verdict = verdictLabel(pair.recommendation)
-                  const distribution = pair.recommendation.distribution || {}
-                  const hasDistribution = Object.keys(distribution).length > 0
-                  return (
-                    <div className="mt-3 space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {verdict && <span className={`rounded-md px-2 py-1 text-[10px] font-medium ${verdictTone(verdict)}`}>模型建议 · {verdict}</span>}
-                        {typeof pair.recommendation.confidence === 'number' && <span className="text-[11px] font-semibold text-neutral-600">置信度 {(pair.recommendation.confidence * 100).toFixed(0)}%</span>}
-                        {pair.recommendation.model && <span className="font-mono text-[10px] text-neutral-400">模型 {pair.recommendation.model}</span>}
-                      </div>
-                      {hasDistribution && (
-                        <div className="flex flex-wrap items-center gap-3 text-[10px] text-neutral-500">
-                          {VERDICT_ORDER.map((key) => {
-                            const value = distribution[key]
-                            return (
-                              <div key={key} className="flex items-center gap-1.5">
-                                <span className="w-14 font-mono">{key}</span>
-                                <div className="h-2 w-24 overflow-hidden rounded bg-neutral-100">
-                                  <div className="h-full rounded bg-neutral-600" style={{ width: `${Math.round((value ?? 0) * 100)}%` }} />
-                                </div>
-                                <span className="font-mono">{typeof value === 'number' ? `${(value * 100).toFixed(0)}%` : '—'}</span>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
-                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-neutral-400">
-                        {pair.recommendation.provider_kind && <span>类型 {pair.recommendation.provider_kind}</span>}
-                        {pair.recommendation.provider_key && <span>Provider {pair.recommendation.provider_key}</span>}
-                        {pair.recommendation.prompt_version && <span>提示词 {pair.recommendation.prompt_version}</span>}
-                        {typeof pair.recommendation.latency_ms === 'number' && <span>耗时 {pair.recommendation.latency_ms}ms</span>}
-                      </div>
-                      {pair.recommendation.reason && <p className="border-l-2 border-neutral-400 pl-3 text-xs text-neutral-600">模型建议：{pair.recommendation.reason}（仍需人工或规则裁定）</p>}
-                    </div>
-                  )
-                })()}
-                {pair.model_error && <p className="mt-3 text-xs text-rose-700">模型未给出建议：{pair.model_error}</p>}
-              </article>)}
+              {reviewPairs.map((pair) => (
+              <EntityReviewCard
+                key={`${pair.left_source_revision_id}:${pair.right_source_revision_id}`}
+                pair={pair}
+                busy={busy}
+                onDecide={(action) => void decideReview(pair, action)}
+              />
+            ))}
             </div>
+          )}
+          {activeRun?.status === 'SUCCEEDED' && autoSeparated.length > 0 && (
+            <details className="mt-4 rounded-xl border border-neutral-200 p-4">
+              <summary className="cursor-pointer text-xs font-medium text-neutral-700">系统已自动保持分离 ({autoSeparated.length})</summary>
+              <div className="mt-3 space-y-2">
+                {autoSeparated.map((pair) => (
+                  <div key={`${pair.left_source_revision_id}:${pair.right_source_revision_id}`} className="rounded-lg border border-neutral-200 p-3 text-xs text-neutral-600">
+                    <div className="font-mono text-[10px] text-neutral-400">
+                      {pair.left?.record_ref || pair.left_source_revision_id.slice(0, 10)} ↔ {pair.right?.record_ref || pair.right_source_revision_id.slice(0, 10)}
+                    </div>
+                    {pair.why && <p className="mt-1">{pair.why}</p>}
+                  </div>
+                ))}
+              </div>
+            </details>
           )}
           <div className="mt-8 border-t border-neutral-100 pt-5">
             <div className="mb-3 flex items-center gap-2"><ScanSearch className="h-4 w-4 text-neutral-500" /><h3 className="text-sm font-medium text-neutral-900">身份变更与撤销</h3><span className="font-mono text-[10px] text-neutral-400">r{latestIdentityRevision}</span></div>

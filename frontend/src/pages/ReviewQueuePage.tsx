@@ -78,6 +78,8 @@ export default function ReviewQueuePage({ projectId }: Props) {
                     左：<span className="text-neutral-900">{r.left_text}</span> <span className="mx-2 text-neutral-400">↔</span> 右：
                     <span className="text-neutral-800">{r.right_text}</span>
                   </div>
+                  {r.llm_suggestion?.reason && <p className="text-xs text-neutral-600">模型理由：{r.llm_suggestion.reason}</p>}
+                  <p className="text-[11px] text-neutral-400">推入原因：L2 灰色边界样本</p>
                   {r.llm_suggestion?.reason && (
                     <div className="text-xs text-neutral-500">🤖 建议理由：{r.llm_suggestion.reason}</div>
                   )}

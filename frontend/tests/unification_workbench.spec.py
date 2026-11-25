@@ -108,6 +108,7 @@ def test_workbench_real_browser_flow_publishes_reviewed_snapshot_and_exports():
             expect(page.get_by_role("link", name="在 Phoenix 中打开")).to_be_visible()
 
             page.get_by_role("button", name="人工复核 1 待处理").click()
+            page.get_by_text("查看原始证据", exact=True).first.click()
             expect(page.get_by_text("CANDIDATE", exact=True).first).to_be_visible()
             page.once("dialog", lambda dialog: dialog.accept("人工确认同一供应商"))
             page.get_by_role("button", name="确认同一实体").click()
