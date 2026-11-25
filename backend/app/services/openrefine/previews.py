@@ -138,6 +138,8 @@ def create_preview(
         raise OpenRefineUnsupportedSource("数据源不存在于当前项目")
     if source.source_type != "file" or not source.object_key:
         raise OpenRefineUnsupportedSource("OpenRefine 预览只支持已上传的文件数据源")
+    if not (source.name.casefold().endswith(".csv") or source.object_key.casefold().endswith(".csv")):
+        raise OpenRefineUnsupportedSource("OpenRefine 预览目前只支持 CSV 文件")
 
     content = storage.get_bytes(source.object_key)
     profile = _profile_for_source(source, content)

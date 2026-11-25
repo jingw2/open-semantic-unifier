@@ -56,7 +56,7 @@
 - Produces: `openrefine_limits_ok(profile: dict, size_bytes: int) -> tuple[bool, str | None]`; `settings.openrefine_url`, `settings.openrefine_enabled`, `settings.openrefine_timeout_seconds`.
 - Produces Compose service `openrefine` and volume `openrefine_data`.
 
-- [ ] **Step 1: Write failing recipe tests**
+- [x] **Step 1: Write failing recipe tests**
 
 ```python
 def test_recipe_catalog_is_read_only_and_versioned():
@@ -79,12 +79,12 @@ def test_limits_reject_large_or_multitable_sources():
     assert openrefine_limits_ok({"total_rows": 10, "table_count": 1}, 10 * 1024 * 1024 + 1)[0] is False
 ```
 
-- [ ] **Step 2: Run the recipe tests to verify they fail**
+- [x] **Step 2: Run the recipe tests to verify they fail**
 
 Run: `python3 -m pytest backend/tests/test_openrefine_recipes.py -q`
 Expected: FAIL with `ModuleNotFoundError: app.services.openrefine` or missing names.
 
-- [ ] **Step 3: Implement the recipe registry and six recipe files**
+- [x] **Step 3: Implement the recipe registry and six recipe files**
 
 `recipes.py` loads every `recipes/*.json` with `json.load`, validates required keys, and returns immutable `Recipe` dataclasses sorted by `priority`.
 Recipe selection rules, in order:
@@ -109,12 +109,12 @@ GREL expressions:
 - legal suffix: `value.trim().replace(/(股份有限公司|有限责任公司|有限公司|集团)$/,'')`
 - company normalization: punctuation + lowercase + suffix, composed in one expression.
 
-- [ ] **Step 4: Run the recipe tests to verify they pass**
+- [x] **Step 4: Run the recipe tests to verify they pass**
 
 Run: `python3 -m pytest backend/tests/test_openrefine_recipes.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Write failing client tests against a fake OpenRefine server**
+- [x] **Step 5: Write failing client tests against a fake OpenRefine server**
 
 The fake `http.server` exposes:
 - `GET /command/core/get-version` → `{"version": "3.10.1"}`
@@ -143,12 +143,12 @@ def test_unavailable_maps_to_stable_error(fake_openrefine):
     assert exc.value.code == "OPENREFINE_BAD_RESPONSE"
 ```
 
-- [ ] **Step 6: Run the client tests to verify they fail**
+- [x] **Step 6: Run the client tests to verify they fail**
 
 Run: `python3 -m pytest backend/tests/test_openrefine_client.py -q`
 Expected: FAIL with missing module/class.
 
-- [ ] **Step 7: Implement the client**
+- [x] **Step 7: Implement the client**
 
 Use one `httpx.Client` per call chain with `timeout=settings.openrefine_timeout_seconds`.
 - `health()` returns `True` only for 200 plus a JSON body with `version`; connection errors and timeouts return `False`.
@@ -159,12 +159,12 @@ Use one `httpx.Client` per call chain with `timeout=settings.openrefine_timeout_
 - Never log file bytes, API responses containing record data, or credentials.
 - A connection error raises `OpenRefineUnavailable`; other failures raise `OpenRefineError` with codes `OPENREFINE_BAD_RESPONSE`, `OPENREFINE_CREATE_FAILED`, `OPENREFINE_RECIPE_FAILED`, `OPENREFINE_EXPORT_FAILED`, `OPENREFINE_TIMEOUT`.
 
-- [ ] **Step 8: Run the client tests to verify they pass**
+- [x] **Step 8: Run the client tests to verify they pass**
 
 Run: `python3 -m pytest backend/tests/test_openrefine_client.py -q`
 Expected: PASS.
 
-- [ ] **Step 9: Add settings and the pinned Compose service**
+- [x] **Step 9: Add settings and the pinned Compose service**
 
 `Settings` adds:
 ```python
@@ -209,7 +209,7 @@ Backend and worker environment add `OPENREFINE_ENABLED: "true"` and `OPENREFINE_
 
 Write back to the spec section 11.1: there is no official OpenRefine Docker image, so the project builds one from the official GitHub release tarball, pinned by published SHA-256 and a pinned base image digest.
 
-- [ ] **Step 10: Verify Compose config and the real API contract**
+- [x] **Step 10: Verify Compose config and the real API contract**
 
 Run: `docker compose config --quiet`
 Expected: exit 0.
@@ -233,7 +233,7 @@ docker stop or-smoke
 ```
 Expected: the version endpoint returns 200.
 
-- [ ] **Step 11: Run tests and commit**
+- [x] **Step 11: Run tests and commit**
 
 Run: `python3 -m pytest backend/tests/test_openrefine_client.py backend/tests/test_openrefine_recipes.py -q`
 Expected: PASS.
@@ -271,7 +271,7 @@ git commit -m "feat(openrefine): add the pinned runtime, client, and built-in re
   - `DELETE /api/v1/projects/{project_id}/openrefine/previews/{preview_id}` → `{status: "cancelled"}`.
 - Produces: `recommend_pipeline(profile, user_goal=None, openrefine_available=False)`; L1 method becomes `{"key": "openrefine_w3c", "label": "OpenRefine + W3C 契约", "stage": "L1"}` when available.
 
-- [ ] **Step 1: Write failing diff and preview API tests**
+- [x] **Step 1: Write failing diff and preview API tests**
 
 ```python
 def test_diff_counts_changed_rows_and_cells_with_bom_and_quotes():
@@ -317,12 +317,12 @@ def test_adopt_twice_and_cancel_after_adopt_conflict(client, project, preview):
     assert client.delete(f"/api/v1/projects/{project}/openrefine/previews/{preview['preview_id']}").status_code == 409
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `python3 -m pytest backend/tests/test_openrefine_api.py -q`
 Expected: FAIL with 404 (router absent).
 
-- [ ] **Step 3: Implement diff and preview orchestration**
+- [x] **Step 3: Implement diff and preview orchestration**
 
 `diff_csv` uses `csv.reader` with `utf-8-sig`, compares by row index, treats a missing cell as a change, counts distinct changed rows/cells, and returns at most 20 examples with `row`, `column`, `before`, `after`. It never raises on ragged rows; it reports `structure_changed: true`.
 
@@ -345,7 +345,7 @@ Expected: FAIL with 404 (router absent).
 
 `cancel_preview` requires the same Job checks, deletes the OpenRefine project best-effort, marks `status="CANCELLED"`, `result.cancelled=true`; commit.
 
-- [ ] **Step 4: Implement the API and method upgrade**
+- [x] **Step 4: Implement the API and method upgrade**
 
 Add the router in `main.py`. All endpoints require `require_resource_access`; preview/adopt/cancel require admin/editor. Scope every Job and DataSource by `project_id`. Convert domain errors to:
 - 404 `OPENREFINE_PREVIEW_NOT_FOUND`, `DATA_SOURCE_NOT_FOUND`
@@ -364,12 +364,12 @@ def _method_for_stage(stage, *, table_count=0, total_rows=0, legacy=False, openr
 ```
 `recommend_pipeline` passes the flag. `list_datasources` and the demo endpoint compute `openrefine_available = settings.openrefine_enabled and openrefine_limits_ok(profile, size)[0]` for L1. Legacy routing in `method_for_routing(routing, openrefine_available=False)` upgrades only L1 without a stored method.
 
-- [ ] **Step 5: Run backend tests to verify they pass**
+- [x] **Step 5: Run backend tests to verify they pass**
 
 Run: `python3 -m pytest backend/tests/test_openrefine_api.py backend/tests/test_profiler.py backend/tests/test_unification_demo.py -q`
 Expected: PASS.
 
-- [ ] **Step 6: Add the workbench preview UI**
+- [x] **Step 6: Add the workbench preview UI**
 
 In `WorkbenchPage.tsx`, when `routing.method.key === "openrefine_w3c"` and stage L1:
 - Show buttons `OpenRefine 预览` and `运行规则清洗`.
@@ -380,14 +380,14 @@ In `WorkbenchPage.tsx`, when `routing.method.key === "openrefine_w3c"` and stage
 
 In `DataSourcesPage.tsx`, `METHOD_LABELS` adds `openrefine_w3c: "OpenRefine + W3C 契约"` and the method button text stays `进入处理方法`.
 
-- [ ] **Step 7: Add the Playwright diff spec**
+- [x] **Step 7: Add the Playwright diff spec**
 
 The spec seeds a workspace/project/data source (small dirty CSV in local storage), starts a fake OpenRefine server in-process, overrides `get_openrefine_client`, starts FastAPI on 8765, opens `#/tasks/new/match`, clicks `OpenRefine 预览`, asserts the diff count and one before/after example, clicks `采用并生成新数据源`, and asserts the new source name. It also covers the 503 fallback by switching the fake to `html_error` and asserting `已降级为规则清洗`.
 
 Run: `python3 frontend/tests/openrefine_diff.spec.py`
 Expected: exit 0.
 
-- [ ] **Step 8: Add the spec to CI and commit**
+- [x] **Step 8: Add the spec to CI and commit**
 
 Append `python frontend/tests/openrefine_diff.spec.py` to the frontend job.
 
@@ -418,7 +418,7 @@ git commit -m "feat(openrefine): preview, diff, adopt, and route to the runtime"
   - `GET /api/v1/projects/{project_id}/contracts/versions/{version_id}/jsonld/preview?data_source_id=...` → `{model, inferred_mapping}`.
   - `POST /api/v1/projects/{project_id}/contracts/versions/{version_id}/jsonld` `{data_source_id, class_name, id_slot, columns}` → `{context, graph, count, truncated}`.
 
-- [ ] **Step 1: Write failing JSON-LD tests**
+- [x] **Step 1: Write failing JSON-LD tests**
 
 ```python
 def test_infers_class_id_and_slot_mapping_from_columns(contract_version):
@@ -451,12 +451,12 @@ def test_missing_contract_version_returns_404(client, project):
     assert response.status_code == 404
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `python3 -m pytest backend/tests/test_contract_jsonld.py -q`
 Expected: FAIL with missing module.
 
-- [ ] **Step 3: Implement the JSON-LD service**
+- [x] **Step 3: Implement the JSON-LD service**
 
 Parse `canonical_model_json` for classes and attributes; parse the LinkML YAML only for `id`, `prefixes`, and `default_prefix`. `base_uri` = `document["id"]` if it ends with `/`, else `https://w3id.org/linkml/` fallback.
 - `jsonld_model` returns classes with attributes (`range`, `identifier`, `required`), identifier slot per class, prefixes, base URI.
@@ -464,16 +464,16 @@ Parse `canonical_model_json` for classes and attributes; parse the LinkML YAML o
 - `build_jsonld` validates class, slots, ID slot, and that a column maps to at most one slot. Context = `{"@vocab": base_uri, "@base": base_uri}` plus one term per mapped slot (`base_uri + slot`). Each graph node uses `@id` `f"urn:osu:{value}"` when the ID value exists, otherwise `f"urn:osu:row-{index}"`; `@type` class name; values coerced for `integer`/`float`/`double`/`boolean`, skipped when empty. Limit 5000 rows, set `truncated`.
 - Raise `JsonLdError` subclasses with codes `UNKNOWN_CLASS`, `UNKNOWN_SLOT`, `MISSING_ID_SLOT`, `DUPLICATE_COLUMN_MAPPING`, `NO_CONTRACT`.
 
-- [ ] **Step 4: Implement the endpoints**
+- [x] **Step 4: Implement the endpoints**
 
 Load the version with `get_contract_version`; 404 when missing. Load the DataSource and require CSV file; 404/422 otherwise. Read headers only for preview; read up to 5000 rows for generation. Return 422 with `{"code": ..., "message": ...}` on JSON-LD validation errors.
 
-- [ ] **Step 5: Run backend tests to verify they pass**
+- [x] **Step 5: Run backend tests to verify they pass**
 
 Run: `python3 -m pytest backend/tests/test_contract_jsonld.py backend/tests/test_contracts_api.py -q`
 Expected: PASS (adjust the existing test filename if it differs).
 
-- [ ] **Step 6: Add the contract JSON-LD UI**
+- [x] **Step 6: Add the contract JSON-LD UI**
 
 In `ContractsPage.tsx`, each version row gets a `JSON-LD` action. It opens an inline panel:
 - Data source select (file sources), class select, ID slot select.
@@ -482,14 +482,14 @@ In `ContractsPage.tsx`, each version row gets a `JSON-LD` action. It opens an in
 - `ResultViewer` gains a `jsonld` kind that pretty-prints `@context`/`@graph` and lists record count.
 - If no contract version exists, the panel shows `先上传并编译契约，再导出 JSON-LD`.
 
-- [ ] **Step 7: Add the Playwright JSON-LD spec**
+- [x] **Step 7: Add the Playwright JSON-LD spec**
 
 Seed a contract source/version and a cleaned CSV; open `#/tasks/contract/{version_id}`; click `JSON-LD`; assert class/slot mapping; click `生成预览`; assert `@context` and one record appear; click `导出 JSON-LD` and assert a download with `.jsonld` is offered.
 
 Run: `python3 frontend/tests/jsonld_viewer.spec.py`
 Expected: exit 0.
 
-- [ ] **Step 8: Add the spec to CI and commit**
+- [x] **Step 8: Add the spec to CI and commit**
 
 ```bash
 git add backend/app/services/contracts/jsonld.py backend/app/api/v1/contracts.py backend/tests/test_contract_jsonld.py frontend/src/pages/ContractsPage.tsx frontend/src/components/ResultViewer.tsx frontend/tests/jsonld_viewer.spec.py .github/workflows/ci.yml
@@ -511,7 +511,7 @@ git commit -m "feat(contracts): map and export JSON-LD instances"
 - Consumes: all prior tasks.
 - Produces: an opt-in Compose test that runs a real OpenRefine recipe and adopts the result.
 
-- [ ] **Step 1: Write the opt-in Compose OpenRefine test**
+- [x] **Step 1: Write the opt-in Compose OpenRefine test**
 
 Mirror `test_clean_compose_migrate_restart_async_publish_and_download`'s setup (free ports, generated secrets, isolated project name) but start only `postgres`, `redis`, `minio`, `openrefine`, `backend`, and `worker`; the frontend image is already covered by the existing test. Steps:
 1. Wait for `/health` and `openrefine` health.
@@ -524,20 +524,20 @@ Mirror `test_clean_compose_migrate_restart_async_publish_and_download`'s setup (
 
 Skip unless `RUN_COMPOSE_RELEASE_TESTS=true`.
 
-- [ ] **Step 2: Run the Compose integration test**
+- [x] **Step 2: Run the Compose integration test**
 
 Run: `RUN_COMPOSE_RELEASE_TESTS=true python3 -m pytest backend/tests/integration/test_compose_openrefine.py -q`
 Expected: PASS. Record the runtime and any image pull/build time.
 
-- [ ] **Step 3: Add the test to CI**
+- [x] **Step 3: Add the test to CI**
 
 The compose job already runs with `RUN_COMPOSE_RELEASE_TESTS=true`; append the new test file to its pytest command.
 
-- [ ] **Step 4: Write documentation**
+- [x] **Step 4: Write documentation**
 
 `docs/how-to/openrefine.md` covers: enabling the sidecar, the built-in recipe list, limits and fallbacks, preview/adopt/cancel semantics, JSON-LD mapping, and how to verify with the Compose test. `README.md` links it under Guides and states that OpenRefine is an internal sidecar, not an external service.
 
-- [ ] **Step 5: Run all verification**
+- [x] **Step 5: Run all verification**
 
 Run:
 ```bash
@@ -552,7 +552,7 @@ done
 ```
 Expected: backend all pass; holdout 7 passed; formal PASS; manifest VALID; build succeeds; every spec exits 0.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/tests/integration/test_compose_openrefine.py .github/workflows/ci.yml docs/how-to/openrefine.md README.md docker-compose.yml

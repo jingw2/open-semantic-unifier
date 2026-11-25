@@ -28,6 +28,7 @@ Open the workbench at `http://localhost:8080`; API docs are at `http://localhost
 - Rule and Splink candidate evidence, human review, merge/undo, snapshots, and exports.
 - Asynchronous Celery run submission in the Compose deployment.
 - Optional local or private OpenAI-compatible model providers.
+- Optional OpenRefine sidecar for built-in cleaning recipes and before/after adoption; JSON-LD instances are generated from contract versions.
 - Optional Phoenix tracing. It is not required for core matching.
 
 Connector code paths exist for DuckDB, SQLite, MySQL, PostgreSQL, and MongoDB. The project has automated unit/API coverage for SQLite and the Compose PostgreSQL deployment. MySQL, standalone DuckDB, and MongoDB live connection tests have not been run in this release task; see [connector validation](docs/how-to/connectors.md).
@@ -38,6 +39,7 @@ Connector code paths exist for DuckDB, SQLite, MySQL, PostgreSQL, and MongoDB. T
 - [Three example scenarios](docs/how-to/scenarios.md)
 - [API workflow](docs/how-to/api.md)
 - [Contract unification](docs/how-to/contracts.md)
+- [OpenRefine cleaning and W3C JSON-LD](docs/how-to/openrefine.md)
 - [Decision models](docs/how-to/decision-models.md)
 - [Guided assistant and review readability design](docs/superpowers/specs/2026-11-25-guided-assistant-design.md)
 - [Decision model evaluation](docs/reference/decision-model-evaluation.md)

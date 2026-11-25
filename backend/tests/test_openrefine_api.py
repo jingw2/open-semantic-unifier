@@ -140,6 +140,26 @@ def test_preview_refuses_an_oversized_source(public_api, storage_root):
         app.dependency_overrides.pop(get_openrefine_client, None)
 
 
+def test_preview_rejects_a_non_csv_source(public_api, storage_root):
+    client, maker, _identity = public_api
+    source_id = _seed_source(maker)
+    with maker() as db:
+        source = db.get(DataSource, source_id)
+        source.name = "dirty.parquet"
+        source.object_key = "projects/project-one/uploads/dirty.parquet"
+        db.commit()
+    _use_client(FakeClient())
+    try:
+        response = client.post(
+            "/api/v1/projects/project-one/openrefine/previews",
+            json={"data_source_id": source_id},
+        )
+        assert response.status_code == 422
+        assert response.json()["detail"]["code"] == "OPENREFINE_UNSUPPORTED_SOURCE"
+    finally:
+        app.dependency_overrides.pop(get_openrefine_client, None)
+
+
 def test_unavailable_openrefine_returns_the_fallback_code(public_api, storage_root):
     client, maker, _identity = public_api
     source_id = _seed_source(maker)
