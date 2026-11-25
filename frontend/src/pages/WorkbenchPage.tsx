@@ -137,6 +137,11 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
 
   return (
     <div className="space-y-5">
+      <header>
+        <h1 className="text-xl font-semibold text-neutral-900">处理方法</h1>
+        <p className="mt-1.5 text-sm text-neutral-500">根据数据特征选择清洗、跨库匹配或指标统一，然后运行。</p>
+      </header>
+
       <div className="bg-white border border-neutral-200 rounded-xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div className="text-xs font-medium text-neutral-500">执行建议</div>
@@ -144,6 +149,12 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
             当前阶段：{stage} {routing?.meta?.title ? `· ${routing.meta.short}` : ''}
           </h2>
           {loadError && <p role="alert" className="mt-2 text-xs text-red-600">{loadError}</p>}
+          {routing?.method && (
+            <div className="mt-2 rounded-md border border-neutral-200 bg-neutral-50 p-2.5 text-xs">
+              <div className="font-medium text-neutral-800">建议方法：{routing.method.label}</div>
+              {routing.method.reason && <p className="mt-1 text-neutral-500">{routing.method.reason}</p>}
+            </div>
+          )}
           {routing?.reasons ? (
             <ul className="list-disc pl-5 text-xs text-neutral-600 mt-1.5 space-y-0.5">
               {routing.reasons.map((r: string, i: number) => (

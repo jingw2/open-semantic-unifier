@@ -7,6 +7,17 @@ interface Props {
   onRouteReady: (dsIds: string[], profile: any, routing: any) => void
 }
 
+const METHOD_LABELS: Record<string, string> = {
+  L1: '规则清洗 + W3C 契约',
+  L2: 'Splink + DuckDB',
+  L3: 'LinkML W3C 契约',
+  L4: '指标 YAML',
+}
+
+function methodLabel(routing: any): string {
+  return routing?.method?.label || METHOD_LABELS[routing?.recommended_stage || 'L1'] || METHOD_LABELS.L1
+}
+
 export default function DataSourcesPage({ projectId, onRouteReady }: Props) {
   const [tab, setTab] = useState<'file' | 'db'>('file')
   const [sources, setSources] = useState<DataSourceItem[]>([])
@@ -297,15 +308,15 @@ export default function DataSourcesPage({ projectId, onRouteReady }: Props) {
                     <CheckCircle2 className="w-4 h-4 text-green-600" /> {s.name}
                   </div>
                   <div className="text-xs text-neutral-500 mt-1">
-                    类型：{s.source_type} · 行数：{s.profile?.total_rows?.toLocaleString() ?? 0} · 推荐路线：
-                    <span className="font-medium text-brand-600 ml-1">{s.routing?.recommended_stage || 'L1'}</span>
+                    类型：{s.source_type} · 行数：{s.profile?.total_rows?.toLocaleString() ?? 0} · 建议方法：
+                    <span className="font-medium text-neutral-900 ml-1">{methodLabel(s.routing)}</span>
                   </div>
                 </div>
                 <button
                   onClick={() => onRouteReady([s.id], s.profile, s.routing)}
-                  className="px-3 py-1.5 bg-brand-50 text-brand-600 rounded-lg text-xs font-medium shrink-0"
+                  className="px-3 py-1.5 bg-neutral-100 text-neutral-800 rounded-lg text-xs font-medium shrink-0"
                 >
-                  进入工作台 →
+                  进入处理方法 →
                 </button>
               </div>
             ))}

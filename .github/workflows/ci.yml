@@ -53,6 +53,12 @@ jobs:
           python frontend/tests/unification_workbench.spec.py
           python frontend/tests/contracts_workbench.spec.py
           python frontend/tests/decision_models_workbench.spec.py
+          python frontend/tests/menu_shell.spec.py
+          python frontend/tests/deep_link.spec.py
+          python frontend/tests/guided_assistant.spec.py
+          python frontend/tests/review_readability.spec.py
+          python frontend/tests/result_viewer.spec.py
+          python frontend/tests/method_recommendation.spec.py
 
   compose-config:
     runs-on: ubuntu-latest

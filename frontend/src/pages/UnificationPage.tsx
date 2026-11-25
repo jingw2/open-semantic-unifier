@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { ArrowDownToLine, ArrowRight, Check, CircleAlert, GitBranch, LoaderCircle, Play, RotateCcw, Save, ScanSearch, ShieldCheck } from 'lucide-react'
-import { apiFetch, downloadApi, UnificationRun, UnificationScheme, UnificationSnapshot } from '../lib/api'
+import { apiFetch, DataSourceItem, downloadApi, UnificationRun, UnificationScheme, UnificationSnapshot } from '../lib/api'
 import EntityReviewCard, { ReviewPair } from '../components/EntityReviewCard'
 
 type Tab = 'configure' | 'run' | 'review' | 'release'
@@ -118,6 +118,8 @@ export default function UnificationPage({ projectId, canEdit, initialRunId }: { 
   const [activeRun, setActiveRun] = useState<UnificationRun | null>(null)
   const [reviewPairs, setReviewPairs] = useState<ReviewPair[]>([])
   const [autoSeparated, setAutoSeparated] = useState<ReviewPair[]>([])
+  const [methodBanner, setMethodBanner] = useState<{ label: string; reason?: string; stage?: string } | null>(null)
+  const [bannerDismissed, setBannerDismissed] = useState(false)
   const [snapshots, setSnapshots] = useState<UnificationSnapshot[]>([])
   const [currentSnapshotId, setCurrentSnapshotId] = useState<string | null>(null)
   const [currentSnapshotVersion, setCurrentSnapshotVersion] = useState(0)
@@ -175,6 +177,16 @@ export default function UnificationPage({ projectId, canEdit, initialRunId }: { 
     setSchemeSaved(false)
     setBatchImported(false)
     void loadWorkspace()
+  }, [projectId])
+
+  useEffect(() => {
+    apiFetch<DataSourceItem[]>(`/api/v1/projects/${projectId}/datasources`)
+      .then((items) => {
+        const latest = items.find((item) => item.routing && Object.keys(item.routing).length > 0)
+        const method = latest?.routing?.method
+        if (method) setMethodBanner({ label: method.label, reason: method.reason, stage: method.stage })
+      })
+      .catch(() => undefined)
   }, [projectId])
 
   useEffect(() => {
@@ -473,6 +485,27 @@ export default function UnificationPage({ projectId, canEdit, initialRunId }: { 
           </div>
         </div>
       </header>
+
+      {methodBanner && !bannerDismissed && (
+        <div className="flex flex-col gap-3 rounded-xl border border-neutral-200 bg-white p-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-[11px] text-neutral-500">基于当前数据</div>
+            <div className="mt-1 text-sm font-semibold text-neutral-900">建议方法：{methodBanner.label}</div>
+            {methodBanner.reason && <p className="mt-1 text-xs text-neutral-500">{methodBanner.reason}</p>}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { window.location.hash = methodBanner.stage === 'L2' ? '#/tasks/new/match' : '#/tasks/new/clean' }}
+              className="rounded-lg bg-neutral-900 px-3 py-2 text-xs font-medium text-white"
+            >
+              {methodBanner.stage === 'L2' ? '去运行 L2' : '去清洗'}
+            </button>
+            <button onClick={() => setBannerDismissed(true)} className="rounded-lg border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700">
+              仍然直接匹配
+            </button>
+          </div>
+        </div>
+      )}
 
       {(error || notice) && (
         <div className={`flex items-start gap-2 rounded-xl border px-4 py-3 text-sm ${error ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`} role={error ? 'alert' : 'status'}>

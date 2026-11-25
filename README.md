@@ -39,6 +39,7 @@ Connector code paths exist for DuckDB, SQLite, MySQL, PostgreSQL, and MongoDB. T
 - [API workflow](docs/how-to/api.md)
 - [Contract unification](docs/how-to/contracts.md)
 - [Decision models](docs/how-to/decision-models.md)
+- [Guided assistant and review readability design](docs/superpowers/specs/2026-11-25-guided-assistant-design.md)
 - [Decision model evaluation](docs/reference/decision-model-evaluation.md)
 - [Database connectors and validation](docs/how-to/connectors.md)
 - [Contribution guide](CONTRIBUTING.md)
