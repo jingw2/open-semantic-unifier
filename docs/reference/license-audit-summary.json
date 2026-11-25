@@ -128,7 +128,7 @@
       "note": "Permissive."
     }
   ],
-  "conclusion": "Every Python and npm package now has an identifiable license. The repository license is Apache-2.0 and permits commercial use. Copyleft and source-available dependencies are listed with their obligations. This audit is not a legal opinion and does not clear the obligations for a combined binary or hosted distribution.",
+  "conclusion": "Every Python and npm package now has an identifiable license. The repository license is MIT and permits commercial use. Copyleft and source-available dependencies are listed with their obligations. This audit is not a legal opinion and does not clear the obligations for a combined binary or hosted distribution.",
   "open_items": [
     "Obtain legal review before distributing a combined image that includes GPL-3.0-or-later rfc3987, AGPL-3.0 MinIO, or ELv2 Phoenix.",
     "Confirm the Redis 7.4 source-available terms are acceptable for the intended deployment.",
