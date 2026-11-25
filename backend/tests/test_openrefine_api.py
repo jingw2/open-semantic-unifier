@@ -38,6 +38,7 @@ class FakeClient:
         self.fail_apply = fail_apply
         self.deleted: list[str] = []
         self.created = 0
+        self.operations: list[list[dict]] = []
 
     def health(self) -> bool:
         return self.healthy
@@ -47,6 +48,7 @@ class FakeClient:
         return "or-project-1"
 
     def apply_recipe(self, project_id: str, operations: list[dict]) -> None:
+        self.operations.append(operations)
         if self.fail_apply:
             raise OpenRefineError("OPENREFINE_RECIPE_FAILED", "openrefine exploded")
 
@@ -345,3 +347,92 @@ def test_recipe_listing_reports_the_selected_recipe(public_api, storage_root):
     payload = response.json()
     assert payload["selected_id"] == "normalize_company_name"
     assert "normalize_company_name" in {item["id"] for item in payload["items"]}
+
+
+def test_recipe_listing_exposes_field_and_column_mapping_metadata(public_api, storage_root):
+    client, maker, _identity = public_api
+    source_id = _seed_source(maker)
+    response = client.get(
+        "/api/v1/projects/project-one/openrefine/recipes",
+        params={"data_source_id": source_id},
+    )
+    assert response.status_code == 200, response.text
+    by_id = {item["id"]: item for item in response.json()["items"]}
+    company = by_id["normalize_company_name"]
+    assert company["mode"] == "fields"
+    assert company["fields"] == [{
+        "key": "name_col", "label": "名称字段", "detected": "company_name",
+        "options": ["id", "company_name", "city"], "required": True,
+    }]
+    selected = by_id["normalize_selected_columns"]
+    assert selected["mode"] == "per_column"
+    assert selected["columns"] == ["id", "company_name", "city"]
+    assert selected["default_columns"] == ["company_name"]
+
+
+def test_preview_records_a_custom_field_map_in_operations_and_job_params(public_api, storage_root):
+    client, maker, _identity = public_api
+    source_id = _seed_source(maker)
+    fake = FakeClient()
+    _use_client(fake)
+    try:
+        response = client.post(
+            "/api/v1/projects/project-one/openrefine/previews",
+            json={"data_source_id": source_id, "recipe_id": "normalize_whitespace", "field_map": {"name_col": "city"}},
+        )
+        assert response.status_code == 200, response.text
+        assert fake.operations[0][0]["columnName"] == "city"
+        with maker() as db:
+            job = db.query(Job).filter(Job.project_id == "project-one").one()
+            assert job.params_json["field_map"] == {"name_col": "city"}
+            assert job.params_json["columns"] == []
+    finally:
+        app.dependency_overrides.pop(get_openrefine_client, None)
+
+
+def test_preview_expands_a_per_column_recipe_into_the_job_params(public_api, storage_root):
+    client, maker, _identity = public_api
+    source_id = _seed_source(maker)
+    fake = FakeClient()
+    _use_client(fake)
+    try:
+        response = client.post(
+            "/api/v1/projects/project-one/openrefine/previews",
+            json={"data_source_id": source_id, "recipe_id": "normalize_selected_columns", "columns": ["company_name", "city"]},
+        )
+        assert response.status_code == 200, response.text
+        assert [op["columnName"] for op in fake.operations[0]] == ["company_name", "city"]
+        with maker() as db:
+            job = db.query(Job).filter(Job.project_id == "project-one").one()
+            assert job.params_json["columns"] == ["company_name", "city"]
+            assert job.params_json["field_map"] == {}
+    finally:
+        app.dependency_overrides.pop(get_openrefine_client, None)
+
+
+def test_per_column_recipe_with_no_matching_default_is_rejected(public_api, storage_root):
+    client, maker, _identity = public_api
+    with maker() as db:
+        source = DataSource(
+            id="ds-amount-only", project_id="project-one", name="amounts.csv", source_type="file",
+            object_key="projects/project-one/uploads/dirty.csv",
+            profile_json={
+                "total_rows": 2, "table_count": 1, "detected_keys": {},
+                "tables": [{"name": "amounts.csv", "rows": 2, "cols": 1, "columns": ["amount"],
+                            "preview": [{"amount": "10"}]}],
+            },
+        )
+        db.add(source)
+        db.commit()
+    _use_client(FakeClient())
+    try:
+        response = client.post(
+            "/api/v1/projects/project-one/openrefine/previews",
+            json={"data_source_id": "ds-amount-only", "recipe_id": "normalize_selected_columns"},
+        )
+        assert response.status_code == 422
+        assert response.json()["detail"]["code"] == "OPENREFINE_NO_RECIPE"
+        with maker() as db:
+            assert db.query(Job).filter(Job.project_id == "project-one").count() == 0
+    finally:
+        app.dependency_overrides.pop(get_openrefine_client, None)

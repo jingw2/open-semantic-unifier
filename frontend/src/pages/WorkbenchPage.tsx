@@ -54,6 +54,10 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
   const [previewError, setPreviewError] = useState('')
   const [previewFallback, setPreviewFallback] = useState(false)
   const [adoptedName, setAdoptedName] = useState('')
+  const [recipes, setRecipes] = useState<any[]>([])
+  const [recipeId, setRecipeId] = useState('')
+  const [fieldMap, setFieldMap] = useState<Record<string, string>>({})
+  const [selectedColumns, setSelectedColumns] = useState<string[]>([])
 
   const [job, setJob] = useState<JobItem | null>(null)
   const [running, setRunning] = useState(false)
@@ -62,6 +66,23 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
   const routing = effectiveRouting || activeRouting
   const needsDataSource = stage === 'L1' && dsIds.length === 0
   const isOpenRefine = stage === 'L1' && routing?.method?.key === 'openrefine_w3c'
+  const currentRecipe = recipes.find((recipe) => recipe.id === recipeId) || recipes[0]
+
+  const applyRecipe = (recipe: any) => {
+    if (!recipe) return
+    setRecipeId(recipe.id)
+    if (recipe.mode === 'per_column') {
+      setSelectedColumns(recipe.default_columns || [])
+      setFieldMap({})
+    } else {
+      const map: Record<string, string> = {}
+      ;(recipe.fields || []).forEach((field: any) => {
+        if (field.detected) map[field.key] = field.detected
+      })
+      setFieldMap(map)
+      setSelectedColumns([])
+    }
+  }
 
   useEffect(() => {
     setLocalDsIds(activeDsIds)
@@ -123,6 +144,19 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
     })
   }, [])
 
+  useEffect(() => {
+    if (!isOpenRefine || !dsIds.length) return
+    apiFetch<{ items: any[]; selected_id: string | null }>(
+      `/api/v1/projects/${projectId}/openrefine/recipes?data_source_id=${dsIds[0]}`,
+    )
+      .then((data) => {
+        setRecipes(data.items || [])
+        const chosen = (data.items || []).find((recipe) => recipe.id === data.selected_id) || (data.items || [])[0]
+        applyRecipe(chosen)
+      })
+      .catch(() => setRecipes([]))
+  }, [isOpenRefine, dsIds.join(','), projectId])
+
   const submitJob = async () => {
     setRunning(true)
     try {
@@ -174,7 +208,12 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
     try {
       const loaded = await apiFetch<OpenRefinePreview>(`/api/v1/projects/${projectId}/openrefine/previews`, {
         method: 'POST',
-        body: JSON.stringify({ data_source_id: dsIds[0] }),
+        body: JSON.stringify({
+          data_source_id: dsIds[0],
+          recipe_id: recipeId || null,
+          field_map: fieldMap,
+          columns: selectedColumns,
+        }),
       })
       setPreview(loaded)
     } catch (caught) {
@@ -292,6 +331,64 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
           {needsDataSource && <span className="text-[11px] text-neutral-500">先在数据源加载示例或上传文件</span>}
         </div>
       </div>
+
+      {isOpenRefine && dsIds.length > 0 && currentRecipe && (
+        <div className="bg-white border border-neutral-200 rounded-xl p-5 space-y-3">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="text-sm font-semibold text-neutral-900">字段设置</div>
+              <p className="mt-0.5 text-xs text-neutral-500">选择配方并映射数据字段。</p>
+            </div>
+            <select
+              aria-label="配方"
+              value={recipeId}
+              onChange={(e) => applyRecipe(recipes.find((recipe) => recipe.id === e.target.value))}
+              className="border border-neutral-300 rounded-md px-2.5 py-1.5 bg-white text-xs"
+            >
+              {recipes.map((recipe) => (
+                <option key={recipe.id} value={recipe.id}>{recipe.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {currentRecipe.mode === 'per_column' ? (
+            <div className="flex flex-wrap gap-3">
+              {(currentRecipe.columns || []).map((column: string) => (
+                <label key={column} className="flex items-center gap-1.5 text-xs text-neutral-700">
+                  <input
+                    type="checkbox"
+                    checked={selectedColumns.includes(column)}
+                    onChange={(e) =>
+                      setSelectedColumns(e.target.checked
+                        ? [...selectedColumns, column]
+                        : selectedColumns.filter((item) => item !== column))
+                    }
+                  />
+                  {column}
+                </label>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {(currentRecipe.fields || []).map((field: any) => (
+                <label key={field.key} className="flex flex-col gap-1 text-xs">
+                  <span className="font-medium text-neutral-700">{field.label}</span>
+                  <select
+                    value={fieldMap[field.key] || ''}
+                    onChange={(e) => setFieldMap({ ...fieldMap, [field.key]: e.target.value })}
+                    className="border border-neutral-300 rounded-md px-2.5 py-1.5 bg-white"
+                  >
+                    <option value="">未选择</option>
+                    {(field.options || []).map((option: string) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {(preview || previewError || adoptedName) && (
         <div className="bg-white border border-neutral-200 rounded-xl p-5 space-y-4">
@@ -479,11 +576,20 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
 
           {/* L1 结果 */}
           {job.status === 'SUCCESS' && job.stage === 'L1' && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-200"><div className="text-2xl font-semibold text-brand-600">{job.result.total_rows}</div><div className="text-xs text-neutral-500">总行数</div></div>
-              <div className="p-4 bg-red-50 rounded-xl border border-red-200"><div className="text-2xl font-semibold text-red-600">{job.result.before_unique} 种</div><div className="text-xs text-red-700">清洗前马甲裂变</div></div>
-              <div className="p-4 bg-green-50 rounded-xl border border-green-200"><div className="text-2xl font-semibold text-green-600">{job.result.after_unique} 家</div><div className="text-xs text-green-700">对齐后标准实体</div></div>
-              <div className="p-4 bg-brand-50 rounded-xl border border-brand-200"><div className="text-2xl font-semibold text-brand-600">{job.result.review_queued} 条</div><div className="text-xs text-brand-700">已推入复核队列</div></div>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-200"><div className="text-2xl font-semibold text-brand-600">{job.result.total_rows}</div><div className="text-xs text-neutral-500">总行数</div></div>
+                <div className="p-4 bg-red-50 rounded-xl border border-red-200"><div className="text-2xl font-semibold text-red-600">{job.result.before_unique} 种</div><div className="text-xs text-red-700">清洗前马甲裂变</div></div>
+                <div className="p-4 bg-green-50 rounded-xl border border-green-200"><div className="text-2xl font-semibold text-green-600">{job.result.after_unique} 家</div><div className="text-xs text-green-700">对齐后标准实体</div></div>
+                <div className="p-4 bg-brand-50 rounded-xl border border-brand-200"><div className="text-2xl font-semibold text-brand-600">{job.result.review_queued} 条</div><div className="text-xs text-brand-700">已推入复核队列</div></div>
+              </div>
+              {(job.result?.reference_catalog?.kind === 'roster' || job.result?.reference_catalog?.kind === 'demo') && (
+                <p className="text-xs text-neutral-500">
+                  对齐来源：{job.result.reference_catalog.kind === 'roster'
+                    ? `标准花名册 ${job.result.reference_catalog.name}`
+                    : '演示花名册'}
+                </p>
+              )}
             </div>
           )}
 

@@ -18,6 +18,7 @@ from app.services.openrefine.recipes import (
     Recipe,
     RecipeColumnMissing,
     openrefine_limits_ok,
+    recipe_default_columns,
     recipe_payload,
     render_operations,
     select_recipe,
@@ -134,6 +135,8 @@ def create_preview(
     actor_id: str,
     client: OpenRefineClient,
     recipe_id: str | None = None,
+    field_map: dict[str, str] | None = None,
+    columns: list[str] | None = None,
 ) -> dict[str, Any]:
     source = db.get(DataSource, data_source_id)
     if source is None or source.project_id != project_id:
@@ -158,8 +161,12 @@ def create_preview(
         recipe = select_recipe(profile)
     if recipe is None:
         raise OpenRefineNoRecipe("没有匹配当前数据的内置配方")
+    if recipe.mode == "per_column" and not columns:
+        columns = recipe_default_columns(recipe, profile)
+    if recipe.mode == "per_column" and not columns:
+        raise OpenRefineNoRecipe(f"配方 {recipe.name} 没有匹配当前数据的列")
     try:
-        operations = render_operations(recipe, profile)
+        operations = render_operations(recipe, profile, field_map=field_map, columns=columns)
     except RecipeColumnMissing as exc:
         raise OpenRefineNoRecipe(f"配方 {recipe.name} 不适用于当前数据") from exc
 
@@ -175,6 +182,8 @@ def create_preview(
             "recipe_version": recipe.version,
             "datasource_id": source.id,
             "actor_id": actor_id,
+            "field_map": field_map or {},
+            "columns": columns or [],
         },
         result_json={},
     )
@@ -211,7 +220,7 @@ def create_preview(
     job.stage_message = "OpenRefine 清洗完成，等待采用"
     job.result_json = {
         "engine": "openrefine",
-        "recipe": recipe_payload(recipe),
+        "recipe": recipe_payload(recipe, profile=profile, field_map=field_map),
         "diff": diff,
         "artifact_id": artifact.id,
         "openrefine_project_id": openrefine_project_id,
@@ -222,7 +231,7 @@ def create_preview(
     return {
         "preview_id": job.id,
         "engine": "openrefine",
-        "recipe": recipe_payload(recipe),
+        "recipe": recipe_payload(recipe, profile=profile, field_map=field_map),
         "diff": diff,
         "artifact_id": artifact.id,
         "fallback_reason": None,

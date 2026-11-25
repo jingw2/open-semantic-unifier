@@ -10,6 +10,7 @@ from app.services.openrefine.recipes import (
     RecipeCatalogError,
     load_recipes,
     openrefine_limits_ok,
+    recipe_default_columns,
     recipe_payload,
     render_operations,
     select_recipe,
@@ -39,6 +40,7 @@ def test_recipe_catalog_is_read_only_and_versioned():
     assert {r.id for r in recipes} >= {
         "normalize_company_name", "normalize_whitespace", "normalize_punctuation",
         "remove_legal_suffix", "split_contact_column", "merge_name_columns",
+        "normalize_selected_columns",
     }
     assert all(r.version == "1.0.0" and r.operations for r in recipes)
     payload = recipe_payload(recipes[0])
@@ -116,3 +118,58 @@ def test_invalid_recipe_file_is_rejected(tmp_path, monkeypatch):
     monkeypatch.setattr(recipes_module, "RECIPE_DIR", tmp_path)
     with pytest.raises(RecipeCatalogError, match="missing"):
         load_recipes()
+
+
+def test_field_map_overrides_the_detected_column():
+    recipe = next(r for r in load_recipes() if r.id == "normalize_whitespace")
+    operations = render_operations(recipe, supplier_profile(), field_map={"name_col": "city"})
+    assert operations[0]["columnName"] == "city"
+
+
+def test_field_map_rejects_an_unknown_key_and_an_unknown_column():
+    recipe = next(r for r in load_recipes() if r.id == "normalize_whitespace")
+    with pytest.raises(RecipeCatalogError):
+        render_operations(recipe, supplier_profile(), field_map={"contact_col": "city"})
+    with pytest.raises(RecipeCatalogError):
+        render_operations(recipe, supplier_profile(), field_map={"name_col": "missing"})
+
+
+def test_per_column_recipe_repeats_one_operation_per_selected_column():
+    recipe = next(r for r in load_recipes() if r.id == "normalize_selected_columns")
+    operations = render_operations(recipe, supplier_profile(), columns=["supplier_raw_name", "city"])
+    assert [op["columnName"] for op in operations] == ["supplier_raw_name", "city"]
+    assert all(op["expression"] == "value.trim().split(/\\s+/).join(' ')" for op in operations)
+    assert "${" not in repr(operations)
+
+
+def test_per_column_recipe_requires_a_selection_in_the_profile():
+    recipe = next(r for r in load_recipes() if r.id == "normalize_selected_columns")
+    with pytest.raises(RecipeCatalogError):
+        render_operations(recipe, supplier_profile(), columns=[])
+    with pytest.raises(RecipeCatalogError):
+        render_operations(recipe, supplier_profile(), columns=["not_a_column"])
+
+
+def test_per_column_default_columns_come_from_the_column_terms():
+    recipe = next(r for r in load_recipes() if r.id == "normalize_selected_columns")
+    assert recipe_default_columns(recipe, supplier_profile()) == ["supplier_raw_name"]
+    payload = recipe_payload(recipe, supplier_profile())
+    assert payload["mode"] == "per_column"
+    assert payload["columns"] == ["supplier_raw_name", "city", "tax_id"]
+    assert payload["default_columns"] == ["supplier_raw_name"]
+
+
+def test_fields_payload_declares_labels_detected_and_options():
+    recipe = next(r for r in load_recipes() if r.id == "merge_name_columns")
+    profile = supplier_profile()
+    profile["tables"][0]["columns"] = ["first_name", "last_name", "city"]
+    payload = recipe_payload(recipe, profile)
+    assert payload["mode"] == "fields"
+    keys = {field["key"] for field in payload["fields"]}
+    assert keys == {"first_name_col", "last_name_col"}
+    by_key = {field["key"]: field for field in payload["fields"]}
+    assert by_key["first_name_col"]["label"] == "名字"
+    assert by_key["last_name_col"]["label"] == "姓氏"
+    assert by_key["first_name_col"]["detected"] == "first_name"
+    assert by_key["first_name_col"]["options"] == ["first_name", "last_name", "city"]
+    assert by_key["first_name_col"]["required"] is True

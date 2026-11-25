@@ -25,12 +25,13 @@ Anything larger or multi-table is never sent to OpenRefine. Small single tables 
 ## Preview, adopt, cancel
 
 1. Select a file data source and open 处理方法.
-2. Choose `OpenRefine 预览`. The backend creates a temporary OpenRefine project and applies the selected built-in recipe.
-3. The diff card shows changed rows, changed cells, row counts, column changes, and up to 20 before/after examples. The cleaned CSV is stored as a DRAFT artifact and can be viewed online.
-4. `采用并生成新数据源` copies the cleaned CSV into a new DataSource. The original source and object are unchanged.
-5. `撤销` deletes the temporary OpenRefine project. An adopted preview cannot be cancelled; adopting twice returns a conflict.
+2. In the `字段设置` card, pick a recipe and map its fields to the source columns. The field selects start from the detected columns, and the per-column recipe offers a checkbox group of all columns.
+3. Choose `OpenRefine 预览`. The backend creates a temporary OpenRefine project and applies the selected built-in recipe with your field mapping.
+4. The diff card shows changed rows, changed cells, row counts, column changes, and up to 20 before/after examples. The cleaned CSV is stored as a DRAFT artifact and can be viewed online.
+5. `采用并生成新数据源` copies the cleaned CSV into a new DataSource. The original source and object are unchanged.
+6. `撤销` deletes the temporary OpenRefine project. An adopted preview cannot be cancelled; adopting twice returns a conflict.
 
-Every preview is recorded on the existing Job row with the recipe id, recipe version, operator, and diff statistics. No migration is required.
+Every preview is recorded on the existing Job row with the recipe id, recipe version, operator, field mapping, selected columns, and diff statistics. No migration is required.
 
 ## Built-in recipes
 
@@ -42,6 +43,9 @@ Recipes are read-only, versioned JSON files under `backend/app/services/openrefi
 - 去掉公司法律后缀
 - 拆分联系方式
 - 合并姓名字段
+- 按列归一所选字段
+
+The first six are field recipes: each declares required placeholders such as `name_col` or `contact_col`, and the workbench maps them to the source columns. `按列归一所选字段` is a per-column recipe: it repeats one trim-and-collapse operation over every selected column, defaulting to columns whose names match the built-in column terms (name, company, supplier, customer, 公司, 名称, 供应商, 客户).
 
 Selection is based on the data profile. The workbench shows the selected recipe; the preview shows its name, version, and diff.
 

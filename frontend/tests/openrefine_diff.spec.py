@@ -133,6 +133,8 @@ def test_openrefine_preview_adopt_cancel_and_fallback():
             open_route(page, "#/tasks/new/clean")
             expect(page.get_by_role("heading", name="处理方法", exact=True)).to_be_visible(timeout=15000)
             expect(page.get_by_role("button", name="OpenRefine 预览", exact=True)).to_be_visible()
+            expect(page.get_by_text("字段设置", exact=True)).to_be_visible(timeout=15000)
+            page.get_by_label("名称字段").select_option("city")
             page.get_by_role("button", name="OpenRefine 预览", exact=True).click()
             expect(page.get_by_text("OpenRefine 清洗预览 · 公司名称归一", exact=False)).to_be_visible(timeout=15000)
             expect(page.get_by_text("Acme, Ltd", exact=True)).to_be_visible()

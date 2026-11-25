@@ -19,6 +19,18 @@ _NAME_TERMS = ("company", "supplier", "customer", "name", "公司", "供应商",
 _CONTACT_TERMS = ("contact", "phone", "mobile", "email", "contact_info", "联系方式", "电话", "邮箱")
 _PLACEHOLDER = re.compile(r"\$\{([a-z_]+)\}")
 _SEPARATORS = (";", "；", ",", "，", "、", "|")
+_FIELD_LABELS = {
+    "name_col": "名称字段",
+    "contact_col": "联系方式",
+    "first_name_col": "名字",
+    "last_name_col": "姓氏",
+}
+_FIELD_TERMS = {
+    "name_col": _NAME_TERMS,
+    "contact_col": _CONTACT_TERMS,
+    "first_name_col": ("first_name", "firstname", "名字"),
+    "last_name_col": ("last_name", "lastname", "姓氏"),
+}
 
 
 class RecipeCatalogError(Exception):
@@ -39,6 +51,7 @@ class Recipe:
     match: dict[str, Any]
     limits: dict[str, int]
     operations: tuple[dict[str, Any], ...]
+    mode: str = "fields"
 
 
 def load_recipes() -> list[Recipe]:
@@ -63,6 +76,7 @@ def load_recipes() -> list[Recipe]:
             match=dict(payload["match"]),
             limits=dict(payload["limits"]),
             operations=tuple(copy.deepcopy(operations)),
+            mode=str(payload.get("mode", "fields")),
         ))
     ids = [recipe.id for recipe in recipes]
     if len(ids) != len(set(ids)):
@@ -70,15 +84,72 @@ def load_recipes() -> list[Recipe]:
     return sorted(recipes, key=lambda recipe: (recipe.priority, recipe.id))
 
 
-def recipe_payload(recipe: Recipe) -> dict[str, Any]:
-    return {
+def _placeholders(recipe: Recipe) -> list[str]:
+    found: list[str] = []
+
+    def visit(value: Any) -> None:
+        if isinstance(value, str):
+            for match in _PLACEHOLDER.finditer(value):
+                key = match.group(1)
+                if key not in found:
+                    found.append(key)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                visit(item)
+        elif isinstance(value, dict):
+            for item in value.values():
+                visit(item)
+
+    visit(recipe.operations)
+    return found
+
+
+def _detected_column(profile: dict[str, Any], key: str) -> str | None:
+    keys = profile.get("detected_keys") or {}
+    candidate = keys.get(key)
+    columns = _columns(profile)
+    if isinstance(candidate, str) and candidate and candidate in columns:
+        return candidate
+    return _find_column(profile, _FIELD_TERMS.get(key, ()))
+
+
+def recipe_default_columns(recipe: Recipe, profile: dict[str, Any]) -> list[str]:
+    terms = tuple(recipe.match.get("column_terms") or ())
+    if not terms:
+        return []
+    return [column for column in _columns(profile) if any(term in column.casefold() for term in terms)]
+
+
+def recipe_payload(recipe: Recipe, profile: dict[str, Any] | None = None, field_map: dict[str, str] | None = None) -> dict[str, Any]:
+    profile = profile or {}
+    columns = _columns(profile)
+    payload = {
         "id": recipe.id,
         "name": recipe.name,
         "description": recipe.description,
         "version": recipe.version,
         "priority": recipe.priority,
         "limits": dict(recipe.limits),
+        "mode": recipe.mode,
     }
+    if recipe.mode == "per_column":
+        payload["columns"] = columns
+        payload["default_columns"] = recipe_default_columns(recipe, profile)
+    else:
+        fields = []
+        for key in _placeholders(recipe):
+            detected = _detected_column(profile, key)
+            if field_map and key in field_map and field_map[key] in columns:
+                detected = field_map[key]
+            fields.append({
+                "key": key,
+                "label": _FIELD_LABELS.get(key, key),
+                "detected": detected,
+                "options": columns,
+                "required": True,
+            })
+        payload["fields"] = fields
+    return payload
 
 
 def _columns(profile: dict[str, Any]) -> list[str]:
@@ -199,12 +270,45 @@ def _substitute(value: Any, context: dict[str, str]) -> Any:
     return value
 
 
-def render_operations(recipe: Recipe, profile: dict[str, Any]) -> list[dict[str, Any]]:
+def _render_fields(recipe: Recipe, profile: dict[str, Any], field_map: dict[str, str]) -> list[dict[str, Any]]:
     context = _context(profile)
+    placeholders = set(_placeholders(recipe))
+    profile_columns = _columns(profile)
+    for key, value in field_map.items():
+        if key not in placeholders:
+            raise RecipeColumnMissing(f"recipe does not use field {key}")
+        if value not in profile_columns:
+            raise RecipeColumnMissing(f"recipe requires column {value}")
+        context[key] = value
     operations = _substitute([copy.deepcopy(op) for op in recipe.operations], context)
     if not all(isinstance(op, dict) for op in operations):
         raise RecipeCatalogError("rendered operations must be objects")
     return operations
+
+
+def _render_per_column(recipe: Recipe, profile: dict[str, Any], columns: list[str]) -> list[dict[str, Any]]:
+    if not columns:
+        raise RecipeColumnMissing("recipe requires at least one selected column")
+    profile_columns = _columns(profile)
+    operations: list[dict[str, Any]] = []
+    for column in columns:
+        if column not in profile_columns:
+            raise RecipeColumnMissing(f"recipe requires column {column}")
+        for op in recipe.operations:
+            operations.append(_substitute(copy.deepcopy(op), {"column": column}))
+    return operations
+
+
+def render_operations(
+    recipe: Recipe,
+    profile: dict[str, Any],
+    *,
+    field_map: dict[str, str] | None = None,
+    columns: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    if recipe.mode == "per_column":
+        return _render_per_column(recipe, profile, columns or [])
+    return _render_fields(recipe, profile, field_map or {})
 
 
 def openrefine_limits_ok(profile: dict[str, Any], size_bytes: int) -> tuple[bool, str | None]:

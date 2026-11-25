@@ -33,6 +33,8 @@ router = APIRouter(
 class PreviewRequest(BaseModel):
     data_source_id: str = Field(min_length=1, max_length=32)
     recipe_id: str | None = Field(default=None, max_length=80)
+    field_map: dict[str, str] = Field(default_factory=dict)
+    columns: list[str] = Field(default_factory=list)
 
 
 def get_openrefine_client() -> OpenRefineClient:
@@ -55,7 +57,7 @@ def list_openrefine_recipes(
         raise HTTPException(status_code=500, detail={"code": "RECIPE_CATALOG_INVALID", "message": str(exc)}) from exc
     selected = select_recipe(source.profile_json or {})
     return {
-        "items": [recipe_payload(recipe) for recipe in recipes],
+        "items": [recipe_payload(recipe, profile=source.profile_json or {}) for recipe in recipes],
         "selected_id": selected.id if selected else None,
     }
 
@@ -72,6 +74,7 @@ def create_openrefine_preview(
         return create_preview(
             db, project_id=project_id, data_source_id=request.data_source_id,
             actor_id=ctx["user_id"], client=client, recipe_id=request.recipe_id,
+            field_map=request.field_map, columns=request.columns,
         )
     except OpenRefineUnavailable as exc:
         raise http_error(503, exc.code, str(exc), fallback="rule_clean") from exc
