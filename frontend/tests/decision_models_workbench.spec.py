@@ -21,6 +21,8 @@ import uvicorn
 
 BACKEND = Path(__file__).resolve().parents[2] / "backend"
 sys.path.insert(0, str(BACKEND))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ui_helpers import open_route
 
 from app.api.deps import get_current_user, require_resource_access
 from app.core.db import Base, get_db
@@ -130,7 +132,7 @@ def test_decision_models_workbench_provider_test_and_review_evidence():
             expect(page.get_by_role("alert")).to_have_count(0)
 
             # 1. Create a perplexity_decisions provider pointing at the controlled server.
-            page.get_by_role("button", name="模型 Provider").click()
+            open_route(page, "#/settings/providers")
             page.get_by_role("button", name="Perplexity Decisions").click()
             page.get_by_label("Base URL").fill(f"http://127.0.0.1:{choice_port}")
             page.get_by_label("API Key").fill("test-secret-key")
@@ -163,7 +165,7 @@ def test_decision_models_workbench_provider_test_and_review_evidence():
             expect(page.get_by_role("alert")).to_have_count(0)
 
             # 3. Configure a scheme with that provider and run a two-record customer pair.
-            page.get_by_role("button", name="实体统一工作台").click()
+            open_route(page, "#/tasks/new/entity")
             expect(page.get_by_role("heading", name="实体统一工作台")).to_be_visible()
 
             page.get_by_label("方案名称").fill("customers")

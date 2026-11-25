@@ -1,27 +1,45 @@
 import React, { useEffect, useState } from 'react'
-import { Bot, CheckSquare, Database, FileText, LogOut, Plus, Rocket, Route, Users, GitMerge } from 'lucide-react'
+import { CheckSquare, Database, ListChecks, LogOut, Plus, Settings as SettingsIcon } from 'lucide-react'
 import { apiFetch, clearAuth, getStoredUser, getToken, ProjectItem, UserInfo } from './lib/api'
+import { parseRoute, Route, routeNav } from './lib/router'
 import LoginPage from './pages/LoginPage'
 import DataSourcesPage from './pages/DataSourcesPage'
-import WorkbenchPage from './pages/WorkbenchPage'
-import ReviewQueuePage from './pages/ReviewQueuePage'
+import TasksPage from './pages/TasksPage'
+import TaskDetailPage from './pages/TaskDetailPage'
+import SettingsPage from './pages/SettingsPage'
+import ReviewHomePage from './pages/ReviewHomePage'
 import ServingReleasePage from './pages/ServingReleasePage'
-import ProvidersPage from './pages/ProvidersPage'
-import TeamAdminPage from './pages/TeamAdminPage'
-import UnificationPage from './pages/UnificationPage'
-import ContractsPage from './pages/ContractsPage'
 
-type NavKey = 'datasources' | 'workbench' | 'unification' | 'contracts' | 'reviews' | 'serving' | 'providers' | 'team'
+type NavKey = 'data' | 'tasks' | 'reviews' | 'settings'
+
+function initialRoute(): Route {
+  return parseRoute(window.location.hash) || { view: 'data' }
+}
 
 export default function App() {
   const [user, setUser] = useState<UserInfo | null>(() => (getToken() ? getStoredUser() : null))
-  const [nav, setNav] = useState<NavKey>('datasources')
+  const [route, setRoute] = useState<Route>(initialRoute)
   const [projects, setProjects] = useState<ProjectItem[]>([])
   const [activeProject, setActiveProject] = useState<ProjectItem | null>(null)
 
   const [activeDsIds, setActiveDsIds] = useState<string[]>([])
   const [activeProfile, setActiveProfile] = useState<any>(null)
   const [activeRouting, setActiveRouting] = useState<any>(null)
+
+  const navigate = (hash: string) => {
+    if (window.location.hash === hash) {
+      setRoute(parseRoute(hash) || { view: 'data' })
+    } else {
+      window.location.hash = hash
+    }
+  }
+
+  useEffect(() => {
+    const onHash = () => setRoute(parseRoute(window.location.hash) || { view: 'data' })
+    window.addEventListener('hashchange', onHash)
+    if (!window.location.hash) window.location.hash = '#/data'
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
 
   const loadProjects = async () => {
     const list = await apiFetch<ProjectItem[]>('/api/v1/projects')
@@ -49,19 +67,113 @@ export default function App() {
   }
 
   const navItems: { key: NavKey; label: string; icon: React.ReactNode }[] = [
-    { key: 'datasources', label: '数据源中心', icon: <Database className="w-4 h-4" /> },
-    { key: 'workbench', label: '路由工作台', icon: <Route className="w-4 h-4" /> },
-    { key: 'unification', label: '实体统一工作台', icon: <GitMerge className="w-4 h-4" /> },
-    { key: 'contracts', label: '契约统一', icon: <FileText className="w-4 h-4" /> },
-    { key: 'reviews', label: '人工复核队列', icon: <CheckSquare className="w-4 h-4" /> },
-    { key: 'serving', label: '发布与对外 API', icon: <Rocket className="w-4 h-4" /> },
-    { key: 'providers', label: '模型 Provider', icon: <Bot className="w-4 h-4" /> },
-    { key: 'team', label: '团队与权限', icon: <Users className="w-4 h-4" /> },
+    { key: 'data', label: '数据', icon: <Database className="h-4 w-4" /> },
+    { key: 'tasks', label: '任务', icon: <ListChecks className="h-4 w-4" /> },
+    { key: 'reviews', label: '复核', icon: <CheckSquare className="h-4 w-4" /> },
+    { key: 'settings', label: '设置', icon: <SettingsIcon className="h-4 w-4" /> },
   ]
+
+  const onNav = (key: NavKey) => {
+    if (key === 'data') navigate('#/data')
+    else if (key === 'tasks') navigate('#/tasks')
+    else if (key === 'reviews') navigate('#/reviews')
+    else navigate('#/settings/providers')
+  }
+
+  const onRouteReady = (dsIds: string[], profile: any, routing: any) => {
+    setActiveDsIds(dsIds)
+    setActiveProfile(profile)
+    setActiveRouting(routing)
+    const stage = routing?.method?.stage || routing?.recommended_stage
+    if (stage === 'L3') navigate('#/tasks/new/contract')
+    else if (stage === 'L2') navigate('#/tasks/new/match')
+    else if (stage === 'L4') navigate('#/tasks/new/metrics')
+    else navigate('#/tasks/new/clean')
+  }
+
+  const nav = routeNav(route)
+
+  const renderContent = () => {
+    if (!activeProject) return <div className="text-sm text-neutral-500">正在加载项目...</div>
+    switch (route.view) {
+      case 'data':
+        return <DataSourcesPage projectId={activeProject.id} onRouteReady={onRouteReady} />
+      case 'tasks':
+        return <TasksPage projectId={activeProject.id} onRoute={navigate} />
+      case 'tasks-new':
+        return (
+          <TaskDetailPage
+            project={activeProject}
+            canEdit={user.role !== 'viewer'}
+            activeDsIds={activeDsIds}
+            activeProfile={activeProfile}
+            activeRouting={activeRouting}
+            newKind={route.kind}
+            onBack={() => navigate('#/tasks')}
+            onGoDataSources={() => navigate('#/data')}
+            onGoContracts={() => navigate('#/tasks/new/contract')}
+          />
+        )
+      case 'tasks-job':
+        return (
+          <TaskDetailPage
+            project={activeProject}
+            canEdit={user.role !== 'viewer'}
+            activeDsIds={activeDsIds}
+            activeProfile={activeProfile}
+            activeRouting={activeRouting}
+            jobId={route.jobId}
+            onBack={() => navigate('#/tasks')}
+            onGoDataSources={() => navigate('#/data')}
+            onGoContracts={() => navigate('#/tasks/new/contract')}
+          />
+        )
+      case 'tasks-run':
+        return (
+          <TaskDetailPage
+            project={activeProject}
+            canEdit={user.role !== 'viewer'}
+            activeDsIds={activeDsIds}
+            activeProfile={activeProfile}
+            activeRouting={activeRouting}
+            runId={route.runId}
+            onBack={() => navigate('#/tasks')}
+            onGoDataSources={() => navigate('#/data')}
+            onGoContracts={() => navigate('#/tasks/new/contract')}
+          />
+        )
+      case 'tasks-contract':
+        return (
+          <TaskDetailPage
+            project={activeProject}
+            canEdit={user.role !== 'viewer'}
+            activeDsIds={activeDsIds}
+            activeProfile={activeProfile}
+            activeRouting={activeRouting}
+            versionId={route.versionId}
+            onBack={() => navigate('#/tasks')}
+            onGoDataSources={() => navigate('#/data')}
+            onGoContracts={() => navigate('#/tasks/new/contract')}
+          />
+        )
+      case 'tasks-publish':
+        return <ServingReleasePage project={activeProject} />
+      case 'reviews':
+        return <ReviewHomePage projectId={activeProject.id} onRoute={navigate} />
+      case 'settings':
+        return (
+          <SettingsPage
+            project={activeProject}
+            currentUser={user}
+            canEdit={user.role !== 'viewer'}
+            initialTab={route.tab}
+          />
+        )
+    }
+  }
 
   return (
     <div className="min-h-screen flex">
-      {/* 左侧专业导航栏 */}
       <aside className="w-60 bg-[#fbfbfb] border-r border-neutral-200 flex flex-col justify-between p-3 shrink-0">
         <div>
           <div className="flex items-center gap-2.5 px-2 py-1.5 mb-5">
@@ -98,7 +210,7 @@ export default function App() {
             {navItems.map((item) => (
               <button
                 key={item.key}
-                onClick={() => setNav(item.key)}
+                onClick={() => onNav(item.key)}
                 className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-[13px] transition ${
                   nav === item.key ? 'bg-neutral-200/70 text-neutral-900 font-medium' : 'text-neutral-600 hover:bg-neutral-200/50'
                 }`}
@@ -122,44 +234,8 @@ export default function App() {
         </div>
       </aside>
 
-      {/* 主内容区 */}
       <main className="flex-1 bg-[#f7f7f8] p-6 md:p-8 overflow-y-auto">
-        <div className="max-w-5xl mx-auto">
-          {!activeProject ? (
-            <div className="text-sm text-neutral-500">正在加载项目...</div>
-          ) : nav === 'datasources' ? (
-            <DataSourcesPage
-              projectId={activeProject.id}
-              onRouteReady={(dsIds, profile, routing) => {
-                setActiveDsIds(dsIds)
-                setActiveProfile(profile)
-                setActiveRouting(routing)
-                setNav(routing?.recommended_stage === 'L3' ? 'contracts' : 'workbench')
-              }}
-            />
-          ) : nav === 'workbench' ? (
-            <WorkbenchPage
-              projectId={activeProject.id}
-              activeDsIds={activeDsIds}
-              activeProfile={activeProfile}
-              activeRouting={activeRouting}
-              onGoDataSources={() => setNav('datasources')}
-              onGoContracts={() => setNav('contracts')}
-            />
-          ) : nav === 'unification' ? (
-            <UnificationPage projectId={activeProject.id} canEdit={user.role !== 'viewer'} />
-          ) : nav === 'contracts' ? (
-            <ContractsPage projectId={activeProject.id} canEdit={user.role !== 'viewer'} />
-          ) : nav === 'reviews' ? (
-            <ReviewQueuePage projectId={activeProject.id} />
-          ) : nav === 'serving' ? (
-            <ServingReleasePage project={activeProject} />
-          ) : nav === 'providers' ? (
-            <ProvidersPage />
-          ) : (
-            <TeamAdminPage currentUser={user} />
-          )}
-        </div>
+        <div className="max-w-5xl mx-auto">{renderContent()}</div>
       </main>
     </div>
   )

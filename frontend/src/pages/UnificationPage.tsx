@@ -139,7 +139,7 @@ function parseBatch(text: string, mode: 'sync' | 'exploration'): BatchRecord[] {
   })
 }
 
-export default function UnificationPage({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+export default function UnificationPage({ projectId, canEdit, initialRunId }: { projectId: string; canEdit: boolean; initialRunId?: string }) {
   const [tab, setTab] = useState<Tab>('configure')
   const [schemeKey, setSchemeKey] = useState('suppliers')
   const [scheme, setScheme] = useState<UnificationScheme>(starterScheme)
@@ -214,6 +214,23 @@ export default function UnificationPage({ projectId, canEdit }: { projectId: str
     setBatchImported(false)
     void loadWorkspace()
   }, [projectId])
+
+  useEffect(() => {
+    if (!initialRunId) return
+    const found = runs.find((run) => run.run_id === initialRunId)
+    if (found) {
+      setActiveRun(found)
+      setTab('run')
+      return
+    }
+    apiFetch<UnificationRun>(`${base}/runs/${initialRunId}`)
+      .then((run) => {
+        setRuns((items) => [run, ...items.filter((item) => item.run_id !== run.run_id)])
+        setActiveRun(run)
+        setTab('run')
+      })
+      .catch(() => setError('任务不存在'))
+  }, [initialRunId, runs])
 
   useEffect(() => {
     if (!activeRun || activeRun.status !== 'SUCCEEDED') {

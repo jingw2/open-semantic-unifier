@@ -123,7 +123,7 @@ const statusBadge: Record<ContractVersionStatus, string> = {
   ARCHIVED: 'bg-neutral-100 text-neutral-500',
 }
 
-export default function ContractsPage({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+export default function ContractsPage({ projectId, canEdit, initialVersionId }: { projectId: string; canEdit: boolean; initialVersionId?: string }) {
   const [tab, setTab] = useState<Tab>('sources')
   const [loaded, setLoaded] = useState(false)
   const [sources, setSources] = useState<ContractSourceItem[]>([])
@@ -194,6 +194,21 @@ export default function ContractsPage({ projectId, canEdit }: { projectId: strin
   useEffect(() => {
     if (!selectedSnapshotId && snapshots.length > 0) setSelectedSnapshotId(snapshots[0].snapshot_id)
   }, [snapshots, selectedSnapshotId])
+
+  useEffect(() => {
+    if (!initialVersionId) return
+    const found = versions.find((version) => version.id === initialVersionId)
+    if (found) {
+      setTab('versions')
+      return
+    }
+    apiFetch<ContractVersionItem>(`${base}/contracts/versions/${initialVersionId}`)
+      .then((version) => {
+        setVersions((items) => [version, ...items.filter((item) => item.id !== version.id)])
+        setTab('versions')
+      })
+      .catch(() => setError('任务不存在'))
+  }, [initialVersionId, versions])
 
   const addSource = async () => {
     if (!selectedDataSourceId) return

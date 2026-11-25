@@ -1,7 +1,7 @@
 import { ArtifactDownload, ArtifactPreview } from '../components/ArtifactAccess'
 import React, { useEffect, useState } from 'react'
 import { Play, Download, CheckCircle2, AlertTriangle } from 'lucide-react'
-import { apiFetch, JobItem } from '../lib/api'
+import { apiFetch, DataSourceItem, JobItem } from '../lib/api'
 
 type WorkbenchStage = 'L1' | 'L2' | 'L4'
 
@@ -14,26 +14,74 @@ interface Props {
   activeDsIds: string[]
   activeProfile: any
   activeRouting: any
+  initialJobId?: string
+  initialStage?: WorkbenchStage
   onGoDataSources: () => void
   onGoContracts: () => void
 }
 
-export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, activeRouting, onGoDataSources, onGoContracts }: Props) {
-  const [stage, setStage] = useState<WorkbenchStage>(normalizeStage(activeRouting?.recommended_stage))
+export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, activeRouting, initialJobId, initialStage, onGoDataSources, onGoContracts }: Props) {
+  const [stage, setStage] = useState<WorkbenchStage>(initialStage || normalizeStage(activeRouting?.recommended_stage))
   const [providers, setProviders] = useState<any[]>([])
   const [providerId, setProviderId] = useState('')
   const [metricName, setMetricName] = useState('net_gmv')
   const [enableHybrid, setEnableHybrid] = useState(true)
+  const [localDsIds, setLocalDsIds] = useState<string[]>(activeDsIds)
+  const [localProfile, setLocalProfile] = useState<any>(activeProfile)
+  const [effectiveRouting, setEffectiveRouting] = useState<any>(activeRouting)
+  const [loadError, setLoadError] = useState('')
 
   const [job, setJob] = useState<JobItem | null>(null)
   const [running, setRunning] = useState(false)
-  const needsDataSource = stage === 'L1' && activeDsIds.length === 0
+  const dsIds = localDsIds.length ? localDsIds : activeDsIds
+  const profile = localProfile || activeProfile
+  const routing = effectiveRouting || activeRouting
+  const needsDataSource = stage === 'L1' && dsIds.length === 0
 
   useEffect(() => {
+    setLocalDsIds(activeDsIds)
+  }, [activeDsIds])
+
+  useEffect(() => {
+    setLocalProfile(activeProfile)
+  }, [activeProfile])
+
+  useEffect(() => {
+    setEffectiveRouting(activeRouting)
+  }, [activeRouting])
+
+  useEffect(() => {
+    if (initialStage) {
+      setStage(initialStage)
+      return
+    }
     if (activeRouting?.recommended_stage) {
       setStage(normalizeStage(activeRouting.recommended_stage))
     }
-  }, [activeRouting])
+  }, [activeRouting, initialStage])
+
+  useEffect(() => {
+    if (!initialJobId) return
+    apiFetch<JobItem>(`/api/v1/jobs/${initialJobId}`)
+      .then((loaded) => {
+        setJob(loaded)
+        setStage(normalizeStage(loaded.stage))
+      })
+      .catch((caught) => setLoadError(caught instanceof Error ? caught.message : '任务加载失败'))
+  }, [initialJobId])
+
+  useEffect(() => {
+    if (routing) return
+    apiFetch<DataSourceItem[]>(`/api/v1/projects/${projectId}/datasources`)
+      .then((sources) => {
+        const latest = sources.find((source) => source.routing && Object.keys(source.routing).length > 0)
+        if (!latest) return
+        setEffectiveRouting(latest.routing)
+        setLocalProfile(latest.profile)
+        setLocalDsIds([latest.id])
+      })
+      .catch(() => undefined)
+  }, [projectId, routing])
 
   useEffect(() => {
     apiFetch<{ configured: any[] }>('/api/v1/providers').then((d) => {
@@ -46,7 +94,7 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
   const submitJob = async () => {
     setRunning(true)
     try {
-      const sp = activeRouting?.suggested_params || {}
+      const sp = routing?.suggested_params || {}
       const params: Record<string, any> =
         stage === 'L1'
           ? { target_col: sp.name_col, amount_col: sp.amount_col }
@@ -60,7 +108,7 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
         method: 'POST',
         body: JSON.stringify({
           stage,
-          datasource_ids: activeDsIds,
+          datasource_ids: dsIds,
           provider_id: providerId || null,
           params,
         }),
@@ -91,11 +139,12 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
         <div>
           <div className="text-xs font-medium text-neutral-500">执行建议</div>
           <h2 className="text-lg font-semibold text-neutral-900 mt-1">
-            当前阶段：{stage} {activeRouting?.meta?.title ? `· ${activeRouting.meta.short}` : ''}
+            当前阶段：{stage} {routing?.meta?.title ? `· ${routing.meta.short}` : ''}
           </h2>
-          {activeRouting?.reasons ? (
+          {loadError && <p role="alert" className="mt-2 text-xs text-red-600">{loadError}</p>}
+          {routing?.reasons ? (
             <ul className="list-disc pl-5 text-xs text-neutral-600 mt-1.5 space-y-0.5">
-              {activeRouting.reasons.map((r: string, i: number) => (
+              {routing.reasons.map((r: string, i: number) => (
                 <li key={i}>{r}</li>
               ))}
             </ul>
@@ -135,7 +184,7 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
         </div>
       </div>
 
-      {activeRouting?.recommended_stage === 'L3' && (
+      {routing?.recommended_stage === 'L3' && (
         <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 md:flex-row md:items-center md:justify-between">
           <div>
             <b>L3 契约统一已迁移到契约统一工作台。</b>
@@ -148,11 +197,11 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
       )}
 
       {/* 阶段参数微调 */}
-      {(activeProfile || stage === 'L2' || stage === 'L4') && (
+      {(profile || stage === 'L2' || stage === 'L4') && (
       <div className="bg-white border border-neutral-200 rounded-xl p-5 flex flex-wrap items-center gap-4 text-xs">
-        {activeProfile && (
+        {profile && (
           <span className="px-2.5 py-1 bg-neutral-100 rounded-lg font-semibold text-neutral-700">
-            已接入 {activeProfile.file_count} 份数据 · {activeProfile.total_rows?.toLocaleString()} 行
+            已接入 {profile.file_count} 份数据 · {profile.total_rows?.toLocaleString()} 行
           </span>
         )}
         {stage === 'L2' && (

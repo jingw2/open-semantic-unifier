@@ -13,6 +13,8 @@ import uvicorn
 
 BACKEND = Path(__file__).resolve().parents[2] / "backend"
 sys.path.insert(0, str(BACKEND))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ui_helpers import open_route
 
 from app.api.deps import get_current_user, require_resource_access
 from app.core.db import Base, get_db
@@ -100,7 +102,7 @@ def test_contracts_workbench_real_browser_flow_selects_compiles_publishes_and_ex
             """)
             page.goto("http://127.0.0.1:5173")
             page.wait_for_load_state("networkidle")
-            page.get_by_role("button", name="契约统一").click()
+            open_route(page, "#/tasks/new/contract")
             expect(page.get_by_role("heading", name="契约统一工作台")).to_be_visible()
             expect(page.get_by_role("alert")).to_have_count(0)
 
@@ -215,7 +217,7 @@ def test_contracts_acceptance_with_supplier_contract():
             """)
             page.goto("http://127.0.0.1:5173")
             page.wait_for_load_state("networkidle")
-            page.get_by_role("button", name="契约统一").click()
+            open_route(page, "#/tasks/new/contract")
             expect(page.get_by_role("heading", name="契约统一工作台")).to_be_visible()
 
             page.get_by_label("文件数据源").select_option("ds-supplier")
