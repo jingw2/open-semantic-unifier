@@ -17,6 +17,7 @@ from app.services.contracts.jsonld import (
     JsonLdInvalid,
     build_jsonld,
     infer_jsonld_mapping,
+    iter_instance_rows,
     jsonld_model,
 )
 from app.services.contracts.validation import validate_contract_model
@@ -73,6 +74,35 @@ def test_builds_context_and_graph_with_slot_overrides():
     assert payload["@graph"][0]["company_name"] == "Acme"
     assert payload["count"] == 2
     assert payload["truncated"] is False
+
+
+def test_ids_are_percent_encoded_and_synthetic_ids_do_not_collide():
+    model = jsonld_model(_model())
+    rows = [
+        {"tax_id": "Acme Inc. / (HQ)", "company_name": "Acme"},
+        {"tax_id": "", "company_name": "Missing"},
+        {"tax_id": "autogen:2", "company_name": "Also missing-ish"},
+    ]
+    payload = build_jsonld(model, rows, {
+        "class_name": "Supplier", "id_slot": "tax_id",
+        "columns": {"tax_id": "tax_id", "company_name": "company_name"},
+    })
+    assert payload["@graph"][0]["@id"] == "urn:osu:Acme%20Inc.%20%2F%20%28HQ%29"
+    assert payload["@graph"][1]["@id"] == "urn:osu:autogen:2"
+    assert payload["@graph"][2]["@id"] == "urn:osu:autogen%3A2"
+    assert payload["@graph"][1]["@id"] != payload["@graph"][2]["@id"]
+
+
+def test_instance_row_reader_stops_at_the_cap():
+    text = "id,name\n" + "".join(f"{index},row-{index}\n" for index in range(10))
+    header, rows, has_more = iter_instance_rows(text, max_rows=5)
+    assert header == ["id", "name"]
+    assert len(rows) == 5
+    assert rows[-1]["id"] == "4"
+    assert has_more is True
+    header, rows, has_more = iter_instance_rows(text)
+    assert len(rows) == 10
+    assert has_more is False
 
 
 def test_truncates_at_the_limit():
@@ -183,6 +213,25 @@ def test_generate_returns_context_and_graph(jsonld_api):
     assert payload["@graph"][1]["city"] == "Shanghai"
 
 
+def test_generation_reads_at_most_5000_rows_and_reports_truncation(jsonld_api):
+    client, _maker, version_id, data_source_id = jsonld_api
+    rows = "tax_id,company_name,city\n" + "".join(
+        f"91310000{index:04d},Company {index},Shenzhen\n" for index in range(5001)
+    )
+    storage.put_bytes("projects/project-one/uploads/instances.csv", rows.encode())
+    response = client.post(
+        f"/api/v1/projects/project-one/contracts/versions/{version_id}/jsonld",
+        json={
+            "data_source_id": data_source_id, "class_name": "Supplier", "id_slot": "tax_id",
+            "columns": {"tax_id": "tax_id", "company_name": "company_name"},
+        },
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["count"] == 5000
+    assert payload["truncated"] is True
+
+
 def test_unknown_class_is_a_structured_422(jsonld_api):
     client, _maker, version_id, data_source_id = jsonld_api
     response = client.post(
@@ -201,6 +250,17 @@ def test_missing_contract_version_is_404(jsonld_api):
     )
     assert response.status_code == 404
     assert response.json()["detail"]["code"] == "NO_CONTRACT"
+
+
+def test_rejects_a_source_over_the_size_limit_before_reading_it(jsonld_api, monkeypatch):
+    client, _maker, version_id, data_source_id = jsonld_api
+    monkeypatch.setattr(storage, "get_size", lambda _key: 50 * 1024 * 1024 + 1)
+    response = client.get(
+        f"/api/v1/projects/project-one/contracts/versions/{version_id}/jsonld/preview",
+        params={"data_source_id": data_source_id},
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"]["code"] == "JSONLD_SOURCE_TOO_LARGE"
 
 
 def test_missing_data_source_is_404(jsonld_api):

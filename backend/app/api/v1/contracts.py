@@ -1,6 +1,4 @@
 """Project-scoped contract sources, model versions, releases, and exports for the L3 workbench."""
-import csv
-import io
 from datetime import datetime, timezone
 from typing import Any
 
@@ -12,7 +10,15 @@ from app.api.deps import get_current_user, require_resource_access, require_role
 from app.core.db import get_db
 from app.models.contracts import ContractAuditRecord, ContractModelVersion, ContractReleaseState, ContractSource
 from app.models.entities import DataSource
-from app.services.contracts.jsonld import JsonLdInvalid, JsonLdNoContract, build_jsonld, infer_jsonld_mapping, jsonld_model
+from app.services.contracts.jsonld import (
+    JsonLdInvalid,
+    JsonLdNoContract,
+    build_jsonld,
+    infer_jsonld_mapping,
+    iter_instance_rows,
+    jsonld_model,
+)
+from app.services.contracts.limits import MAX_JSONLD_SOURCE_BYTES
 from app.services.contracts.releases import (
     ContractReleasesError,
     ContractReleaseConflict,
@@ -311,24 +317,30 @@ class JsonLdGenerateRequest(BaseModel):
     columns: dict[str, str] = {}
 
 
-def _instance_sheet(db: Session, project_id: str, data_source_id: str) -> tuple[list[str], list[dict[str, str]]]:
+def _instance_sheet(
+    db: Session, project_id: str, data_source_id: str, *, max_rows: int | None = None,
+) -> tuple[list[str], list[dict[str, str]], bool]:
     source = db.get(DataSource, data_source_id)
     if source is None or source.project_id != project_id:
         raise HTTPException(status_code=404, detail={"code": "DATA_SOURCE_NOT_FOUND", "message": "数据源不存在于当前项目"})
     if source.source_type != "file" or not source.object_key:
         raise HTTPException(status_code=422, detail={"code": "JSONLD_UNSUPPORTED_SOURCE", "message": "JSON-LD 实例只支持已上传的 CSV 文件"})
     try:
-        content = storage.get_bytes(source.object_key).decode("utf-8-sig")
-        rows = list(csv.reader(io.StringIO(content)))
+        source_size = storage.get_size(source.object_key)
     except Exception as exc:
         raise HTTPException(status_code=422, detail={"code": "JSONLD_UNREADABLE_SOURCE", "message": "数据源不是可读取的 CSV 文件"}) from exc
-    if not rows or not rows[0]:
+    if source_size > MAX_JSONLD_SOURCE_BYTES:
+        raise HTTPException(status_code=422, detail={"code": "JSONLD_SOURCE_TOO_LARGE", "message": "JSON-LD 实例 CSV 不能超过 50 MiB"})
+    try:
+        content = storage.get_bytes(source.object_key).decode("utf-8-sig")
+        header, rows, has_more = iter_instance_rows(content, max_rows=max_rows)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail={"code": "JSONLD_UNREADABLE_SOURCE", "message": "数据源不是可读取的 CSV 文件"}) from exc
+    if not header:
         raise HTTPException(status_code=422, detail={"code": "JSONLD_EMPTY_SOURCE", "message": "数据源没有表头"})
-    header = [str(cell) for cell in rows[0]]
     if len(set(header)) != len(header):
         raise HTTPException(status_code=422, detail={"code": "JSONLD_DUPLICATE_HEADER", "message": "数据源表头有重名列，无法映射"})
-    body = [dict(zip(header, [str(cell) for cell in row])) for row in rows[1:]]
-    return header, body
+    return header, rows, has_more
 
 
 def _jsonld_version(db: Session, project_id: str, version_id: str) -> ContractModelVersion:
@@ -347,7 +359,7 @@ def preview_contract_jsonld(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     version = _jsonld_version(db, project_id, version_id)
-    columns, _rows = _instance_sheet(db, project_id, data_source_id)
+    columns, _rows, _has_more = _instance_sheet(db, project_id, data_source_id, max_rows=0)
     try:
         model = jsonld_model(version)
         mapping = infer_jsonld_mapping(model, columns)
@@ -365,14 +377,17 @@ def generate_contract_jsonld(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     version = _jsonld_version(db, project_id, version_id)
-    _columns, rows = _instance_sheet(db, project_id, request.data_source_id)
+    _columns, rows, has_more = _instance_sheet(db, project_id, request.data_source_id, max_rows=5000)
     try:
         model = jsonld_model(version)
-        return build_jsonld(model, rows, {
+        payload = build_jsonld(model, rows, {
             "class_name": request.class_name,
             "id_slot": request.id_slot,
             "columns": request.columns,
         })
+        if has_more:
+            payload["truncated"] = True
+        return payload
     except JsonLdNoContract as exc:
         raise HTTPException(status_code=404, detail={"code": exc.code, "message": exc.message}) from exc
     except JsonLdInvalid as exc:

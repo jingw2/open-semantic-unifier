@@ -1,9 +1,12 @@
 """JSON-LD instance generation from a stored LinkML contract model."""
 from __future__ import annotations
 
+import csv
+import io
 import json
 import re
 from typing import Any, Iterable
+from urllib.parse import quote
 
 import yaml
 
@@ -43,6 +46,23 @@ def _base_uri(linkml_yaml: str) -> tuple[str, dict[str, str]]:
     if not base.endswith(("/", "#")):
         base = f"{base}/"
     return base, prefixes
+
+
+def iter_instance_rows(text: str, max_rows: int | None = None) -> tuple[list[str], list[dict[str, str]], bool]:
+    """Read a CSV instance sheet without materializing more rows than asked for."""
+    reader = csv.reader(io.StringIO(text))
+    try:
+        header = [str(cell) for cell in next(reader)]
+    except StopIteration:
+        return [], [], False
+    rows: list[dict[str, str]] = []
+    has_more = False
+    for row in reader:
+        if max_rows is not None and len(rows) >= max_rows:
+            has_more = True
+            break
+        rows.append(dict(zip(header, [str(cell) for cell in row])))
+    return header, rows, has_more
 
 
 def jsonld_model(version) -> dict[str, Any]:
@@ -170,7 +190,7 @@ def build_jsonld(
             break
         id_value = row.get(columns[id_slot], "")
         node: dict[str, Any] = {
-            "@id": f"urn:osu:{id_value}" if id_value else f"urn:osu:row-{index + 1}",
+            "@id": f"urn:osu:{quote(str(id_value), safe='')}" if id_value else f"urn:osu:autogen:{index + 1}",
             "@type": class_name,
         }
         for slot_name, column in columns.items():

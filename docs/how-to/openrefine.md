@@ -55,7 +55,7 @@ In 契约统一工作台, open a model version and choose `JSON-LD`:
 4. `生成预览` validates the mapping and shows `@context` and `@graph` online.
 5. `下载` saves the same document as `.jsonld`.
 
-The ID slot must map to a column. Duplicate column mappings, unknown classes or slots, and a missing contract return a clear 404/422. At most 5,000 instances are generated per request and `truncated` reports whether more rows exist.
+The ID slot must map to a column. Duplicate column mappings, unknown classes or slots, and a missing contract return a clear 404/422. The source CSV must be at most 50 MiB; at most 5,000 instances are generated per request and `truncated` reports whether more rows exist. Instance IDs are percent-encoded into `urn:osu:...` IRIs; rows without an ID get a distinct `urn:osu:autogen:...` identifier.
 
 RDF/OWL is out of scope. W3C output is LinkML YAML, JSON Schema, and JSON-LD only.
 
