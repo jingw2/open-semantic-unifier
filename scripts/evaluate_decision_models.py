@@ -19,6 +19,9 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from app.core.db import SessionLocal
+from app.core.security import decrypt_secret
+from app.models.entities import LLMProvider
 from app.services.decision_models.contracts import DecisionRequest
 from app.services.decision_models.providers import DECISION_PROVIDER_KINDS, adapter_for_kind
 from app.services.llm_client import ProviderConfig
@@ -296,6 +299,7 @@ def score_domain(domain: HoldoutDomain, result) -> dict:
         "false_same": counts["false_same"],
         "false_same_rate": _rate(counts["false_same"], counts["different_pairs"]),
         "unknown": counts["unknown"],
+        "unknown_rate": _rate(counts["unknown"], counts["judged_pairs"]),
         "judged_pairs": counts["judged_pairs"],
         "suggestion_accuracy": _rate(counts["same_correct"] + counts["different_correct"], counts["judged_pairs"]),
         "latency_ms_mean": round(sum(latency) / len(latency), 2) if latency else None,
@@ -398,17 +402,39 @@ def _defaults(provider_kind: str) -> tuple[str, str, str]:
     return PROVIDER_DEFAULTS.get(provider_kind, ("", "", "OPENAI_API_KEY"))
 
 
+def provider_config_from_db(provider_id: str, session_factory=SessionLocal) -> dict:
+    """Read one saved provider without returning its credential to the caller's output."""
+    session = session_factory()
+    try:
+        provider = session.query(LLMProvider).filter(LLMProvider.id == provider_id).first()
+        if provider is None:
+            raise ValueError(f"provider not found: {provider_id}")
+        return {
+            "provider_kind": provider.provider_kind or "openai_compatible",
+            "model": provider.default_model or "",
+            "base_url": provider.base_url or "",
+            "api_key": decrypt_secret(provider.encrypted_api_key) if provider.encrypted_api_key else None,
+            "send_fields": tuple(provider.send_fields_json or ()),
+            "prompt_version": provider.prompt_version or "entity-pair-choice-v1",
+            "timeout_seconds": provider.timeout_seconds or 30.0,
+            "max_retries": provider.max_retries or 0,
+        }
+    finally:
+        session.close()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--holdout-root", type=Path, default=HOLDOUT)
     parser.add_argument("--validate-only", action="store_true")
+    parser.add_argument("--provider-id", default=None, help="use one saved provider, including its encrypted credential")
     parser.add_argument("--provider-kind", default="typesafe_jev")
     parser.add_argument("--model", default=None)
     parser.add_argument("--base-url", default=None)
     parser.add_argument("--api-key", default=None)
     parser.add_argument("--api-key-env", default=None)
     parser.add_argument("--send-fields", default=None, help="comma-separated canonical fields")
-    parser.add_argument("--prompt-version", default="entity-pair-choice-v1")
+    parser.add_argument("--prompt-version", default=None)
     parser.add_argument("--output", type=Path, default=None)
     args = parser.parse_args(argv)
 
@@ -423,26 +449,45 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"status": "INVALID", "reason": str(exc)}, indent=2))
         return 2
 
-    default_base, default_model, default_env = _defaults(args.provider_kind)
-    base_url = args.base_url if args.base_url is not None else default_base
-    model = args.model if args.model is not None else default_model
+    provider_cfg = None
+    if args.provider_id:
+        try:
+            provider_cfg = provider_config_from_db(args.provider_id)
+        except ValueError as exc:
+            print(json.dumps({"status": "INVALID", "reason": str(exc)}, indent=2))
+            return 2
+    provider_kind = provider_cfg["provider_kind"] if provider_cfg else args.provider_kind
+    default_base, default_model, default_env = _defaults(provider_kind)
+    base_url = args.base_url if args.base_url is not None else (provider_cfg["base_url"] if provider_cfg else default_base)
+    model = args.model if args.model is not None else (provider_cfg["model"] if provider_cfg else default_model)
     if args.send_fields:
         send_fields = tuple(field.strip() for field in args.send_fields.split(",") if field.strip())
+    elif provider_cfg:
+        send_fields = provider_cfg["send_fields"]
     else:
         send_fields = DEFAULT_SEND_FIELDS
     api_key = args.api_key
+    if api_key is None and provider_cfg:
+        api_key = provider_cfg["api_key"]
     if api_key is None:
         env_name = args.api_key_env or default_env
         api_key = os.environ.get(env_name) or None
-    report = evaluate(
-        domains,
-        provider_kind=args.provider_kind,
-        model=model,
-        base_url=base_url,
-        api_key=api_key,
-        send_fields=send_fields,
-        prompt_version=args.prompt_version,
-    )
+    prompt_version = args.prompt_version or (provider_cfg["prompt_version"] if provider_cfg else "entity-pair-choice-v1")
+    try:
+        report = evaluate(
+            domains,
+            provider_kind=provider_kind,
+            model=model,
+            base_url=base_url,
+            api_key=api_key,
+            send_fields=send_fields,
+            prompt_version=prompt_version,
+            timeout_seconds=provider_cfg["timeout_seconds"] if provider_cfg else 30.0,
+            max_retries=provider_cfg["max_retries"] if provider_cfg else 0,
+        )
+    except ValueError as exc:
+        print(json.dumps({"status": "INVALID", "reason": str(exc)}, indent=2))
+        return 2
     report["holdout"] = {
         "version": manifest["version"],
         "manifest_sha256": sha256(args.holdout_root / "manifest.json"),
@@ -459,6 +504,7 @@ def main(argv: list[str] | None = None) -> int:
     }
     report["limitations"] = [
         "The holdout is synthetic. It checks behavior on authored scenarios, not customer data.",
+        "The provider is a hosted model. Verdicts can vary between runs; repeat the run before treating small differences as signal.",
         "Confidence is not a calibrated probability and is not used as an automatic merge threshold.",
         "This report does not change the V0.1 or L3 product status.",
     ]

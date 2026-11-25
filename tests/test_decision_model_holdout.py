@@ -112,6 +112,37 @@ def test_missing_key_is_blocked_without_fake_scores():
     assert "domains" not in report
 
 
+def test_saved_provider_config_loads_without_exposing_the_key(tmp_path):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from app.core.db import Base
+    from app.core.security import encrypt_secret
+    from app.models.entities import LLMProvider, Workspace
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'providers.db'}")
+    Base.metadata.create_all(engine)
+    maker = sessionmaker(bind=engine, expire_on_commit=False)
+    with maker() as session:
+        session.add(Workspace(id="w", name="W", slug="w"))
+        session.flush()
+        provider = LLMProvider(
+            workspace_id="w", provider_key="typesafe", name="Jev",
+            base_url="https://api.typesafe.ai", default_model="jev-latest",
+            encrypted_api_key=encrypt_secret("secret-key"), provider_kind="typesafe_jev",
+            send_fields_json=["name", "tax_id"], prompt_version="entity-pair-choice-v1",
+            timeout_seconds=12.5, max_retries=2,
+        )
+        session.add(provider)
+        session.commit()
+        provider_id = provider.id
+    config = holdout_eval.provider_config_from_db(provider_id, maker)
+    assert config["provider_kind"] == "typesafe_jev"
+    assert config["api_key"] == "secret-key"
+    assert config["send_fields"] == ("name", "tax_id")
+    assert config["timeout_seconds"] == 12.5 and config["max_retries"] == 2
+    engine.dispose()
+
+
 def test_cli_validates_and_blocks_without_a_key(monkeypatch, capsys):
     assert holdout_eval.main(["--validate-only"]) == 0
     monkeypatch.delenv("PERPLEXITY_API_KEY", raising=False)
