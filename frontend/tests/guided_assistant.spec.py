@@ -231,7 +231,7 @@ def test_guided_assistant_model_plan_and_answer():
                 expect(page.get_by_text("我会按标准配方清洗供应商名单。", exact=False)).to_be_visible(timeout=15000)
                 expect(page.get_by_text("数据源：suppliers.csv", exact=False)).to_be_visible()
                 expect(page.get_by_text("目标列：supplier_raw_name", exact=False)).to_be_visible()
-                expect(page.get_by_text("配方：normalize_company_name", exact=False)).to_be_visible()
+                expect(page.get_by_text("模型理解", exact=False)).to_be_visible()
                 expect(page.get_by_role("button", name="开始", exact=True)).to_be_visible()
 
                 page.get_by_role("button", name="解释当前页面", exact=True).click()

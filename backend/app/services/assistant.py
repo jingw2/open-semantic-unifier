@@ -142,8 +142,7 @@ def _parse_options(raw: Any) -> list[dict[str, str]]:
 def _prune_params(
     intent: str,
     raw_params: Any,
-    source_fields: set[str],
-    project_fields: set[str],
+    allowed_fields: set[str],
 ) -> dict[str, Any] | None:
     allowed = ALLOWED_PARAM_KEYS.get(intent)
     if not allowed or not isinstance(raw_params, dict):
@@ -158,9 +157,9 @@ def _prune_params(
             if key == "metric_name":
                 if value not in ALLOWED_METRIC_NAMES:
                     continue
-            elif value not in source_fields and value not in project_fields:
+            elif value not in allowed_fields:
                 continue
-        elif value not in source_fields and value not in project_fields:
+        elif value not in allowed_fields:
             continue
         params[key] = value
     return params or None
@@ -233,8 +232,8 @@ def _model_plan(
     datasource_id = result.get("datasource_id")
     if not (isinstance(datasource_id, str) and datasource_id in fields_by_id):
         datasource_id = None
-    source_fields = set(fields_by_id.get(datasource_id, [])) if datasource_id else set()
-    params = _prune_params(intent, result.get("params"), source_fields, project_fields)
+    allowed_fields = set(fields_by_id.get(datasource_id, [])) if datasource_id else project_fields
+    params = _prune_params(intent, result.get("params"), allowed_fields)
 
     recipe_id = result.get("recipe_id")
     if not (isinstance(recipe_id, str) and recipe_id in _builtin_recipe_ids()):

@@ -3,14 +3,14 @@ import { ArrowRight, Bot, CheckCircle2, ChevronRight, LoaderCircle, Send } from 
 import { apiFetch, DataSourceItem, JobItem } from '../lib/api'
 import { explainPage } from '../lib/pageHelp'
 
-type AssistantTaskKey = 'clean' | 'match' | 'entity' | 'metrics' | 'contract'
+type AssistantTaskKey = 'clean' | 'match' | 'entity' | 'metrics' | 'contract' | 'review'
 type AssistantStage = 'idle' | 'running' | 'done' | 'error'
 
 type TaskDef = {
   key: AssistantTaskKey
   label: string
   method: string
-  stage: 'L1' | 'L2' | 'L3' | 'L4' | 'ENTITY'
+  stage: 'L1' | 'L2' | 'L3' | 'L4' | 'ENTITY' | 'REVIEW'
   demo?: 'L1' | 'L2' | 'L4'
 }
 
@@ -20,6 +20,7 @@ const TASKS: TaskDef[] = [
   { key: 'entity', label: '实体匹配', method: '规则候选 + 模型复核', stage: 'ENTITY' },
   { key: 'metrics', label: '统一 GMV 口径', method: '指标 YAML', stage: 'L4', demo: 'L4' },
   { key: 'contract', label: '生成数据契约', method: 'LinkML W3C 契约', stage: 'L3' },
+  { key: 'review', label: '查看待复核', method: '人工复核', stage: 'REVIEW' },
 ]
 
 const PARAM_LABELS: Record<string, string> = {
@@ -75,7 +76,9 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
   const [resultRoute, setResultRoute] = useState('')
   const [message, setMessage] = useState('')
   const [providerId, setProviderId] = useState('')
+  const [thinking, setThinking] = useState(false)
   const idRef = useRef(0)
+  const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!projectId) return
@@ -104,6 +107,10 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
     setMessages((prev) => [...prev, { id: idRef.current, role: 'assistant', content, plan }])
   }
 
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: 'end' })
+  }, [messages, thinking, stage])
+
   const requestPlan = (text: string, history: { role: 'user' | 'assistant'; content: string }[]) =>
     apiFetch<PlanPayload>(`/api/v1/projects/${projectId}/assistant/plan`, {
       method: 'POST',
@@ -117,12 +124,22 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
     setError('')
     setResultRoute('')
     setActiveTask(null)
+    setThinking(true)
     try {
       const plan = await requestPlan(text, history)
+      if (plan.datasource_id) {
+        const source = datasources.find((item) => item.id === plan.datasource_id)
+        if (source) {
+          setSelectedId(source.id)
+          setRouting(source.routing || null)
+        }
+      }
       pushAssistant(plan.explanation || '', plan)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '助手请求失败')
       setStage('error')
+    } finally {
+      setThinking(false)
     }
   }
 
@@ -169,6 +186,7 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
     setError('')
     setResultRoute('')
     setActiveTask(null)
+    setThinking(true)
     try {
       const plan = await requestPlan(`请解释当前页面：${currentPage}`, history)
       if (plan.source === 'model') {
@@ -178,6 +196,8 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
       }
     } catch {
       pushAssistant(explainPage(currentPage), null)
+    } finally {
+      setThinking(false)
     }
   }
 
@@ -189,8 +209,8 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
     setError('')
     setResultRoute('')
     try {
-      let dsIds = plan.datasource_id ? [plan.datasource_id] : (selectedId ? [selectedId] : [])
-      const source = datasources.find((item) => item.id === (plan.datasource_id || selectedId))
+      let dsIds = selectedId ? [selectedId] : (plan.datasource_id ? [plan.datasource_id] : [])
+      const source = datasources.find((item) => item.id === (selectedId || plan.datasource_id))
       let currentRouting = source?.routing || routing
       if (task.demo && !dsIds.length) {
         const demo = await apiFetch<{ datasource_ids: string[]; profile: any; routing: any }>(
@@ -199,6 +219,12 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
         )
         dsIds = demo.datasource_ids
         currentRouting = demo.routing
+      }
+
+      if (task.stage === 'REVIEW') {
+        setResultRoute('#/review')
+        setStage('done')
+        return
       }
 
       if (task.stage === 'ENTITY') {
@@ -260,7 +286,8 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
   }
 
   const manualRoute = activeTask?.stage === 'L3' ? '#/tasks/new/contract'
-    : activeTask?.stage === 'ENTITY' ? '#/tasks/new/entity' : '#/data'
+    : activeTask?.stage === 'ENTITY' ? '#/tasks/new/entity'
+      : activeTask?.stage === 'REVIEW' ? '#/review' : '#/data'
 
   const lastPlanIndex = (() => {
     for (let idx = messages.length - 1; idx >= 0; idx -= 1) {
@@ -281,7 +308,7 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
   }
 
   return (
-    <aside className="hidden w-80 shrink-0 border-l border-neutral-200 bg-white lg:flex lg:flex-col">
+    <aside className="hidden w-[360px] shrink-0 border-l border-neutral-200 bg-white lg:flex lg:flex-col">
       <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
           <Bot className="h-4 w-4 text-neutral-500" /> 助手
@@ -333,8 +360,36 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
                       <div className="mt-1 text-[11px] text-neutral-500">
                         建议方法：{routing?.method?.label || planTask.method}
                       </div>
-                      {plan.recipe_id && <div className="mt-1 text-[11px] text-neutral-500">配方：{plan.recipe_id}</div>}
-                      {(() => {
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-neutral-500">
+                        <span className="rounded border border-neutral-200 bg-neutral-50 px-1.5 py-0.5">
+                          {plan.source === 'model' ? '模型理解' : '本地规则'}
+                        </span>
+                        {!providerId && plan.source === 'rules' && (
+                          <button onClick={() => onRoute('#/settings')} className="text-neutral-600 underline">
+                            配置模型
+                          </button>
+                        )}
+                      </div>
+                      {isLastPlan && datasources.length > 0 ? (
+                        <div className="mt-2">
+                          <div className="text-[11px] text-neutral-500">数据源：{datasources.find((item) => item.id === selectedId)?.name || '未选择'}</div>
+                        <label className="mt-1 block text-[11px] text-neutral-500">
+                          <select
+                            value={selectedId}
+                            onChange={(event) => {
+                              setSelectedId(event.target.value)
+                              const source = datasources.find((item) => item.id === event.target.value)
+                              setRouting(source?.routing || null)
+                            }}
+                            className="mt-1 w-full rounded-md border border-neutral-300 px-2 py-1.5 text-xs text-neutral-800"
+                          >
+                            {datasources.map((source) => (
+                              <option key={source.id} value={source.id}>{source.name}</option>
+                            ))}
+                          </select>
+                        </label>
+                        </div>
+                      ) : (() => {
                         const source = datasources.find((item) => item.id === (plan.datasource_id || selectedId))
                         return source ? <div className="mt-1 text-[11px] text-neutral-500">数据源：{source.name}</div> : null
                       })()}
@@ -362,6 +417,12 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
               </div>
             )
           })}
+          {thinking && (
+            <div className="flex justify-start">
+              <div className="rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-500">正在理解…</div>
+            </div>
+          )}
+          <div ref={bottomRef} />
         </div>
 
         {stage === 'done' && (

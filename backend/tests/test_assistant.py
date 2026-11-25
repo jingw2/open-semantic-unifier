@@ -56,6 +56,18 @@ class AssistantHandler(BaseHTTPRequestHandler):
                 "params": {"target_col": "SECRET-COLUMN", "bogus": "x"},
                 "recipe_id": "not_a_recipe",
             })
+        elif self.behavior == "other_source_param":
+            content = json.dumps({
+                "intent": "clean",
+                "confidence": 0.9,
+                "explanation": "我来清洗字段。",
+                "needs_clarification": False,
+                "question": None,
+                "options": [],
+                "datasource_id": "ds-assistant",
+                "params": {"target_col": "city"},
+                "recipe_id": None,
+            })
         elif self.behavior == "answer":
             content = json.dumps({
                 "intent": "answer",
@@ -144,6 +156,10 @@ def _seed_providers(public_api, port: int) -> None:
                 "total_rows": 10, "table_count": 1,
                 "tables": [{"columns": ["company_name", "tax_id"], "preview": [{"name": "SECRET-RECORD-VALUE"}]}],
             },
+        ))
+        db.add(DataSource(
+            id="ds-other", project_id="project-one", name="cities.csv", source_type="file",
+            profile_json={"total_rows": 3, "table_count": 1, "tables": [{"columns": ["city"]}]},
         ))
         db.commit()
 
@@ -238,6 +254,20 @@ def test_assistant_keeps_valid_source_params_and_recipe(public_api, assistant_se
     assert payload["datasource_id"] == "ds-assistant"
     assert payload["params"] == {"target_col": "company_name", "amount_col": "tax_id"}
     assert payload["recipe_id"] == "normalize_company_name"
+
+
+def test_assistant_drops_params_from_another_source(public_api, assistant_server):
+    client, _maker, _identity = public_api
+    _seed_providers(public_api, assistant_server.server_port)
+    AssistantHandler.behavior = "other_source_param"
+    response = client.post(
+        "/api/v1/projects/project-one/assistant/plan",
+        json={"message": "帮我清洗字段", "page": "data"},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["datasource_id"] == "ds-assistant"
+    assert payload["params"] is None
 
 
 def test_assistant_drops_invalid_source_params_and_recipe(public_api, assistant_server):
