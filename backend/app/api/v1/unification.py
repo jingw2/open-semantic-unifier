@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_user, require_resource_access, require_role
 from app.core.db import get_db
+from app.demo.entity_demo import DEMO_INPUT_VERSION, DEMO_RECORDS, DEMO_SCHEME_KEY, DEMO_SOURCE_SYSTEM, demo_scheme
+from app.models.entities import Project
 from app.models.unification import DecisionModelCall, IdentityChangeRecord, IdentityConflictRecord, IdentityDecisionRecord, ProjectSnapshotState, SourceRecord, SourceRevision, UnifiedEntity, UnificationRun, UnificationSchemeVersion, UnificationSnapshot
 from app.services.unification.identity import DecisionInput, IdentityConflict, apply_decision, find_current_member_conflicts, record_identity_conflict, resolve_entity_id, set_attribute_override, split_entity, undo_identity_change
 from app.services.unification.schemes import (
@@ -31,6 +33,7 @@ from app.services.unification.schemes import (
     save_catalog_entity,
     save_scheme,
 )
+from app.services.provider_selection import select_decision_provider
 from app.services.unification.contracts import IngestMode, SourceRecordInput
 from app.services.unification.ingest import ingest_batch
 from app.services.unification.reviews import (
@@ -565,6 +568,71 @@ def scheme_revision(
     if scheme is None:
         raise HTTPException(status_code=404, detail="scheme version not found")
     return scheme.model_dump(mode="json")
+
+
+@router.post("/projects/{project_id}/unification/demo", status_code=status.HTTP_202_ACCEPTED)
+def create_unification_demo(
+    project_id: str,
+    ctx: dict[str, str] = Depends(require_role("admin", "editor")),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    project = db.get(Project, project_id)
+    if project is None or project.workspace_id != ctx["workspace_id"]:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    provider = select_decision_provider(db, project.workspace_id)
+    scheme = MatchScheme.model_validate(demo_scheme(provider.id if provider else None))
+    saved = save_scheme(db, project_id=project_id, scheme_key=DEMO_SCHEME_KEY, scheme=scheme)
+    version_row = db.scalar(select(UnificationSchemeVersion).where(
+        UnificationSchemeVersion.project_id == project_id,
+        UnificationSchemeVersion.scheme_key == DEMO_SCHEME_KEY,
+        UnificationSchemeVersion.revision == saved.revision,
+    ))
+    if version_row is None:
+        raise HTTPException(status_code=409, detail="demo scheme revision not found")
+    ingested = ingest_batch(
+        db,
+        project_id=project_id,
+        records=[
+            SourceRecordInput(
+                project_id=project_id,
+                source_system=record["source_system"],
+                dataset=record["dataset"],
+                source_record_id=record["source_record_id"],
+                attributes=record["attributes"],
+            )
+            for record in DEMO_RECORDS
+        ],
+        mode=IngestMode.SYNC,
+        input_version=DEMO_INPUT_VERSION,
+    )
+    if not ingested.accepted:
+        raise HTTPException(status_code=422, detail=[asdict(issue) for issue in ingested.errors])
+    db.commit()
+    payload_hash = hashlib.sha256(json.dumps({
+        "project_id": project_id,
+        "input_version": DEMO_INPUT_VERSION,
+        "scheme_revision": version_row.id,
+        "input_source_system": DEMO_SOURCE_SYSTEM,
+    }, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+    try:
+        run = submit_run_service(
+            db,
+            project_id=project_id,
+            input_version=DEMO_INPUT_VERSION,
+            scheme_revision=version_row.id,
+            idempotency_key=DEMO_INPUT_VERSION,
+            payload_hash=payload_hash,
+            input_source_system=DEMO_SOURCE_SYSTEM,
+        )
+    except RunConflict:
+        run = db.scalar(select(UnificationRun).where(
+            UnificationRun.project_id == project_id,
+            UnificationRun.idempotency_key == DEMO_INPUT_VERSION,
+        ))
+        if run is None:
+            raise HTTPException(status_code=409, detail="demo run conflict")
+    dispatch_unification_run(run.id)
+    return {"run_id": run.id, "scheme_key": DEMO_SCHEME_KEY, "revision": version_row.revision}
 
 
 @router.post("/projects/{project_id}/unification/runs", status_code=status.HTTP_202_ACCEPTED)

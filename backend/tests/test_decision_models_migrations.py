@@ -7,7 +7,7 @@ import sys
 from sqlalchemy import create_engine, inspect, text
 
 BACKEND = Path(__file__).resolve().parents[1]
-NEW_REVISION = "d5c9a7e1f3b2"
+NEW_REVISION = "a1b2c3d4e5f6"
 CALL_COLUMNS = {
     "id", "project_id", "run_id", "left_source_revision_id", "right_source_revision_id",
     "provider_kind", "provider_key", "model_version", "prompt_version",
@@ -30,7 +30,7 @@ def run_alembic(database_url: str, *args: str) -> None:
     )
 
 
-def test_single_alembic_head_is_the_decision_model_revision():
+def test_single_alembic_head_is_the_latest_revision():
     env = {**os.environ, "PYTHONPATH": str(BACKEND)}
     result = subprocess.run(
         [sys.executable, "-m", "alembic", "-c", str(BACKEND / "alembic.ini"), "heads"],
@@ -52,6 +52,7 @@ def test_upgrade_creates_call_table_and_provider_columns(tmp_path):
         inspector = inspect(engine)
         assert CALL_COLUMNS <= {column["name"] for column in inspector.get_columns("decision_model_calls")}
         assert PROVIDER_COLUMNS <= {column["name"] for column in inspector.get_columns("llm_providers")}
+        assert "input_source_system" in {column["name"] for column in inspector.get_columns("unification_runs")}
         constraint_names = {item["name"] for item in inspector.get_unique_constraints("decision_model_calls")}
         assert "uq_decision_model_call_pair" in constraint_names
         index_names = {item["name"] for item in inspector.get_indexes("decision_model_calls")}
@@ -99,5 +100,6 @@ def test_downgrade_removes_call_table_and_provider_columns(tmp_path):
         assert "decision_model_calls" not in set(inspector.get_table_names())
         remaining = {column["name"] for column in inspector.get_columns("llm_providers")}
         assert not PROVIDER_COLUMNS & remaining
+        assert "input_source_system" not in {column["name"] for column in inspector.get_columns("unification_runs")}
     finally:
         engine.dispose()

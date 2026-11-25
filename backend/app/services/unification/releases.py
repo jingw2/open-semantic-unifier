@@ -203,19 +203,24 @@ def _stable_hash(value: dict) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _current_input_manifest(db: Session, project_id: str) -> list[dict[str, str | None]]:
-    rows = db.execute(select(
+def _current_input_manifest(
+    db: Session, project_id: str, input_source_system: str | None = None,
+) -> list[dict[str, str | None]]:
+    statement = select(
         SourceRecord.id, SourceRecord.current_revision_id, SourceRecord.current_entity_id,
     ).where(
         SourceRecord.project_id == project_id,
         SourceRecord.current_revision_id.is_not(None),
-    ).order_by(SourceRecord.id)).all()
+    )
+    if input_source_system:
+        statement = statement.where(SourceRecord.source_system == input_source_system)
+    rows = db.execute(statement.order_by(SourceRecord.id)).all()
     return [{"source_record_id": row.id, "source_revision_id": row.current_revision_id, "entity_id": row.current_entity_id} for row in rows]
 
 
 def submit_run(
     db: Session, *, project_id: str, input_version: str, scheme_revision: str,
-    idempotency_key: str, payload_hash: str,
+    idempotency_key: str, payload_hash: str, input_source_system: str | None = None,
 ) -> UnificationRun:
     if not all(isinstance(value, str) and value.strip() for value in (project_id, input_version, scheme_revision, idempotency_key, payload_hash)):
         raise ValueError("project, input, scheme, idempotency key, and payload hash are required")
@@ -227,7 +232,7 @@ def submit_run(
         if existing.payload_hash != payload_hash:
             raise RunConflict("idempotency key was already used with a different payload")
         return existing
-    input_manifest = _current_input_manifest(db, project_id)
+    input_manifest = _current_input_manifest(db, project_id, input_source_system)
     identity_revision = db.scalar(select(func.max(IdentityChangeRecord.revision)).where(
         IdentityChangeRecord.project_id == project_id,
     )) or 1
@@ -235,6 +240,7 @@ def submit_run(
         project_id=project_id, input_version=input_version, scheme_revision=scheme_revision,
         input_manifest_json=input_manifest, identity_revision=identity_revision,
         idempotency_key=idempotency_key, payload_hash=payload_hash, status="PENDING", attempt_count=0,
+        input_source_system=input_source_system,
     )
     db.add(run)
     try:
@@ -354,7 +360,7 @@ def _execute_unification_run(db: Session, run_id: str, *, max_attempts: int = 3)
             current_identity_revision = db.scalar(select(func.max(IdentityChangeRecord.revision)).where(
                 IdentityChangeRecord.project_id == run.project_id,
             )) or 1
-            current_manifest = _current_input_manifest(db, run.project_id)
+            current_manifest = _current_input_manifest(db, run.project_id, run.input_source_system)
             if current_manifest != run.input_manifest_json or current_identity_revision != run.identity_revision:
                 raise RunConflict("run input or identity revision changed after submission; submit a new run")
             scheme_version = db.get(UnificationSchemeVersion, run.scheme_revision)
@@ -507,7 +513,7 @@ def _execute_unification_run(db: Session, run_id: str, *, max_attempts: int = 3)
         )) or 1
         if current_identity_revision != run.identity_revision + own_changes:
             raise RunConflict("identity state changed during run; staged changes were rolled back")
-        final_manifest = _current_input_manifest(db, run.project_id)
+        final_manifest = _current_input_manifest(db, run.project_id, run.input_source_system)
         frozen_revisions = [(item["source_record_id"], item["source_revision_id"]) for item in run.input_manifest_json]
         current_revisions = [(item["source_record_id"], item["source_revision_id"]) for item in final_manifest]
         if current_revisions != frozen_revisions:
@@ -596,7 +602,7 @@ def _snapshot_result_at_publication(db: Session, run: UnificationRun) -> dict[st
     result = deepcopy(run.result_json or {})
     manifest = run.input_manifest_json or []
     if manifest:
-        current_manifest = _current_input_manifest(db, run.project_id)
+        current_manifest = _current_input_manifest(db, run.project_id, run.input_source_system)
         frozen_revisions = sorted((item["source_record_id"], item["source_revision_id"]) for item in manifest)
         current_revisions = sorted((item["source_record_id"], item["source_revision_id"]) for item in current_manifest)
         if frozen_revisions != current_revisions:

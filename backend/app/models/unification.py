@@ -79,6 +79,7 @@ class UnificationRun(Base):
     trace_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     idempotency_key: Mapped[str] = mapped_column(String(200), nullable=False)
     payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_source_system: Mapped[str | None] = mapped_column(String(160), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING")
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     result_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
