@@ -62,19 +62,26 @@ def _wait_connector(cfg, timeout=120.0):
 
 @pytest.fixture(scope="module")
 def live_dbs():
-    ports = {"postgresql": _free_port(), "mysql": _free_port(), "mongodb": _free_port()}
     prefix = f"osu-etl-{os.getpid()}-{int(time.time())}"
     containers = []
 
     def start(name, image, env, container_port):
-        host_port = ports[name]
-        args = ["docker", "run", "-d", "--rm", "--name", f"{prefix}-{name}"]
+        container = f"{prefix}-{name}"
+        args = ["docker", "run", "-d", "--rm", "--name", container]
         for key, value in env.items():
             args += ["-e", f"{key}={value}"]
-        args += ["-p", f"127.0.0.1:{host_port}:{container_port}", image]
+        args += ["-p", f"127.0.0.1::{container_port}"]
+        if name == "postgresql":
+            args += ["--tmpfs", "/var/lib/postgresql/data:rw,size=512m"]
+        elif name == "mysql":
+            args += ["--tmpfs", "/var/lib/mysql:rw,size=1024m"]
+        else:
+            args += ["--tmpfs", "/data/db:rw,size=512m"]
+        args += [image]
         _run(*args)
-        containers.append(f"{prefix}-{name}")
-        return host_port
+        containers.append(container)
+        published = _run("docker", "port", container, f"{container_port}/tcp").stdout.strip()
+        return int(published.rsplit(":", 1)[1])
 
     pg_port = start("postgresql", IMAGES["postgresql"],
                     {"POSTGRES_PASSWORD": "etlpass", "POSTGRES_DB": "testdb"}, 5432)
