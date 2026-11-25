@@ -373,6 +373,56 @@ def execute_l1(
     }
 
 
+
+def execute_clean_fields(
+    db: Session,
+    project_id: str,
+    job_id: str,
+    df: pd.DataFrame,
+    clean_fields: List[str],
+    progress_cb: Optional[Callable[[int, str], None]] = None,
+) -> Dict[str, Any]:
+    """Generic multi-column cleaning: trim and collapse whitespace in selected fields."""
+    fields = [field for field in dict.fromkeys(clean_fields) if field in df.columns]
+    if not fields:
+        raise ValueError("所选清洗字段不在数据表中，请重新选择至少一个字段")
+    if progress_cb:
+        progress_cb(30, f"正在清洗 {len(fields)} 个字段...")
+    result_df = df.copy()
+    changed_cells = 0
+    changed_row_mask = pd.Series(False, index=result_df.index)
+    for field in fields:
+        original = result_df[field]
+        cleaned = original.map(
+            lambda value: " ".join(str(value).strip().split()) if isinstance(value, str) else value
+        )
+        changed = (cleaned.astype(str) != original.astype(str)) & original.notna()
+        changed_cells += int(changed.sum())
+        changed_row_mask |= changed
+        result_df[field] = cleaned
+    if progress_cb:
+        progress_cb(80, "正在保存通用清洗结果...")
+    csv_art = _save_artifact(
+        db, project_id, job_id, "clean_csv", "l1_cleaned.csv",
+        result_df.to_csv(index=False).encode("utf-8-sig"),
+    )
+    rules_art = _save_artifact(
+        db, project_id, job_id, "rules_json", "l1_rules.json",
+        json.dumps({"clean_fields": fields}, ensure_ascii=False, indent=2).encode("utf-8"),
+    )
+    return {
+        "stage": "L1",
+        "clean_fields": fields,
+        "total_rows": len(result_df),
+        "changed_rows": int(changed_row_mask.sum()),
+        "changed_cells": changed_cells,
+        "artifacts": [
+            {"id": csv_art.id, "type": csv_art.artifact_type, "filename": csv_art.filename, "version": csv_art.version_no},
+            {"id": rules_art.id, "type": rules_art.artifact_type, "filename": rules_art.filename, "version": rules_art.version_no},
+        ],
+    }
+
+
 # ==================== L2 执行引擎（Splink 5.0 + Hybrid ER + 灰色队列推送） ====================
 
 
