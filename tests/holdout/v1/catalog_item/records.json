@@ -1,0 +1,282 @@
+[
+  {
+    "record_ref": "catalog_item:a01",
+    "source_system": "wms",
+    "dataset": "catalog_item_hld",
+    "source_record_id": "HP-001",
+    "attributes": {
+      "name": "Aurora LED Panel 40W",
+      "gtin": "HLD-GTIN-1001",
+      "brand": "Aurora",
+      "model": "AP-40",
+      "voltage": "230V",
+      "pack_count": "1"
+    }
+  },
+  {
+    "record_ref": "catalog_item:b01",
+    "source_system": "marketplace",
+    "dataset": "catalog_item_hld",
+    "source_record_id": "HP-002",
+    "attributes": {
+      "name": "Aurora LED Panel 40 W",
+      "gtin": "HLD-GTIN-1001",
+      "brand": "Aurora",
+      "model": "AP-40",
+      "voltage": "230V",
+      "pack_count": "1"
+    }
+  },
+  {
+    "record_ref": "catalog_item:a02",
+    "source_system": "wms",
+    "dataset": "catalog_item_hld",
+    "source_record_id": "HP-003",
+    "attributes": {
+      "name": "Terra Steel Kettle 1.7L",
+      "gtin": "HLD-GTIN-1002",
+      "brand": "Terra",
+      "model": "TK-17",
+      "voltage": "230V",
+      "pack_count": "1"
+    }
+  },
+  {
+    "record_ref": "catalog_item:b02",
+    "source_system": "marketplace",
+    "dataset": "catalog_item_hld",
+    "source_record_id": "HP-004",
+    "attributes": {
+      "name": "Terra Steel Kettle 1.7 L",
+      "gtin": "HLD-GTIN-1002",
+      "brand": "Terra",
+      "model": "TK-17",
+      "voltage": "230V",
+      "pack_count": "1"
+    }
+  },
+  {
+    "record_ref": "catalog_item:a03",
+    "source_system": "wms",
+    "dataset": "catalog_item_hld",
+    "source_record_id": "HP-005",
+    "attributes": {
+      "name": "Nimbus Air Filter H13",
+      "gtin": "HLD-GTIN-2003",
+      "brand": "Nimbus",
+      "model": "NAF-H13",
+      "voltage": null,
+      "pack_count": "2"
+    }
+  },
+  {
+    "record_ref": "catalog_item:b03",
+    "source_system": "marketplace",
+    "dataset": "catalog_item_hld",
+    "source_record_id": "HP-006",
+    "attributes": {
+      "name": "Nimbus Air Filter H13",
+      "gtin": "HLD-GTIN-2004",
+      "brand": "Nimbus",
+      "model": "NAF-H13",
+      "voltage": null,
+      "pack_count": "2"
+    }
+  },
+  {
+    "record_ref": "catalog_item:a04",
+    "source_system": "wms",
+    "dataset": "catalog_item_hld",
+    "source_record_id": "HP-007",
+    "attributes": {
+      "name": "Vertex Cordless Drill 18V",
+      "gtin": "HLD-GTIN-3004",
+      "brand": "Vertex",
+      "model": "VD-18",
+      "voltage": "18V",
+      "pack_count": "1"
+    }
+  },
+  {
+    "record_ref": "catalog_item:b04",
+    "source_system": "marketplace",
+    "dataset": "catalog_item_hld",
+    "source_record_id": "HP-008",
+    "attributes": {
+      "name": "Vertex Cordless Drill 20V",
+      "gtin": "HLD-GTIN-3004",
+      "brand": "Vertex",
+      "model": "VD-20",
+      "voltage": "20V",
+      "pack_count": "1"
+    }
+  },
+  {
+    "record_ref": "catalog_item:a05",
+    "source_system": "wms",
+    "dataset": "catalog_item_hld",
+    "source_record_id": "HP-009",
+    "attributes": {
+      "name": "Solace Yoga Mat 6mm",
+      "gtin": "HLD-GTIN-3005",
+      "brand": "Solace",
+      "model": "SY-6",
+      "voltage": null,
+      "pack_count": "1"
+    }
+  },
+  {
+    "record_ref": "catalog_item:b05",
+    "source_system": "marketplace",
+    "dataset": "catalog_item_hld",
+    "source_record_id": "HP-010",
+    "attributes": {
+      "name": "Solace Yoga Mat 6 mm",
+      "gtin": "HLD-GTIN-3005",
+      "brand": "Solace",
+      "model": "SY-6",
+      "voltage": null,
+      "pack_count": "1"
+    }
+  },
+  {
+    "record_ref": "catalog_item:a06",
+    "source_system": "wms",
+    "dataset": "catalog_item_hld",
+    "source_record_id": "HP-011",
+    "attributes": {
+      "name": "Pioneer USB-C Hub 7-in-1",
+      "gtin": null,
+      "brand": "Pioneer",
+      "model": "PU-7",
+      "voltage": null,
+      "pack_count": "1"
+    }
+  },
+  {
+    "record_ref": "catalog_item:b06",
+    "source_system": "marketplace",
+    "dataset": "catalog_item_hld",
+    "source_record_id": "HP-012",
+    "attributes": {
+      "name": "Pioneer USB C Hub 7 in 1",
+      "gtin": null,
+      "brand": "Pioneer",
+      "model": "PU-7",
+      "voltage": null,
+      "pack_count": "1"
+    }
+  },
+  {
+    "record_ref": "catalog_item:a07",
+    "source_system": "wms",
+    "dataset": "catalog_item_hld",
+    "source_record_id": "HP-013",
+    "attributes": {
+      "name": "Cobalt Work Gloves L",
+      "gtin": null,
+      "brand": "Cobalt",
+      "model": "CG-L",
+      "voltage": null,
+      "pack_count": "1"
+    }
+  },
+  {
+    "record_ref": "catalog_item:b07",
+    "source_system": "marketplace",
+    "dataset": "catalog_item_hld",
+    "source_record_id": "HP-014",
+    "attributes": {
+      "name": "Cobalt Work Gloves XL",
+      "gtin": null,
+      "brand": "Cobalt",
+      "model": "CG-XL",
+      "voltage": null,
+      "pack_count": "1"
+    }
+  },
+  {
+    "record_ref": "catalog_item:a08",
+    "source_system": "wms",
+    "dataset": "catalog_item_hld",
+    "source_record_id": "HP-015",
+    "attributes": {
+      "name": "Ember Camp Stove",
+      "gtin": "HLD-GTIN-4008",
+      "brand": "Ember",
+      "model": "EC-1",
+      "voltage": null,
+      "pack_count": "1"
+    }
+  },
+  {
+    "record_ref": "catalog_item:b08",
+    "source_system": "marketplace",
+    "dataset": "catalog_item_hld",
+    "source_record_id": "HP-016",
+    "attributes": {
+      "name": "Ember Camp Stove",
+      "gtin": "HLD-GTIN-4008",
+      "brand": "Ember",
+      "model": "EC-1",
+      "voltage": null,
+      "pack_count": "1"
+    }
+  },
+  {
+    "record_ref": "catalog_item:a09",
+    "source_system": "wms",
+    "dataset": "catalog_item_hld",
+    "source_record_id": "HP-017",
+    "attributes": {
+      "name": "Fjord Ski Jacket",
+      "gtin": null,
+      "brand": null,
+      "model": null,
+      "voltage": null,
+      "pack_count": null
+    }
+  },
+  {
+    "record_ref": "catalog_item:b09",
+    "source_system": "marketplace",
+    "dataset": "catalog_item_hld",
+    "source_record_id": "HP-018",
+    "attributes": {
+      "name": "Fjord Ski Jacket",
+      "gtin": null,
+      "brand": null,
+      "model": null,
+      "voltage": null,
+      "pack_count": null
+    }
+  },
+  {
+    "record_ref": "catalog_item:a10",
+    "source_system": "wms",
+    "dataset": "catalog_item_hld",
+    "source_record_id": "HP-019",
+    "attributes": {
+      "name": "Helio Solar Lamp",
+      "gtin": null,
+      "brand": "Helio",
+      "model": "HS-2",
+      "voltage": "5V",
+      "pack_count": "1"
+    }
+  },
+  {
+    "record_ref": "catalog_item:b10",
+    "source_system": "marketplace",
+    "dataset": "catalog_item_hld",
+    "source_record_id": "HP-020",
+    "attributes": {
+      "name": "Helio Solar Lamps",
+      "gtin": null,
+      "brand": "Helio",
+      "model": "HS-2",
+      "voltage": "5V",
+      "pack_count": "1"
+    }
+  }
+]

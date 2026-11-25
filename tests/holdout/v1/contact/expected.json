@@ -1,0 +1,92 @@
+[
+  {
+    "case_id": "hld-contact-01",
+    "left": "contact:a01",
+    "right": "contact:b01",
+    "truth": "SAME",
+    "expected_action": "AUTO_MATCH",
+    "required_candidate": true,
+    "reason": "Same trusted email address."
+  },
+  {
+    "case_id": "hld-contact-02",
+    "left": "contact:a02",
+    "right": "contact:b02",
+    "truth": "SAME",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "Name spelling variant without a strong identifier."
+  },
+  {
+    "case_id": "hld-contact-03",
+    "left": "contact:a03",
+    "right": "contact:b03",
+    "truth": "DIFFERENT",
+    "expected_action": "DISTINCT",
+    "required_candidate": true,
+    "reason": "Same name with conflicting trusted emails."
+  },
+  {
+    "case_id": "hld-contact-04",
+    "left": "contact:a04",
+    "right": "contact:b04",
+    "truth": "SAME",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "Shared phone and punctuation-only name difference."
+  },
+  {
+    "case_id": "hld-contact-05",
+    "left": "contact:a05",
+    "right": "contact:b05",
+    "truth": "SAME",
+    "expected_action": "AUTO_MATCH",
+    "required_candidate": true,
+    "reason": "Same trusted email; address is not a conflict field."
+  },
+  {
+    "case_id": "hld-contact-06",
+    "left": "contact:a06",
+    "right": "contact:b06",
+    "truth": "SAME",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "Transliteration variant without a strong identifier."
+  },
+  {
+    "case_id": "hld-contact-07",
+    "left": "contact:a07",
+    "right": "contact:b07",
+    "truth": "UNRESOLVED",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "Sparse records; the fixture has no truth."
+  },
+  {
+    "case_id": "hld-contact-08",
+    "left": "contact:a08",
+    "right": "contact:b08",
+    "truth": "DIFFERENT",
+    "expected_action": "DISTINCT",
+    "required_candidate": true,
+    "reason": "Similar names with conflicting trusted emails."
+  },
+  {
+    "case_id": "hld-contact-09",
+    "left": "contact:a09",
+    "right": "contact:b09",
+    "truth": "SAME",
+    "expected_action": "AUTO_MATCH",
+    "required_candidate": true,
+    "reason": "Same trusted email; phone is not a conflict field."
+  },
+  {
+    "case_id": "hld-contact-10",
+    "left": "contact:a10",
+    "right": "contact:b10",
+    "truth": "DIFFERENT",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "A shared phone is not a person identity."
+  }
+]

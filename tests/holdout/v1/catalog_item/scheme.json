@@ -1,0 +1,57 @@
+{
+  "entity_type": "catalog_item",
+  "identity_granularity": "sellable_variant",
+  "field_map": {
+    "name": "name",
+    "gtin": "gtin",
+    "brand": "brand",
+    "model": "model",
+    "voltage": "voltage",
+    "pack_count": "pack_count"
+  },
+  "normalizers": [
+    "unicode_nfkc",
+    "trim",
+    "casefold"
+  ],
+  "strong_identifiers": [
+    "gtin"
+  ],
+  "conflict_constraints": [
+    {
+      "field": "gtin",
+      "action": "veto_auto_merge"
+    },
+    {
+      "field": "model",
+      "action": "veto_auto_merge"
+    },
+    {
+      "field": "voltage",
+      "action": "veto_auto_merge"
+    }
+  ],
+  "candidate_rules": [
+    {
+      "kind": "exact",
+      "fields": [
+        "gtin"
+      ]
+    },
+    {
+      "kind": "exact",
+      "fields": [
+        "model"
+      ]
+    },
+    {
+      "kind": "name_similarity",
+      "field": "name",
+      "threshold": 0.82
+    }
+  ],
+  "revision": 1,
+  "identifier_authority": "explicitly_trusted_in_this_synthetic_holdout",
+  "nulls_never_equal": true,
+  "prompt_version": "entity-pair-choice-v1"
+}
