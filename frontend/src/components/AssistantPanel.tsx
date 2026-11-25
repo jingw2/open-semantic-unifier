@@ -258,6 +258,16 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
         return
       }
 
+      if (task.stage === 'L4' && dsIds.length > 0) {
+        const source = datasources.find((item) => item.id === dsIds[0])
+        const columns = new Set<string>((source?.profile?.tables || []).flatMap((table: any) => table.columns || []))
+        const wide = ['order_id', 'order_channel', 'total_amount', 'delivery_status', 'settled_amount'].every((column) => columns.has(column))
+        const orders = ['order_id', 'order_channel', 'total_amount'].every((column) => columns.has(column))
+        if (!wide && !orders) {
+          throw new Error('所选数据源不包含订单、渠道或金额字段，不能计算 L4 指标。请选择订单数据，或加载 L4 示例。')
+        }
+      }
+
       const sp = currentRouting?.suggested_params || {}
       const params = plan.params && Object.keys(plan.params).length > 0
         ? plan.params
@@ -308,7 +318,7 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
   }
 
   return (
-    <aside className="hidden w-[360px] shrink-0 border-l border-neutral-200 bg-white lg:flex lg:flex-col">
+    <aside className="hidden h-full w-[360px] shrink-0 border-l border-neutral-200 bg-white lg:flex lg:min-h-0 lg:flex-col">
       <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
           <Bot className="h-4 w-4 text-neutral-500" /> 助手
@@ -316,7 +326,7 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
         <button onClick={() => setOpen(false)} className="text-[11px] text-neutral-500 hover:text-neutral-900">收起</button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {messages.length === 0 && (
           <p className="text-xs leading-5 text-neutral-500">你想完成什么？试试下面的快捷任务，或直接输入一句话。</p>
         )}

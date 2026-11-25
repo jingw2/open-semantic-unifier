@@ -174,8 +174,8 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex">
-      <aside className="w-60 bg-[#fbfbfb] border-r border-neutral-200 flex flex-col justify-between p-3 shrink-0">
+    <div className="flex h-screen overflow-hidden">
+      <aside className="flex h-full w-60 shrink-0 flex-col justify-between overflow-y-auto border-r border-neutral-200 bg-[#fbfbfb] p-3">
         <div>
           <div className="flex items-center gap-2.5 px-2 py-1.5 mb-5">
             <div className="w-7 h-7 rounded-md bg-neutral-900 text-white font-semibold flex items-center justify-center text-sm">
@@ -235,7 +235,7 @@ export default function App() {
         </div>
       </aside>
 
-      <main className="flex-1 min-w-0 bg-[#f7f7f8] p-6 md:p-8 overflow-y-auto">
+      <main className="h-full min-w-0 flex-1 overflow-y-auto bg-[#f7f7f8] p-6 md:p-8">
         <div className="max-w-5xl mx-auto">{renderContent()}</div>
       </main>
 
