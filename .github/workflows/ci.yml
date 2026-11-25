@@ -59,6 +59,7 @@ jobs:
           python frontend/tests/review_readability.spec.py
           python frontend/tests/result_viewer.spec.py
           python frontend/tests/method_recommendation.spec.py
+          python frontend/tests/openrefine_diff.spec.py
 
   compose-config:
     runs-on: ubuntu-latest

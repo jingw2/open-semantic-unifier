@@ -2,9 +2,26 @@ import { ArtifactDownload, ArtifactPreview } from '../components/ArtifactAccess'
 import ResultViewer, { ResultViewerSource } from '../components/ResultViewer'
 import React, { useEffect, useState } from 'react'
 import { Play, Download, CheckCircle2, AlertTriangle } from 'lucide-react'
-import { apiFetch, DataSourceItem, JobItem } from '../lib/api'
+import { ApiError, apiFetch, DataSourceItem, JobItem } from '../lib/api'
 
 type WorkbenchStage = 'L1' | 'L2' | 'L4'
+
+interface OpenRefinePreview {
+  preview_id: string
+  engine: string
+  recipe: { id: string; name: string; version: string; description: string }
+  diff: {
+    changed_rows: number
+    changed_cells: number
+    before_rows: number
+    after_rows: number
+    columns_added: string[]
+    columns_removed: string[]
+    structure_changed: boolean
+    examples: { row: number; column: string; before: string; after: string }[]
+  }
+  artifact_id: string
+}
 
 function normalizeStage(value: unknown): WorkbenchStage {
   return value === 'L2' || value === 'L4' ? value : 'L1'
@@ -32,6 +49,11 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
   const [effectiveRouting, setEffectiveRouting] = useState<any>(activeRouting)
   const [loadError, setLoadError] = useState('')
   const [viewerSource, setViewerSource] = useState<ResultViewerSource | null>(null)
+  const [preview, setPreview] = useState<OpenRefinePreview | null>(null)
+  const [previewBusy, setPreviewBusy] = useState(false)
+  const [previewError, setPreviewError] = useState('')
+  const [previewFallback, setPreviewFallback] = useState(false)
+  const [adoptedName, setAdoptedName] = useState('')
 
   const [job, setJob] = useState<JobItem | null>(null)
   const [running, setRunning] = useState(false)
@@ -39,6 +61,7 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
   const profile = localProfile || activeProfile
   const routing = effectiveRouting || activeRouting
   const needsDataSource = stage === 'L1' && dsIds.length === 0
+  const isOpenRefine = stage === 'L1' && routing?.method?.key === 'openrefine_w3c'
 
   useEffect(() => {
     setLocalDsIds(activeDsIds)
@@ -84,6 +107,13 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
       })
       .catch(() => undefined)
   }, [projectId, routing])
+
+  useEffect(() => {
+    setPreview(null)
+    setPreviewError('')
+    setPreviewFallback(false)
+    setAdoptedName('')
+  }, [stage, dsIds.join(',')])
 
   useEffect(() => {
     apiFetch<{ configured: any[] }>('/api/v1/providers').then((d) => {
@@ -132,6 +162,61 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
     } catch (e: any) {
       alert('任务提交失败：' + e.message)
       setRunning(false)
+    }
+  }
+
+  const runOpenRefinePreview = async () => {
+    if (!dsIds.length) return
+    setPreviewBusy(true)
+    setPreviewError('')
+    setPreviewFallback(false)
+    setAdoptedName('')
+    try {
+      const loaded = await apiFetch<OpenRefinePreview>(`/api/v1/projects/${projectId}/openrefine/previews`, {
+        method: 'POST',
+        body: JSON.stringify({ data_source_id: dsIds[0] }),
+      })
+      setPreview(loaded)
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.status === 503 && caught.detail?.fallback === 'rule_clean') {
+        setPreviewFallback(true)
+        setPreviewError('OpenRefine 不可用，已降级为规则清洗。')
+      } else {
+        setPreviewError(caught instanceof Error ? caught.message : 'OpenRefine 预览失败')
+      }
+    } finally {
+      setPreviewBusy(false)
+    }
+  }
+
+  const adoptPreview = async () => {
+    if (!preview) return
+    setPreviewBusy(true)
+    try {
+      const adopted = await apiFetch<{ data_source_id: string; name: string }>(
+        `/api/v1/projects/${projectId}/openrefine/previews/${preview.preview_id}/adopt`,
+        { method: 'POST', body: JSON.stringify({}) },
+      )
+      setPreview(null)
+      setAdoptedName(adopted.name)
+    } catch (caught) {
+      setPreviewError(caught instanceof Error ? caught.message : '采用失败')
+    } finally {
+      setPreviewBusy(false)
+    }
+  }
+
+  const cancelPreview = async () => {
+    if (!preview) return
+    setPreviewBusy(true)
+    try {
+      await apiFetch(`/api/v1/projects/${projectId}/openrefine/previews/${preview.preview_id}`, { method: 'DELETE' })
+      setPreview(null)
+      setPreviewError('')
+    } catch (caught) {
+      setPreviewError(caught instanceof Error ? caught.message : '撤销失败')
+    } finally {
+      setPreviewBusy(false)
     }
   }
 
@@ -186,16 +271,131 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
               </button>
             ))}
           </div>
-          <button
-            disabled={running || needsDataSource}
-            onClick={submitJob}
-            className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-white font-medium text-sm rounded-lg flex items-center gap-2 disabled:opacity-40"
-          >
-            <Play className="w-4 h-4" /> {running ? '运行中…' : `运行 ${stage}`}
-          </button>
+          <div className="flex gap-2">
+            {isOpenRefine && (
+              <button
+                disabled={previewBusy || needsDataSource}
+                onClick={runOpenRefinePreview}
+                className="px-4 py-2 border border-neutral-300 bg-white hover:bg-neutral-50 text-neutral-900 font-medium text-sm rounded-lg disabled:opacity-40"
+              >
+                {previewBusy ? '正在清洗…' : 'OpenRefine 预览'}
+              </button>
+            )}
+            <button
+              disabled={running || needsDataSource}
+              onClick={submitJob}
+              className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-white font-medium text-sm rounded-lg flex items-center gap-2 disabled:opacity-40"
+            >
+              <Play className="w-4 h-4" /> {running ? '运行中…' : (isOpenRefine ? '运行规则清洗' : `运行 ${stage}`)}
+            </button>
+          </div>
           {needsDataSource && <span className="text-[11px] text-neutral-500">先在数据源加载示例或上传文件</span>}
         </div>
       </div>
+
+      {(preview || previewError || adoptedName) && (
+        <div className="bg-white border border-neutral-200 rounded-xl p-5 space-y-4">
+          {adoptedName ? (
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-sm font-semibold text-neutral-900">已生成新数据源：{adoptedName}</div>
+                <p className="mt-1 text-xs text-neutral-500">原数据源没有变化。新数据源可在数据页继续查看或用于匹配。</p>
+              </div>
+              <button onClick={onGoDataSources} className="rounded-lg border border-neutral-300 px-4 py-2 text-xs font-medium text-neutral-800">
+                查看数据源
+              </button>
+            </div>
+          ) : preview ? (
+            <>
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-neutral-900">OpenRefine 清洗预览 · {preview.recipe.name}</div>
+                  <p className="mt-1 text-xs text-neutral-500">{preview.recipe.description}（配方 v{preview.recipe.version}）</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    disabled={previewBusy}
+                    onClick={adoptPreview}
+                    className="rounded-lg bg-neutral-900 px-4 py-2 text-xs font-medium text-white disabled:opacity-40"
+                  >
+                    采用并生成新数据源
+                  </button>
+                  <button
+                    disabled={previewBusy}
+                    onClick={cancelPreview}
+                    className="rounded-lg border border-neutral-300 px-4 py-2 text-xs font-medium text-neutral-700 disabled:opacity-40"
+                  >
+                    撤销
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+                  <div className="text-lg font-semibold text-neutral-900">{preview.diff.changed_rows}</div>
+                  <div className="text-[11px] text-neutral-500">变更行</div>
+                </div>
+                <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+                  <div className="text-lg font-semibold text-neutral-900">{preview.diff.changed_cells}</div>
+                  <div className="text-[11px] text-neutral-500">变更单元格</div>
+                </div>
+                <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+                  <div className="text-lg font-semibold text-neutral-900">{preview.diff.before_rows} → {preview.diff.after_rows}</div>
+                  <div className="text-[11px] text-neutral-500">行数</div>
+                </div>
+                <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+                  <div className="text-lg font-semibold text-neutral-900">
+                    {(preview.diff.columns_added.length + preview.diff.columns_removed.length) || '—'}
+                  </div>
+                  <div className="text-[11px] text-neutral-500">列变化</div>
+                </div>
+              </div>
+
+              {preview.diff.examples.length > 0 ? (
+                <div className="overflow-hidden rounded-lg border border-neutral-200">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-neutral-50 text-neutral-500">
+                      <tr><th className="p-2.5">行</th><th className="p-2.5">字段</th><th className="p-2.5">清洗前</th><th className="p-2.5">清洗后</th></tr>
+                    </thead>
+                    <tbody>
+                      {preview.diff.examples.map((example, index) => (
+                        <tr key={`${example.row}-${example.column}-${index}`} className="border-t border-neutral-100">
+                          <td className="p-2.5 text-neutral-500">{example.row}</td>
+                          <td className="p-2.5 font-medium text-neutral-800">{example.column}</td>
+                          <td className="p-2.5 text-neutral-500 break-all">{example.before || '（空）'}</td>
+                          <td className="p-2.5 text-neutral-900 break-all">{example.after || '（空）'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-xs text-neutral-500">这个配方没有产生需要变更的单元格。</p>
+              )}
+
+              <div className="flex flex-wrap items-center gap-3 text-xs">
+                <button
+                  onClick={() => setViewerSource({ kind: 'artifact', id: preview.artifact_id, filename: `${preview.recipe.id}.csv` })}
+                  className="rounded-lg border border-neutral-200 px-3 py-1.5 font-medium text-neutral-600"
+                >
+                  查看清洗后的 CSV
+                </button>
+                {preview.diff.columns_added.length > 0 && <span className="text-neutral-500">新增列：{preview.diff.columns_added.join('、')}</span>}
+                {preview.diff.columns_removed.length > 0 && <span className="text-neutral-500">删除列：{preview.diff.columns_removed.join('、')}</span>}
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <p role="alert" className="text-sm text-red-600">{previewError}</p>
+              {previewFallback && (
+                <button onClick={submitJob} className="rounded-lg bg-neutral-900 px-4 py-2 text-xs font-medium text-white">
+                  运行规则清洗
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {routing?.recommended_stage === 'L3' && (
         <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 md:flex-row md:items-center md:justify-between">

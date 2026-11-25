@@ -49,7 +49,10 @@ _LEGACY_METHOD_REASONS = {
 }
 
 
-def _method_for_stage(stage: str, *, table_count: int = 0, total_rows: int = 0, legacy: bool = False) -> Dict[str, Any]:
+def _method_for_stage(
+    stage: str, *, table_count: int = 0, total_rows: int = 0, legacy: bool = False,
+    openrefine_available: bool = False,
+) -> Dict[str, Any]:
     if legacy:
         reason = _LEGACY_METHOD_REASONS[stage]
     elif stage == "L1":
@@ -60,17 +63,33 @@ def _method_for_stage(stage: str, *, table_count: int = 0, total_rows: int = 0, 
         reason = "检测到 LinkML 契约结构。"
     else:
         reason = "检测到指标 YAML。"
+    if stage == "L1" and openrefine_available:
+        return {
+            "key": "openrefine_w3c",
+            "label": "OpenRefine + W3C 契约",
+            "stage": "L1",
+            "description": "用内置 OpenRefine 配方清洗，再导出 W3C 标准数据。",
+            "reason": reason,
+            "available": True,
+        }
     return {**METHOD_META[stage], "reason": reason, "available": True}
 
 
-def method_for_routing(routing: Dict[str, Any] | None) -> Dict[str, Any]:
-    """Return the method object, backfilling legacy routing rows from their stage."""
+def method_for_routing(routing: Dict[str, Any] | None, *, openrefine_available: bool = False) -> Dict[str, Any]:
+    """Return the method object, upgrading an L1 clean route when OpenRefine can run it."""
     if routing and isinstance(routing.get("method"), dict):
-        return routing["method"]
+        method = routing["method"]
+        if (
+            openrefine_available
+            and method.get("stage") == "L1"
+            and method.get("key") in ("rule_clean_w3c", "openrefine_w3c")
+        ):
+            return _method_for_stage("L1", openrefine_available=True)
+        return method
     stage = (routing or {}).get("recommended_stage")
     if stage not in METHOD_META:
         stage = "L1"
-    return _method_for_stage(stage, legacy=True)
+    return _method_for_stage(stage, legacy=True, openrefine_available=openrefine_available)
 
 
 def _detect_keys(columns: List[str]) -> Dict[str, Optional[str]]:
@@ -157,7 +176,9 @@ def profile_items(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def recommend_pipeline(profile: Dict[str, Any], user_goal: Optional[str] = None) -> Dict[str, Any]:
+def recommend_pipeline(
+    profile: Dict[str, Any], user_goal: Optional[str] = None, *, openrefine_available: bool = False,
+) -> Dict[str, Any]:
     reasons: List[str] = []
     goal = (user_goal or "").strip().upper()
     keys = profile.get("detected_keys", {})
@@ -191,7 +212,10 @@ def recommend_pipeline(profile: Dict[str, Any], user_goal: Optional[str] = None)
         "recommended_stage": stage,
         "meta": STAGE_META[stage],
         "confidence": conf,
-        "method": _method_for_stage(stage, table_count=table_count, total_rows=total_rows),
+        "method": _method_for_stage(
+            stage, table_count=table_count, total_rows=total_rows,
+            openrefine_available=openrefine_available and stage == "L1",
+        ),
         "reasons": reasons,
         "suggested_params": {
             "name_col": keys.get("name_col") or (profile["tables"][0].get("primary_text_col") if profile.get("tables") else None),

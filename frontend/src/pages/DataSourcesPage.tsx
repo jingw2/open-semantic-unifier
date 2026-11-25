@@ -9,6 +9,7 @@ interface Props {
 
 const METHOD_LABELS: Record<string, string> = {
   L1: '规则清洗 + W3C 契约',
+  openrefine_w3c: 'OpenRefine + W3C 契约',
   L2: 'Splink + DuckDB',
   L3: 'LinkML W3C 契约',
   L4: '指标 YAML',

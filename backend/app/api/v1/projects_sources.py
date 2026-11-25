@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_resource_access, get_current_user, require_role
+from app.core.config import settings
 from app.core.db import get_db
 from app.core.security import encrypt_secret
 from app.models.entities import DataSource, Project
@@ -21,10 +22,15 @@ from app.services.engines import (
     build_demo_cross_db_tables,
     build_demo_dirty_suppliers,
 )
+from app.services.openrefine.recipes import openrefine_limits_ok
 from app.services.profiler import method_for_routing, profile_items, recommend_pipeline
 from app.services.storage import storage
 
 router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_resource_access)], tags=["Projects & DataSources"])
+
+
+def _openrefine_available(profile: Dict[str, object]) -> bool:
+    return settings.openrefine_enabled and openrefine_limits_ok(profile, 0)[0]
 
 
 class CreateProjectRequest(BaseModel):
@@ -79,7 +85,7 @@ def list_datasources(project_id: str, ctx: Dict[str, str] = Depends(get_current_
             "table_name": d.table_name,
             "custom_sql": d.custom_sql,
             "profile": d.profile_json,
-            "routing": {**(d.routing_json or {}), "method": method_for_routing(d.routing_json)},
+            "routing": {**(d.routing_json or {}), "method": method_for_routing(d.routing_json, openrefine_available=_openrefine_available(d.profile_json or {}))},
             "created_at": d.created_at.isoformat(),
         }
         for d in rows
@@ -110,7 +116,7 @@ async def upload_datasources(
             item["name"] = safe_name
             obj_key, _ = storage.put_bytes(f"projects/{project_id}/uploads/{uuid.uuid4().hex[:8]}_{safe_name}", raw_bytes)
             single_profile = profile_items([item])
-            single_routing = recommend_pipeline(single_profile, user_goal=user_goal)
+            single_routing = recommend_pipeline(single_profile, user_goal=user_goal, openrefine_available=_openrefine_available(single_profile))
             ds = DataSource(
                 project_id=project_id,
                 name=safe_name,
@@ -125,7 +131,7 @@ async def upload_datasources(
             loaded_items.append(item)
 
     combined_profile = profile_items(loaded_items)
-    combined_routing = recommend_pipeline(combined_profile, user_goal=user_goal)
+    combined_routing = recommend_pipeline(combined_profile, user_goal=user_goal, openrefine_available=_openrefine_available(combined_profile))
     db.commit()
     return {"datasource_ids": created_ids, "profile": combined_profile, "routing": combined_routing}
 
@@ -155,7 +161,7 @@ def connect_and_sample_db(
 
     label = req.name or f"{req.db_type}:{req.table_name or 'custom_sql'}"
     profile = profile_items([{"kind": "table", "name": label, "df": sample_df}])
-    routing = recommend_pipeline(profile, user_goal=req.user_goal)
+    routing = recommend_pipeline(profile, user_goal=req.user_goal, openrefine_available=_openrefine_available(profile))
 
     ds = DataSource(
         project_id=project_id,
@@ -187,7 +193,7 @@ def load_demo_datasource(
         obj_key, _ = storage.put_bytes(f"projects/{project_id}/uploads/demo_dirty_suppliers.csv", df.to_csv(index=False).encode("utf-8-sig"))
         items = [{"kind": "table", "name": "dirty_suppliers.csv (示例250行)", "df": df}]
         prof = profile_items(items)
-        rt = recommend_pipeline(prof)
+        rt = recommend_pipeline(prof, openrefine_available=_openrefine_available(prof))
         rt["demo_catalog_key"] = "supplier_master_demo_v1"
         ds = DataSource(project_id=project_id, name=items[0]["name"], source_type="file", object_key=obj_key, profile_json=prof, routing_json=rt)
         db.add(ds)
@@ -203,7 +209,7 @@ def load_demo_datasource(
             k2, _ = storage.put_file(f"projects/{project_id}/uploads/demo_wms.parquet", p2)
         items = [{"kind": "table", "name": "demo_erp.parquet", "df": df_erp}, {"kind": "table", "name": "demo_wms.parquet", "df": df_wms}]
         prof = profile_items(items)
-        rt = recommend_pipeline(prof)
+        rt = recommend_pipeline(prof, openrefine_available=_openrefine_available(prof))
         for nm, k, d in [("demo_erp.parquet", k1, df_erp), ("demo_wms.parquet", k2, df_wms)]:
             ds = DataSource(project_id=project_id, name=nm, source_type="file", object_key=k, profile_json=profile_items([{"kind": "table", "name": nm, "df": d}]), routing_json=rt)
             db.add(ds)
@@ -218,7 +224,7 @@ def load_demo_datasource(
         obj_key, _ = storage.put_bytes(f"projects/{project_id}/uploads/demo_metrics.yaml", DEFAULT_METRICS_YAML.encode("utf-8"))
         items = [{"kind": "yaml", "name": "demo_metrics.yaml", "text": DEFAULT_METRICS_YAML}]
         prof = profile_items(items)
-        rt = recommend_pipeline(prof)
+        rt = recommend_pipeline(prof, openrefine_available=_openrefine_available(prof))
         ds = DataSource(project_id=project_id, name="demo_metrics.yaml", source_type="file", object_key=obj_key, profile_json=prof, routing_json=rt)
         db.add(ds)
         db.flush()

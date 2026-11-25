@@ -50,3 +50,18 @@ def test_method_for_routing_backfills_legacy_rows():
     existing = {"recommended_stage": "L1", "method": {"key": "custom", "label": "Custom"}}
     assert method_for_routing(existing)["key"] == "custom"
     assert method_for_routing(None)["key"] == "rule_clean_w3c"
+
+
+def test_openrefine_upgrades_only_the_l1_clean_method():
+    profile = {"total_rows": 250, "table_count": 1, "has_whitespace_noise": True, "detected_keys": {"name_col": "name"}}
+    routing = recommend_pipeline(profile, openrefine_available=True)
+    assert routing["method"]["key"] == "openrefine_w3c"
+    assert routing["method"]["label"] == "OpenRefine + W3C 契约"
+    assert routing["method"]["stage"] == "L1"
+
+    legacy = {"recommended_stage": "L1", "method": {"key": "rule_clean_w3c", "label": "规则清洗 + W3C 契约", "stage": "L1"}}
+    assert method_for_routing(legacy, openrefine_available=True)["key"] == "openrefine_w3c"
+    assert method_for_routing(legacy, openrefine_available=False)["key"] == "rule_clean_w3c"
+
+    big = recommend_pipeline({"total_rows": 60_000, "table_count": 1, "detected_keys": {}}, openrefine_available=True)
+    assert big["method"]["key"] == "splink_duckdb"
