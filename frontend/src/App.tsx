@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Bot, CheckSquare, Database, FileText, LogOut, Plus, Rocket, Sparkles, Users, GitMerge } from 'lucide-react'
+import { Bot, CheckSquare, Database, FileText, LogOut, Plus, Rocket, Route, Users, GitMerge } from 'lucide-react'
 import { apiFetch, clearAuth, getStoredUser, getToken, ProjectItem, UserInfo } from './lib/api'
 import LoginPage from './pages/LoginPage'
 import DataSourcesPage from './pages/DataSourcesPage'
@@ -50,7 +50,7 @@ export default function App() {
 
   const navItems: { key: NavKey; label: string; icon: React.ReactNode }[] = [
     { key: 'datasources', label: '数据源中心', icon: <Database className="w-4 h-4" /> },
-    { key: 'workbench', label: '智能路由工作台', icon: <Sparkles className="w-4 h-4" /> },
+    { key: 'workbench', label: '路由工作台', icon: <Route className="w-4 h-4" /> },
     { key: 'unification', label: '实体统一工作台', icon: <GitMerge className="w-4 h-4" /> },
     { key: 'contracts', label: '契约统一', icon: <FileText className="w-4 h-4" /> },
     { key: 'reviews', label: '人工复核队列', icon: <CheckSquare className="w-4 h-4" /> },
@@ -62,24 +62,23 @@ export default function App() {
   return (
     <div className="min-h-screen flex">
       {/* 左侧专业导航栏 */}
-      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col justify-between p-4 shrink-0">
+      <aside className="w-60 bg-[#fbfbfb] border-r border-neutral-200 flex flex-col justify-between p-3 shrink-0">
         <div>
-          <div className="flex items-center gap-2.5 px-2 py-2 mb-4">
-            <div className="w-8 h-8 rounded-lg bg-brand-600 text-white font-extrabold flex items-center justify-center">
+          <div className="flex items-center gap-2.5 px-2 py-1.5 mb-5">
+            <div className="w-7 h-7 rounded-md bg-neutral-900 text-white font-semibold flex items-center justify-center text-sm">
               零
             </div>
             <div>
-              <div className="text-sm font-extrabold text-slate-900">零点未来</div>
-              <div className="text-[11px] text-slate-500">企业语义统一平台 v1.0</div>
+              <div className="text-[13px] font-semibold text-neutral-900">零点未来</div>
+              <div className="text-[11px] text-neutral-500">企业语义统一平台</div>
             </div>
           </div>
 
-          {/* 项目切换器 */}
-          <div className="mb-4 px-1">
-            <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 mb-1">
+          <div className="mb-4 px-2">
+            <div className="flex items-center justify-between text-[11px] font-medium text-neutral-500 mb-1.5">
               <span>当前项目</span>
               {user.role !== 'viewer' && (
-                <button onClick={createProject} className="text-brand-600 hover:underline flex items-center gap-0.5">
+                <button onClick={createProject} className="text-neutral-600 hover:text-neutral-900 flex items-center gap-0.5">
                   <Plus className="w-3 h-3" /> 新建
                 </button>
               )}
@@ -87,7 +86,7 @@ export default function App() {
             <select
               value={activeProject?.id || ''}
               onChange={(e) => setActiveProject(projects.find((x) => x.id === e.target.value) || null)}
-              className="w-full border border-slate-200 rounded-lg px-2.5 py-2 text-xs font-bold bg-slate-50"
+              className="w-full border border-neutral-300 rounded-md px-2 py-1.5 text-xs bg-white"
             >
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
@@ -95,13 +94,13 @@ export default function App() {
             </select>
           </div>
 
-          <nav className="space-y-1">
+          <nav className="space-y-0.5">
             {navItems.map((item) => (
               <button
                 key={item.key}
                 onClick={() => setNav(item.key)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold transition ${
-                  nav === item.key ? 'bg-brand-50 text-brand-600' : 'text-slate-600 hover:bg-slate-100'
+                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-[13px] transition ${
+                  nav === item.key ? 'bg-neutral-200/70 text-neutral-900 font-medium' : 'text-neutral-600 hover:bg-neutral-200/50'
                 }`}
               >
                 {item.icon} {item.label}
@@ -110,12 +109,13 @@ export default function App() {
           </nav>
         </div>
 
-        <div className="pt-4 border-t border-slate-100 px-2">
-          <div className="text-xs font-bold text-slate-800">{user.display_name}</div>
-          <div className="text-[11px] text-slate-500 truncate">{user.email} · {user.role}</div>
+        <div className="pt-3 border-t border-neutral-200 px-2">
+          <div className="text-[13px] font-medium text-neutral-800 truncate">{user.display_name}</div>
+          <div className="text-[11px] text-neutral-500 truncate">{user.email}</div>
+          <div className="text-[11px] text-neutral-400 truncate">{user.role}</div>
           <button
             onClick={() => { clearAuth(); setUser(null) }}
-            className="mt-2.5 w-full py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 hover:text-red-600 hover:border-red-200 flex items-center justify-center gap-1"
+            className="mt-2 w-full py-1.5 border border-neutral-200 rounded-md text-xs text-neutral-600 hover:bg-white hover:text-red-600 flex items-center justify-center gap-1"
           >
             <LogOut className="w-3.5 h-3.5" /> 退出登录
           </button>
@@ -123,10 +123,10 @@ export default function App() {
       </aside>
 
       {/* 主内容区 */}
-      <main className="flex-1 p-6 md:p-8 overflow-y-auto">
+      <main className="flex-1 bg-[#f7f7f8] p-6 md:p-8 overflow-y-auto">
         <div className="max-w-5xl mx-auto">
           {!activeProject ? (
-            <div className="text-sm text-slate-500">正在加载项目...</div>
+            <div className="text-sm text-neutral-500">正在加载项目...</div>
           ) : nav === 'datasources' ? (
             <DataSourcesPage
               projectId={activeProject.id}
