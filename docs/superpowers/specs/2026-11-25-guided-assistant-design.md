@@ -394,7 +394,7 @@ type TaskItem = {
 
 ### 11.1 服务
 
-- 在 `docker-compose.yml` 增加 `openrefine` 服务，使用固定版本的官方镜像，内部网络访问，不对外暴露端口。
+- 在 `docker-compose.yml` 增加 `openrefine` 服务，内部网络访问，不对外暴露端口。OpenRefine 官方未发布 Docker Hub 镜像，因此改为在本仓库 `openrefine/Dockerfile` 中从官方 GitHub Release tarball 构建，校验官方发布的 SHA-256，并固定基础镜像 digest。
 - 数据卷持久化 OpenRefine 项目；后端通过 `OPENREFINE_URL` 访问。
 - 本地无 Docker 时，适配器健康检查失败，自动降级到规则清洗。
 - 版本固定并记录镜像 digest，遵循仓库现有容器固定策略。
