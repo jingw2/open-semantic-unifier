@@ -21,7 +21,7 @@ from app.services.engines import (
     build_demo_cross_db_tables,
     build_demo_dirty_suppliers,
 )
-from app.services.profiler import profile_items, recommend_pipeline
+from app.services.profiler import method_for_routing, profile_items, recommend_pipeline
 from app.services.storage import storage
 
 router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_resource_access)], tags=["Projects & DataSources"])
@@ -79,7 +79,7 @@ def list_datasources(project_id: str, ctx: Dict[str, str] = Depends(get_current_
             "table_name": d.table_name,
             "custom_sql": d.custom_sql,
             "profile": d.profile_json,
-            "routing": d.routing_json,
+            "routing": {**(d.routing_json or {}), "method": method_for_routing(d.routing_json)},
             "created_at": d.created_at.isoformat(),
         }
         for d in rows
