@@ -2,6 +2,7 @@ import { ArtifactDownload } from '../components/ArtifactAccess'
 import React, { useEffect, useState } from 'react'
 import { Rocket, Download, RotateCcw } from 'lucide-react'
 import { apiFetch, ProjectItem } from '../lib/api'
+import ResultViewer, { ResultViewerSource } from '../components/ResultViewer'
 
 interface Props {
   project: ProjectItem
@@ -9,6 +10,7 @@ interface Props {
 
 export default function ServingReleasePage({ project }: Props) {
   const [artifacts, setArtifacts] = useState<any[]>([])
+  const [viewerSource, setViewerSource] = useState<ResultViewerSource | null>(null)
   const load = async () => {
     setArtifacts(await apiFetch<any[]>(`/api/v1/projects/${project.id}/artifacts`))
   }
@@ -79,9 +81,14 @@ export default function ServingReleasePage({ project }: Props) {
                           {a.release_status === 'ARCHIVED' ? '回滚到此版本' : '发布到线上 API'}
                         </button>
                       )}
-                      <ArtifactDownload id={a.id} filename={a.filename} className="px-2.5 py-1 border border-neutral-200 rounded-md font-semibold flex items-center gap-1">
-                        <Download className="w-3 h-3" /> 下载
-                      </ArtifactDownload>
+                      <div className="flex flex-wrap gap-1">
+                        <button onClick={() => setViewerSource({ kind: 'artifact', id: a.id, filename: a.filename })} className="px-2.5 py-1 border border-neutral-200 rounded-md font-medium flex items-center gap-1">
+                          查看
+                        </button>
+                        <ArtifactDownload id={a.id} filename={a.filename} className="px-2.5 py-1 border border-neutral-200 rounded-md font-semibold flex items-center gap-1">
+                          <Download className="w-3 h-3" /> 下载
+                        </ArtifactDownload>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -91,6 +98,7 @@ export default function ServingReleasePage({ project }: Props) {
         )}
       </div>
 
+      <ResultViewer source={viewerSource} onClose={() => setViewerSource(null)} />
     </div>
   )
 }

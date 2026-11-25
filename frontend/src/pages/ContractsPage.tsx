@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { ArrowDownToLine, Check, CircleAlert, FileText, History, LoaderCircle, Plus, RotateCcw, Send } from 'lucide-react'
 import { apiFetch, clearAuth, DataSourceItem, downloadApi, getToken } from '../lib/api'
+import ResultViewer, { ResultViewerSource } from '../components/ResultViewer'
 
 type Tab = 'sources' | 'versions' | 'release'
 type ContractVersionStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
@@ -142,6 +143,7 @@ export default function ContractsPage({ projectId, canEdit, initialVersionId }: 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [viewerSource, setViewerSource] = useState<ResultViewerSource | null>(null)
 
   const base = `/api/v1/projects/${projectId}`
 
@@ -443,6 +445,9 @@ export default function ContractsPage({ projectId, canEdit, initialVersionId }: 
                       <td className="p-3"><div className="text-neutral-600">{item.created_by}</div><div className="mt-1 text-[10px] text-neutral-400">{formatTime(item.created_at)}</div></td>
                       <td className="p-3">
                         <div className="flex flex-wrap gap-1.5">
+                          <button onClick={() => setViewerSource({ kind: 'contract', projectId, versionId: item.id, filename: `contract-v${item.version}-model.json` })} className="inline-flex items-center gap-1 rounded-lg border border-neutral-300 px-2 py-1.5 text-[11px] font-medium text-neutral-700 hover:bg-neutral-50">
+                            查看模型
+                          </button>
                           {(['model', 'json_schema', 'sql_ddl', 'er_diagram'] as const).map((kind) => (
                             <button key={kind} onClick={() => void exportVersion(item, kind)} className="inline-flex items-center gap-1 rounded-lg border border-neutral-300 px-2 py-1.5 text-[11px] font-medium text-neutral-700 hover:bg-neutral-50">
                               <ArrowDownToLine className="h-3 w-3" />{kind}
@@ -517,6 +522,7 @@ export default function ContractsPage({ projectId, canEdit, initialVersionId }: 
           </section>
         </div>
       )}
+      <ResultViewer source={viewerSource} onClose={() => setViewerSource(null)} />
     </div>
   )
 }

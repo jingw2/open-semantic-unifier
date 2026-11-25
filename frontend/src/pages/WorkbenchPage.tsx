@@ -1,4 +1,5 @@
 import { ArtifactDownload, ArtifactPreview } from '../components/ArtifactAccess'
+import ResultViewer, { ResultViewerSource } from '../components/ResultViewer'
 import React, { useEffect, useState } from 'react'
 import { Play, Download, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { apiFetch, DataSourceItem, JobItem } from '../lib/api'
@@ -30,6 +31,7 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
   const [localProfile, setLocalProfile] = useState<any>(activeProfile)
   const [effectiveRouting, setEffectiveRouting] = useState<any>(activeRouting)
   const [loadError, setLoadError] = useState('')
+  const [viewerSource, setViewerSource] = useState<ResultViewerSource | null>(null)
 
   const [job, setJob] = useState<JobItem | null>(null)
   const [running, setRunning] = useState(false)
@@ -245,13 +247,17 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
             </div>
             <div className="flex gap-2 flex-wrap">
               {(job.result?.artifacts || []).map((a: any) => (
-                <ArtifactDownload
-                  key={a.id}
-                  id={a.id} filename={a.filename}
-                  className="px-3 py-1.5 bg-brand-50 text-brand-600 rounded-lg text-xs font-medium flex items-center gap-1"
-                >
-                  <Download className="w-3.5 h-3.5" /> v{a.version} {a.filename}
-                </ArtifactDownload>
+                <div key={a.id} className="flex items-center gap-1">
+                  <ArtifactDownload
+                    id={a.id} filename={a.filename}
+                    className="px-3 py-1.5 bg-brand-50 text-brand-600 rounded-lg text-xs font-medium flex items-center gap-1"
+                  >
+                    <Download className="w-3.5 h-3.5" /> v{a.version} {a.filename}
+                  </ArtifactDownload>
+                  <button onClick={() => setViewerSource({ kind: 'artifact', id: a.id, filename: a.filename })} className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600">
+                    查看
+                  </button>
+                </div>
               ))}
             </div>
           </div>
@@ -319,6 +325,7 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
           )}
         </div>
       )}
+      <ResultViewer source={viewerSource} onClose={() => setViewerSource(null)} />
     </div>
   )
 }
