@@ -240,17 +240,22 @@ export default function ContractsPage({ projectId, canEdit, initialVersionId }: 
     }
   }
 
-  const createVersion = async () => {
+  const createVersion = async (extraAllowed: string[] = []) => {
     if (!selectedSourceId || !selectedSnapshotId) return
     setBusy(true)
     setError('')
     setNotice('')
     setIssues([])
+    const allowed = Array.from(new Set([
+      ...allowedNewTypes.split(',').map((value) => value.trim()).filter(Boolean),
+      ...extraAllowed,
+    ]))
+    setAllowedNewTypes(allowed.join(', '))
     try {
       const created = await postJson<ContractVersionItem>(`${base}/contracts/versions`, {
         source_id: selectedSourceId,
         snapshot_id: selectedSnapshotId,
-        allowed_new_entity_types: allowedNewTypes.split(',').map((value) => value.trim()).filter(Boolean),
+        allowed_new_entity_types: allowed,
       })
       setNotice(`模型版本 v${created.version} 已创建（${formatCounts(created.counts)}），状态为草稿。`)
       await loadWorkspace()
@@ -371,6 +376,11 @@ export default function ContractsPage({ projectId, canEdit, initialVersionId }: 
     }
   }
 
+  const unknownEntityTypes = Array.from(new Set(issues
+    .filter((issue) => issue.code === 'UNKNOWN_ENTITY_TYPE')
+    .map((issue) => issue.path.replace(/^classes\./, ''))
+    .filter(Boolean)))
+
   const selectedJsonldSource = fileDataSources.find((source) => source.id === jsonldSourceId)
   const jsonldColumnOptions: string[] = selectedJsonldSource?.profile?.tables?.[0]?.columns || []
 
@@ -474,6 +484,17 @@ export default function ContractsPage({ projectId, canEdit, initialVersionId }: 
                     </li>
                   ))}
                 </ul>
+                {unknownEntityTypes.length > 0 && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-rose-200 pt-3">
+                    <span className="text-xs text-rose-800">确认这些实体类型应存在？</span>
+                    <button
+                      onClick={() => void createVersion(unknownEntityTypes)}
+                      className="rounded-lg bg-rose-700 px-3 py-1.5 text-xs font-medium text-white"
+                    >
+                      允许 {unknownEntityTypes.join('、')} 并重新校验
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </section>

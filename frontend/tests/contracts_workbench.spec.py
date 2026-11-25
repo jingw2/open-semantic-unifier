@@ -174,7 +174,6 @@ def test_contracts_acceptance_with_supplier_contract():
             id="snapshot-supplier", project_id="project-acceptance", version=1,
             snapshot_json={"entities": {
                 "e1": {"entity_type": "Supplier"},
-                "e2": {"entity_type": "Country"},
             }},
             actor_id="acceptance",
         ))
@@ -228,6 +227,9 @@ def test_contracts_acceptance_with_supplier_contract():
             page.get_by_label("契约源").select_option(index=1)
             page.get_by_label("实体快照").select_option(index=1)
             page.get_by_role("button", name="编译并校验").click()
+            expect(page.get_by_text("UNKNOWN_ENTITY_TYPE", exact=False)).to_be_visible(timeout=30000)
+            expect(page.get_by_role("button", name="允许 Country 并重新校验", exact=True)).to_be_visible()
+            page.get_by_role("button", name="允许 Country 并重新校验", exact=True).click()
             expect(page.get_by_role("status")).to_contain_text("模型版本 v1 已创建", timeout=30000)
             expect(page.get_by_role("cell", name="类 2 · 属性 8 · 枚举 1 · 关系 2")).to_be_visible()
 
