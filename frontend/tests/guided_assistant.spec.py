@@ -216,6 +216,11 @@ def test_guided_assistant_model_plan_and_answer():
                 },
                 routing_json={"recommended_stage": "L1"},
             ))
+            db.add(DataSource(
+                id="ds-metrics", project_id="project-assistant", name="demo_metrics.yaml", source_type="file",
+                profile_json={"has_metric_yaml": True, "total_rows": 0, "table_count": 0, "tables": [{"columns": ["YAML"]}]},
+                routing_json={"recommended_stage": "L4"},
+            ))
             db.commit()
         with _isolated_backend(app, maker):
             with sync_playwright() as playwright:
@@ -243,6 +248,9 @@ def test_guided_assistant_model_plan_and_answer():
                 page.get_by_role("button", name="统一 GMV 口径", exact=True).click()
                 page.get_by_role("button", name="开始", exact=True).click()
                 expect(page.get_by_role("alert")).to_contain_text("不能计算 L4 指标")
+                page.get_by_label("选择数据源").select_option(label="demo_metrics.yaml")
+                page.get_by_role("button", name="开始", exact=True).click()
+                expect(page.get_by_text("已完成", exact=False).first).to_be_visible(timeout=60000)
                 browser.close()
     finally:
         provider_server.shutdown()

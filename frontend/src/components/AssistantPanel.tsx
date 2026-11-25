@@ -53,6 +53,8 @@ type ChatMessage =
   | { id: number; role: 'user'; content: string }
   | { id: number; role: 'assistant'; content: string; plan: PlanPayload | null }
 
+type EntitySummary = { pairs: number; entities: number; review: number }
+
 interface Props {
   projectId: string
   currentPage: string
@@ -77,6 +79,7 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
   const [message, setMessage] = useState('')
   const [providerId, setProviderId] = useState('')
   const [thinking, setThinking] = useState(false)
+  const [entitySummary, setEntitySummary] = useState<EntitySummary | null>(null)
   const idRef = useRef(0)
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -124,6 +127,7 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
     setError('')
     setResultRoute('')
     setActiveTask(null)
+    setEntitySummary(null)
     setThinking(true)
     try {
       const plan = await requestPlan(text, history)
@@ -177,6 +181,7 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
     setStage('idle')
     setError('')
     setResultRoute('')
+    setEntitySummary(null)
     pushAssistant(plan.explanation, plan)
   }
 
@@ -236,6 +241,14 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
           await new Promise((resolve) => setTimeout(resolve, 500))
         }
         if (detail?.status !== 'SUCCEEDED') throw new Error(detail?.error_message || '实体运行失败')
+        const reviews = await apiFetch<{ total: number }>(
+          `/api/v1/projects/${projectId}/unification/reviews?run_id=${encodeURIComponent(demo.run_id)}&limit=1&offset=0`,
+        )
+        setEntitySummary({
+          pairs: detail.result?.pairs?.length ?? 0,
+          entities: Object.keys(detail.result?.entities || {}).length,
+          review: reviews.total,
+        })
         setResultRoute(`#/tasks/run/${demo.run_id}`)
         setStage('done')
         return
@@ -263,7 +276,8 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
         const columns = new Set<string>((source?.profile?.tables || []).flatMap((table: any) => table.columns || []))
         const wide = ['order_id', 'order_channel', 'total_amount', 'delivery_status', 'settled_amount'].every((column) => columns.has(column))
         const orders = ['order_id', 'order_channel', 'total_amount'].every((column) => columns.has(column))
-        if (!wide && !orders) {
+        const metricsYaml = Boolean(source?.profile?.has_metric_yaml)
+        if (!metricsYaml && !wide && !orders) {
           throw new Error('所选数据源不包含订单、渠道或金额字段，不能计算 L4 指标。请选择订单数据，或加载 L4 示例。')
         }
       }
@@ -385,11 +399,15 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
                           <div className="text-[11px] text-neutral-500">数据源：{datasources.find((item) => item.id === selectedId)?.name || '未选择'}</div>
                         <label className="mt-1 block text-[11px] text-neutral-500">
                           <select
+                            aria-label="选择数据源"
                             value={selectedId}
                             onChange={(event) => {
                               setSelectedId(event.target.value)
                               const source = datasources.find((item) => item.id === event.target.value)
                               setRouting(source?.routing || null)
+                              setStage('idle')
+                              setError('')
+                              setResultRoute('')
                             }}
                             className="mt-1 w-full rounded-md border border-neutral-300 px-2 py-1.5 text-xs text-neutral-800"
                           >
@@ -438,13 +456,21 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
         {stage === 'done' && (
           <div className="mt-3 space-y-1.5">
             <p className="flex items-center gap-1.5 text-[11px] font-medium text-green-700"><CheckCircle2 className="h-3.5 w-3.5" /> 已完成</p>
+            {activeTask?.stage === 'ENTITY' && entitySummary && (
+              <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-2.5 text-[11px] leading-5 text-neutral-600">
+                <div className="font-medium text-neutral-900">实体概览</div>
+                <p className="mt-1">本次运行生成 {entitySummary.pairs} 组候选配对，{entitySummary.review} 组待复核，归并为 {entitySummary.entities} 个统一实体。</p>
+                <p className="mt-1">运行本身不会发布快照。先去复核处理待定配对，再到结果的「快照与导出」发布不可变版本，契约和对外服务会读取该版本。</p>
+              </div>
+            )}
             <button onClick={() => onRoute(resultRoute)} className="w-full rounded-md bg-neutral-900 px-3 py-2 text-xs font-medium text-white">查看结果</button>
-            {activeTask?.stage === 'ENTITY' && <button onClick={() => onRoute(resultRoute)} className="w-full rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700">去复核</button>}
+            {activeTask?.stage === 'ENTITY' && <button onClick={() => onRoute('#/reviews')} className="w-full rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700">去复核</button>}
           </div>
         )}
         {stage === 'error' && (
           <div className="mt-3 space-y-1.5">
             <p role="alert" className="text-[11px] text-red-600">{error}</p>
+            <button onClick={() => { setStage('idle'); setError('') }} className="w-full rounded-md bg-neutral-900 px-3 py-2 text-xs font-medium text-white">重新选择并运行</button>
             <button onClick={() => onRoute(manualRoute)} className="w-full rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700">去手动处理</button>
           </div>
         )}

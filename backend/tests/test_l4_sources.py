@@ -95,6 +95,29 @@ def test_l4_uses_one_wide_order_table(public_api, storage_root):
     assert result["data_source_kind"] == "sources"
 
 
+def test_l4_job_with_a_metrics_yaml_uses_the_demo_dataset(public_api, storage_root, monkeypatch):
+    _client, maker, _identity = public_api
+    with maker() as db:
+        db.add(DataSource(
+            id="ds-metrics-yaml", project_id="project-one", name="demo_metrics.yaml", source_type="file",
+            object_key="", profile_json={"has_metric_yaml": True, "total_rows": 0, "table_count": 0,
+                                         "tables": [{"columns": ["YAML"]}]},
+        ))
+        job = Job(
+            project_id="project-one", stage="L4", status="PENDING", progress=0,
+            stage_message="queued", params_json={"datasource_ids": ["ds-metrics-yaml"], "metric_name": "net_gmv"},
+        )
+        db.add(job)
+        db.commit()
+        job_id = job.id
+
+    monkeypatch.setattr("app.workers.tasks.SessionLocal", maker)
+    result = run_job_sync(job_id)
+
+    assert result["data_source_kind"] == "demo"
+    assert result["selected_metric"] == "net_gmv"
+
+
 def test_l4_job_with_dirty_data_fails_instead_of_returning_gmv(public_api, storage_root, monkeypatch):
     _client, maker, _identity = public_api
     storage.put_bytes("projects/project-one/uploads/suppliers.csv", DIRTY_CSV)
