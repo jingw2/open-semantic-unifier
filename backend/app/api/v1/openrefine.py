@@ -79,6 +79,8 @@ def create_openrefine_preview(
         raise http_error(502, exc.code, str(exc)) from exc
     except (OpenRefineLimitExceeded, OpenRefineNoRecipe, OpenRefineUnsupportedSource) as exc:
         raise http_error(422, exc.code, str(exc)) from exc
+    except Exception as exc:
+        raise http_error(502, "OPENREFINE_PREVIEW_FAILED", str(exc)[:300] or "OpenRefine preview failed") from exc
 
 
 @router.post("/projects/{project_id}/openrefine/previews/{preview_id}/adopt")

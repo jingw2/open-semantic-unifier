@@ -140,6 +140,87 @@ def test_preview_refuses_an_oversized_source(public_api, storage_root):
         app.dependency_overrides.pop(get_openrefine_client, None)
 
 
+def test_storage_failure_marks_the_job_failed_and_deletes_the_temporary_project(public_api, storage_root, monkeypatch):
+    client, maker, _identity = public_api
+    source_id = _seed_source(maker)
+    fake = FakeClient()
+    _use_client(fake)
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("object storage write failed")
+
+    monkeypatch.setattr("app.services.openrefine.previews._save_artifact", boom)
+    try:
+        response = client.post(
+            "/api/v1/projects/project-one/openrefine/previews",
+            json={"data_source_id": source_id},
+        )
+        assert response.status_code == 502
+        assert response.json()["detail"]["code"] == "OPENREFINE_PREVIEW_FAILED"
+        assert fake.deleted == ["or-project-1"]
+        assert storage.get_bytes("projects/project-one/uploads/dirty.csv") == BEFORE
+        with maker() as db:
+            job = db.query(Job).filter(Job.project_id == "project-one").one()
+            assert job.status == "FAILED"
+            assert "OPENREFINE_PREVIEW_FAILED" in job.error_message
+    finally:
+        app.dependency_overrides.pop(get_openrefine_client, None)
+
+
+def test_incompatible_recipe_is_rejected_before_a_job_is_created(public_api, storage_root):
+    client, maker, _identity = public_api
+    with maker() as db:
+        source = DataSource(
+            id="ds-amount-only", project_id="project-one", name="amounts.csv", source_type="file",
+            object_key="projects/project-one/uploads/dirty.csv",
+            profile_json={
+                "total_rows": 2, "table_count": 1, "detected_keys": {},
+                "tables": [{"name": "amounts.csv", "rows": 2, "cols": 1, "columns": ["amount"],
+                            "preview": [{"amount": "10"}]}],
+            },
+        )
+        db.add(source)
+        db.commit()
+    _use_client(FakeClient())
+    try:
+        response = client.post(
+            "/api/v1/projects/project-one/openrefine/previews",
+            json={"data_source_id": "ds-amount-only", "recipe_id": "normalize_company_name"},
+        )
+        assert response.status_code == 422
+        assert response.json()["detail"]["code"] == "OPENREFINE_NO_RECIPE"
+        with maker() as db:
+            assert db.query(Job).filter(Job.project_id == "project-one").count() == 0
+    finally:
+        app.dependency_overrides.pop(get_openrefine_client, None)
+
+
+def test_a_second_adoption_cannot_create_a_duplicate_source(public_api, storage_root):
+    client, maker, _identity = public_api
+    source_id = _seed_source(maker)
+    _use_client(FakeClient())
+    try:
+        preview = client.post(
+            "/api/v1/projects/project-one/openrefine/previews",
+            json={"data_source_id": source_id},
+        ).json()
+        with maker() as db:
+            db.add(DataSource(
+                id=preview["preview_id"], project_id="project-one", name="raced adoption",
+                source_type="file", object_key="projects/project-one/uploads/dirty.csv",
+            ))
+            db.commit()
+        response = client.post(
+            f"/api/v1/projects/project-one/openrefine/previews/{preview['preview_id']}/adopt",
+        )
+        assert response.status_code == 409
+        assert response.json()["detail"]["code"] == "OPENREFINE_PREVIEW_CONFLICT"
+        with maker() as db:
+            assert db.query(DataSource).filter(DataSource.name == "dirty（OpenRefine 清洗）").count() == 0
+    finally:
+        app.dependency_overrides.pop(get_openrefine_client, None)
+
+
 def test_preview_rejects_a_non_csv_source(public_api, storage_root):
     client, maker, _identity = public_api
     source_id = _seed_source(maker)

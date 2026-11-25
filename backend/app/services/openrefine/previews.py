@@ -7,6 +7,7 @@ import os
 from typing import Any
 
 import pandas as pd
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -15,6 +16,7 @@ from app.services.engines import _save_artifact
 from app.services.openrefine.client import OpenRefineClient, OpenRefineError, OpenRefineUnavailable
 from app.services.openrefine.recipes import (
     Recipe,
+    RecipeColumnMissing,
     openrefine_limits_ok,
     recipe_payload,
     render_operations,
@@ -156,6 +158,10 @@ def create_preview(
         recipe = select_recipe(profile)
     if recipe is None:
         raise OpenRefineNoRecipe("没有匹配当前数据的内置配方")
+    try:
+        operations = render_operations(recipe, profile)
+    except RecipeColumnMissing as exc:
+        raise OpenRefineNoRecipe(f"配方 {recipe.name} 不适用于当前数据") from exc
 
     job = Job(
         project_id=project_id,
@@ -176,27 +182,30 @@ def create_preview(
     db.commit()
     db.refresh(job)
 
-    if not client.health():
-        _fail_job(db, job, "OPENREFINE_UNAVAILABLE", "OpenRefine 健康检查失败")
-        raise OpenRefineUnavailable()
-
     openrefine_project_id = ""
     try:
-        operations = render_operations(recipe, profile)
+        if not client.health():
+            raise OpenRefineUnavailable()
         openrefine_project_id = client.create_project(f"osu-{job.id}", content)
         client.apply_recipe(openrefine_project_id, operations)
         cleaned = client.export_csv(openrefine_project_id, f"osu-{job.id}")
+        artifact = _save_artifact(
+            db, project_id, job.id, "openrefine_csv", f"{os.path.splitext(source.name)[0]}_openrefine.csv", cleaned,
+            meta={"recipe_id": recipe.id, "recipe_version": recipe.version},
+        )
+        diff = diff_csv(content, cleaned)
     except OpenRefineError as exc:
         _fail_job(db, job, exc.code, exc.message)
         if openrefine_project_id:
             _best_effort_delete(client, openrefine_project_id)
         raise
+    except Exception as exc:
+        db.rollback()
+        _fail_job(db, job, "OPENREFINE_PREVIEW_FAILED", str(exc)[:200] or "preview failed")
+        if openrefine_project_id:
+            _best_effort_delete(client, openrefine_project_id)
+        raise
 
-    artifact = _save_artifact(
-        db, project_id, job.id, "openrefine_csv", f"{os.path.splitext(source.name)[0]}_openrefine.csv", cleaned,
-        meta={"recipe_id": recipe.id, "recipe_version": recipe.version},
-    )
-    diff = diff_csv(content, cleaned)
     job.status = "SUCCESS"
     job.progress = 100
     job.stage_message = "OpenRefine 清洗完成，等待采用"
@@ -264,6 +273,7 @@ def adopt_preview(
     stem = os.path.splitext(source.name)[0]
     name = f"{stem}（OpenRefine 清洗）"[:180]
     adopted = DataSource(
+        id=job.id,
         project_id=project_id,
         name=name,
         source_type="file",
@@ -272,10 +282,14 @@ def adopt_preview(
         routing_json=recommend_pipeline(profile, openrefine_available=settings.openrefine_enabled),
     )
     db.add(adopted)
-    db.flush()
-    result.update({"adopted": True, "adopted_data_source_id": adopted.id, "adopted_by": actor_id})
-    job.result_json = result
-    db.commit()
+    try:
+        db.flush()
+        result.update({"adopted": True, "adopted_data_source_id": adopted.id, "adopted_by": actor_id})
+        job.result_json = result
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise OpenRefinePreviewConflict("这个预览已经采用过") from exc
 
     openrefine_project_id = result.get("openrefine_project_id")
     if openrefine_project_id:
