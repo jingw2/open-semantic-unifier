@@ -145,6 +145,16 @@ def test_decision_models_workbench_provider_test_and_review_evidence():
             assert decision_providers[0]["provider_kind"] == "perplexity_decisions"
             assert decision_providers[0]["send_fields"] == ["name"]
 
+            # Edit keeps the stored key when the API key field is blank.
+            page.get_by_role("button", name="编辑").click()
+            page.get_by_label("最大重试次数").fill("1")
+            page.get_by_role("button", name="更新 Provider").click()
+            expect(page.get_by_text("已配置模型 Provider (1)")).to_be_visible()
+            updated = [item for item in page.request.get("http://127.0.0.1:8765/api/v1/providers").json()["configured"] if item["id"] == provider_id]
+            assert updated and updated[0]["max_retries"] == 1
+            assert updated[0]["send_fields"] == ["name"]
+            assert updated[0]["api_key_masked"]
+
             # 2. Test button surfaces the typed suggestion, never a bare success.
             page.get_by_role("button", name="测试连通性").click()
             expect(page.get_by_text("perplexity_decisions → SAME")).to_be_visible(timeout=10000)

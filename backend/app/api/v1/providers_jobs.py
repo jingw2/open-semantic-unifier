@@ -67,6 +67,24 @@ class SaveProviderRequest(BaseModel):
         return self
 
 
+def _provider_payload(p: LLMProvider) -> Dict[str, Any]:
+    return {
+        "id": p.id,
+        "provider_key": p.provider_key,
+        "name": p.name,
+        "base_url": p.base_url,
+        "default_model": p.default_model,
+        "api_key_masked": mask_secret(decrypt_secret(p.encrypted_api_key)) if p.encrypted_api_key else "",
+        "is_custom": p.is_custom,
+        "is_default": p.is_default,
+        "provider_kind": p.provider_kind,
+        "send_fields": p.send_fields_json,
+        "timeout_seconds": p.timeout_seconds,
+        "max_retries": p.max_retries,
+        "prompt_version": p.prompt_version,
+    }
+
+
 class SubmitJobRequest(BaseModel):
     stage: str  # L1 | L2 | L3 | L4
     datasource_ids: List[str] = []
@@ -77,25 +95,7 @@ class SubmitJobRequest(BaseModel):
 @router.get("/providers")
 def list_providers(ctx: Dict[str, str] = Depends(get_current_user), db: Session = Depends(get_db)):
     saved = db.query(LLMProvider).filter(LLMProvider.workspace_id == ctx["workspace_id"]).all()
-    saved_out = [
-        {
-            "id": p.id,
-            "provider_key": p.provider_key,
-            "name": p.name,
-            "base_url": p.base_url,
-            "default_model": p.default_model,
-            "api_key_masked": mask_secret(decrypt_secret(p.encrypted_api_key)) if p.encrypted_api_key else "",
-            "is_custom": p.is_custom,
-            "is_default": p.is_default,
-            "provider_kind": p.provider_kind,
-            "send_fields": p.send_fields_json,
-            "timeout_seconds": p.timeout_seconds,
-            "max_retries": p.max_retries,
-            "prompt_version": p.prompt_version,
-        }
-        for p in saved
-    ]
-    return {"builtin_presets": BUILTIN_PROVIDERS, "configured": saved_out}
+    return {"builtin_presets": BUILTIN_PROVIDERS, "configured": [_provider_payload(p) for p in saved]}
 
 
 @router.post("/providers")
@@ -132,21 +132,46 @@ def create_provider(
     )
     db.add(p)
     db.commit()
-    return {
-        "id": p.id,
-        "provider_key": p.provider_key,
-        "name": p.name,
-        "base_url": p.base_url,
-        "default_model": p.default_model,
-        "api_key_masked": mask_secret(req.api_key.strip()) if req.api_key.strip() else "",
-        "is_custom": p.is_custom,
-        "is_default": p.is_default,
-        "provider_kind": p.provider_kind,
-        "send_fields": p.send_fields_json,
-        "timeout_seconds": p.timeout_seconds,
-        "max_retries": p.max_retries,
-        "prompt_version": p.prompt_version,
-    }
+    return _provider_payload(p)
+
+
+@router.put("/providers/{provider_id}")
+def update_provider(
+    provider_id: str,
+    req: SaveProviderRequest,
+    ctx: Dict[str, str] = Depends(require_role("admin", "editor")),
+    db: Session = Depends(get_db),
+):
+    p = db.query(LLMProvider).filter(LLMProvider.id == provider_id, LLMProvider.workspace_id == ctx["workspace_id"]).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Provider 不存在")
+    if req.is_default:
+        db.query(LLMProvider).filter(
+            LLMProvider.workspace_id == ctx["workspace_id"], LLMProvider.id != p.id,
+        ).update({"is_default": False})
+    base_url = req.base_url.strip()
+    default_model = req.default_model.strip()
+    if req.provider_kind in DECISION_PROVIDER_KINDS:
+        preset = next((item for item in BUILTIN_PROVIDERS if item["provider_key"] == req.provider_key), None)
+        if preset and not base_url:
+            base_url = preset["base_url"]
+        if preset and not default_model:
+            default_model = preset["default_model"]
+    p.provider_key = req.provider_key.strip()
+    p.name = req.name.strip()
+    p.base_url = base_url
+    p.default_model = default_model
+    if req.api_key.strip():
+        p.encrypted_api_key = encrypt_secret(req.api_key.strip())
+    p.is_custom = req.is_custom
+    p.is_default = req.is_default
+    p.provider_kind = req.provider_kind
+    p.send_fields_json = list(req.send_fields)
+    p.timeout_seconds = req.timeout_seconds if req.timeout_seconds is not None else settings.llm_timeout_seconds
+    p.max_retries = req.max_retries
+    p.prompt_version = req.prompt_version.strip()
+    db.commit()
+    return _provider_payload(p)
 
 
 @router.delete("/providers/{provider_id}")

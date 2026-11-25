@@ -121,6 +121,74 @@ def test_openai_compatible_keeps_empty_send_fields(public_api):
     assert response.json()["send_fields"] == []
 
 
+def test_update_provider_changes_configuration_and_keeps_the_key(public_api):
+    client, _, _ = public_api
+    created = client.post("/api/v1/providers", json={
+        "provider_key": "perplexity", "name": "Perplexity", "provider_kind": "perplexity_decisions",
+        "api_key": "first-secret-key", "send_fields": ["name"],
+    }).json()
+    response = client.put(f"/api/v1/providers/{created['id']}", json={
+        "provider_key": "perplexity", "name": "Perplexity edited", "provider_kind": "perplexity_decisions",
+        "base_url": "https://decisions.internal.example", "default_model": "decider-v3",
+        "api_key": "", "send_fields": ["name", "tax_id"], "timeout_seconds": 9.5,
+        "max_retries": 1, "prompt_version": "pair-v3",
+    })
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["name"] == "Perplexity edited"
+    assert payload["base_url"] == "https://decisions.internal.example"
+    assert payload["default_model"] == "decider-v3"
+    assert payload["send_fields"] == ["name", "tax_id"]
+    assert payload["timeout_seconds"] == 9.5
+    assert payload["max_retries"] == 1
+    assert payload["prompt_version"] == "pair-v3"
+    assert payload["api_key_masked"] == created["api_key_masked"]
+
+
+def test_update_provider_replaces_the_key_when_a_new_one_is_sent(public_api):
+    client, _, _ = public_api
+    created = client.post("/api/v1/providers", json={
+        "provider_key": "perplexity", "name": "Perplexity", "provider_kind": "perplexity_decisions",
+        "api_key": "first-secret-key", "send_fields": ["name"],
+    }).json()
+    response = client.put(f"/api/v1/providers/{created['id']}", json={
+        "provider_key": "perplexity", "name": "Perplexity", "provider_kind": "perplexity_decisions",
+        "api_key": "second-secret-key", "send_fields": ["name"],
+    })
+    assert response.status_code == 200, response.text
+    assert response.json()["api_key_masked"] == "seco****-key"
+
+
+def test_update_decision_provider_rejects_empty_send_fields(public_api):
+    client, _, _ = public_api
+    created = client.post("/api/v1/providers", json={
+        "provider_key": "perplexity", "name": "Perplexity", "provider_kind": "perplexity_decisions",
+        "api_key": "pk", "send_fields": ["name"],
+    }).json()
+    response = client.put(f"/api/v1/providers/{created['id']}", json={
+        "provider_key": "perplexity", "name": "Perplexity", "provider_kind": "perplexity_decisions",
+        "api_key": "", "send_fields": [],
+    })
+    assert response.status_code == 422, response.text
+
+
+def test_update_provider_requires_editor_and_matching_workspace(public_api):
+    client, _, identity = public_api
+    created = client.post("/api/v1/providers", json={
+        "provider_key": "perplexity", "name": "Perplexity", "provider_kind": "perplexity_decisions",
+        "api_key": "pk", "send_fields": ["name"],
+    }).json()
+    payload = {
+        "provider_key": "perplexity", "name": "Perplexity", "provider_kind": "perplexity_decisions",
+        "api_key": "", "send_fields": ["name"],
+    }
+    identity["role"] = "viewer"
+    assert client.put(f"/api/v1/providers/{created['id']}", json=payload).status_code == 403
+    identity["role"] = "editor"
+    identity["workspace_id"] = "ws-two"
+    assert client.put(f"/api/v1/providers/{created['id']}", json=payload).status_code == 404
+
+
 @pytest.mark.parametrize("payload", [
     {"provider_key": "x", "name": "X", "provider_kind": "bogus"},
     {"provider_key": "x", "name": "X", "send_fields": ["name", ""]},

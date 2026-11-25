@@ -34,6 +34,7 @@ export default function ProvidersPage() {
   const [timeoutSeconds, setTimeoutSeconds] = useState('')
   const [maxRetries, setMaxRetries] = useState('0')
   const [promptVersion, setPromptVersion] = useState('entity-pair-choice-v1')
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [testMsg, setTestMsg] = useState<Record<string, string>>({})
 
   const load = async () => {
@@ -65,10 +66,31 @@ export default function ProvidersPage() {
     }
   }
 
+  const resetForm = () => {
+    setEditingId(null)
+    setApiKey('')
+    setSendFields('')
+  }
+
+  const startEdit = (p: any) => {
+    setEditingId(p.id)
+    setProviderKey(p.provider_key)
+    setName(p.name)
+    setBaseUrl(p.base_url || '')
+    setModel(p.default_model || '')
+    setProviderKind(p.provider_kind || 'openai_compatible')
+    setSendFields(Array.isArray(p.send_fields) ? p.send_fields.join(', ') : '')
+    setTimeoutSeconds(p.timeout_seconds != null ? String(p.timeout_seconds) : '')
+    setMaxRetries(String(p.max_retries ?? 0))
+    setPromptVersion(p.prompt_version || 'entity-pair-choice-v1')
+    setIsDefault(!!p.is_default)
+    setApiKey('')
+  }
+
   const saveProvider = async (e: React.FormEvent) => {
     e.preventDefault()
-    await apiFetch('/api/v1/providers', {
-      method: 'POST',
+    await apiFetch(editingId ? `/api/v1/providers/${editingId}` : '/api/v1/providers', {
+      method: editingId ? 'PUT' : 'POST',
       body: JSON.stringify({
         provider_key: providerKey,
         name,
@@ -84,8 +106,7 @@ export default function ProvidersPage() {
         prompt_version: promptVersion.trim() || 'entity-pair-choice-v1',
       }),
     })
-    setApiKey('')
-    setSendFields('')
+    resetForm()
     await load()
   }
 
@@ -175,16 +196,21 @@ export default function ProvidersPage() {
             <input value={promptVersion} onChange={(e) => setPromptVersion(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white font-mono" />
           </label>
           <label className="block text-xs font-semibold text-slate-600 md:col-span-2">
-            <span className="block mb-1">API Key（服务端 Fernet 加密存储，接口永不明文返回）</span>
+            <span className="block mb-1">API Key（服务端 Fernet 加密存储，接口永不明文返回；编辑时留空保持原 Key）</span>
             <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="sk-...（离线模式或 Ollama 可留空）" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs bg-white font-normal" />
           </label>
-          <div className="md:col-span-2 flex items-center justify-between pt-1">
+          <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-2 pt-1">
             <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
               <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} /> 设为工作空间默认模型
             </label>
-            <button type="submit" className="px-4 py-2 bg-brand-600 text-white rounded-lg text-xs font-bold flex items-center gap-1.5">
-              <Plus className="w-4 h-4" /> 保存并加密入库
-            </button>
+            <div className="flex items-center gap-2">
+              {editingId && (
+                <button type="button" onClick={resetForm} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold">取消编辑</button>
+              )}
+              <button type="submit" className="px-4 py-2 bg-brand-600 text-white rounded-lg text-xs font-bold flex items-center gap-1.5">
+                <Plus className="w-4 h-4" /> {editingId ? '更新 Provider' : '保存并加密入库'}
+              </button>
+            </div>
           </div>
         </form>
       </div>
@@ -208,9 +234,13 @@ export default function ProvidersPage() {
                   <div className="text-[11px] text-slate-400 mt-1">
                     类型 {p.provider_kind || 'openai_compatible'} · 发送字段 {Array.isArray(p.send_fields) && p.send_fields.length ? p.send_fields.join(', ') : '—'} · 提示词版本 {p.prompt_version || '—'}
                   </div>
+                  {['perplexity_decisions', 'typesafe_jev'].includes(p.provider_kind) && (!Array.isArray(p.send_fields) || p.send_fields.length === 0) && (
+                    <div className="text-xs mt-1 font-semibold text-rose-600">缺少发送字段，运行会被拒绝。点“编辑”填写。</div>
+                  )}
                   {testMsg[p.id] && <div className="text-xs mt-1 font-semibold">{testMsg[p.id]}</div>}
                 </div>
                 <div className="flex items-center gap-2">
+                  <button onClick={() => startEdit(p)} className="px-3 py-1.5 bg-slate-50 text-slate-600 rounded-lg text-xs font-bold">编辑</button>
                   <button onClick={() => testProvider(p.id)} className="px-3 py-1.5 bg-brand-50 text-brand-600 rounded-lg text-xs font-bold flex items-center gap-1">
                     <Zap className="w-3.5 h-3.5" /> 测试连通性
                   </button>

@@ -22,7 +22,7 @@ Under **模型 Provider**, save a provider with:
 - **最大重试次数** (`max_retries`): bounded retries for retryable errors.
 - **提示词版本** (`prompt_version`): the request template version recorded with every call.
 
-The API key is Fernet-encrypted at rest and never returned in plaintext.
+The API key is Fernet-encrypted at rest and never returned in plaintext. Choose **编辑** on a saved provider to change its configuration. Leave the API key blank to keep the stored key.
 
 ## Data-flow disclosure
 
@@ -48,4 +48,4 @@ A decision model only produces a review suggestion. It never merges or separates
 - Confidence is not a calibrated probability and is not used as an automatic merge threshold.
 - Distribution and explanation may be absent from a provider; they are displayed as unknown rather than fabricated.
 - Real Perplexity and TypeSafe smoke tests are BLOCKED until API keys are available; see [decision-model-providers](../reference/decision-model-providers.md) and [decision-model-acceptance](../reference/decision-model-acceptance.json).
-- Independent golden and holdout evaluation is not yet available, so DM-06 evaluation remains BLOCKED.
+- The independent holdout at `tests/holdout/v1` and the evaluator are frozen and validated, but a real provider run is still BLOCKED without a credential. See [decision-model-evaluation](../reference/decision-model-evaluation.md).
