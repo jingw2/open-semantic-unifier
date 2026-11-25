@@ -44,6 +44,11 @@ type IdentityChange = {
   trace_id: string | null
 }
 
+const REVIEW_REASONS: Record<'MERGE' | 'KEEP_DISTINCT', string[]> = {
+  MERGE: ['同一公司的不同写法', '税号一致', '联系方式一致', '人工核实为同一实体', '其他'],
+  KEEP_DISTINCT: ['名称相似但主体不同', '税号或联系方式不同', '地址或业务范围不同', '人工核实为不同实体', '其他'],
+}
+
 const starterScheme: UnificationScheme = {
   revision: 1,
   entity_type: 'supplier',
@@ -129,6 +134,9 @@ export default function UnificationPage({ projectId, canEdit, initialRunId }: { 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [reviewDialog, setReviewDialog] = useState<{ pair: ReviewPair; action: 'MERGE' | 'KEEP_DISTINCT' } | null>(null)
+  const [reviewReason, setReviewReason] = useState('')
+  const [reviewNote, setReviewNote] = useState('')
 
   const base = `/api/v1/projects/${projectId}/unification`
   const latestIdentityRevision = identityChanges[0]?.revision ?? 1
@@ -334,9 +342,16 @@ export default function UnificationPage({ projectId, canEdit, initialRunId }: { 
     setTab('run')
   }
 
-  const decideReview = async (pair: ReviewPair, action: 'MERGE' | 'KEEP_DISTINCT') => {
-    const reason = window.prompt(action === 'MERGE' ? '记录合并原因' : '记录保持分离的原因')
-    if (!reason?.trim() || !activeRun) return
+  const openReviewDialog = (pair: ReviewPair, action: 'MERGE' | 'KEEP_DISTINCT') => {
+    setReviewReason('')
+    setReviewNote('')
+    setReviewDialog({ pair, action })
+  }
+
+  const submitReview = async () => {
+    if (!reviewDialog || !activeRun || !reviewReason) return
+    if (reviewReason === '其他' && !reviewNote.trim()) return
+    const reason = reviewReason === '其他' ? reviewNote.trim() : `${reviewReason}${reviewNote.trim() ? `：${reviewNote.trim()}` : ''}`
     setBusy(true)
     setError('')
     try {
@@ -344,14 +359,15 @@ export default function UnificationPage({ projectId, canEdit, initialRunId }: { 
         method: 'POST',
         body: JSON.stringify({
           run_id: activeRun.run_id,
-          left_source_revision_id: pair.left_source_revision_id,
-          right_source_revision_id: pair.right_source_revision_id,
-          action,
-          reason: reason.trim(),
+          left_source_revision_id: reviewDialog.pair.left_source_revision_id,
+          right_source_revision_id: reviewDialog.pair.right_source_revision_id,
+          action: reviewDialog.action,
+          reason,
           expected_revision: latestIdentityRevision,
         }),
       })
-      setNotice(action === 'MERGE' ? '已记录合并裁决。' : '已记录保持分离的裁决。')
+      setNotice(reviewDialog.action === 'MERGE' ? '已记录合并裁决。' : '已记录保持分离的裁决。')
+      setReviewDialog(null)
       await loadWorkspace()
       const remaining = await apiFetch<{ items: ReviewPair[]; auto_separated?: ReviewPair[] }>(`${base}/reviews?run_id=${encodeURIComponent(activeRun.run_id)}&limit=100&offset=0`)
       setReviewPairs(remaining.items)
@@ -739,7 +755,7 @@ export default function UnificationPage({ projectId, canEdit, initialRunId }: { 
                 key={`${pair.left_source_revision_id}:${pair.right_source_revision_id}`}
                 pair={pair}
                 busy={busy}
-                onDecide={(action) => void decideReview(pair, action)}
+                onDecide={(action) => openReviewDialog(pair, action)}
               />
             ))}
             </div>
@@ -812,6 +828,46 @@ export default function UnificationPage({ projectId, canEdit, initialRunId }: { 
             {!snapshotEntities ? <div className="rounded-xl border border-dashed border-neutral-300 p-8 text-center text-xs text-neutral-500">当前没有可读取的已发布快照。</div> : snapshotEntities.items.length === 0 ? <p className="text-xs text-neutral-500">该快照未包含实体。</p> : <div className="overflow-x-auto rounded-xl border border-neutral-200"><table className="w-full min-w-[760px] text-left text-xs"><thead className="bg-neutral-50 text-[10px] tracking-wide text-neutral-500"><tr><th className="p-3">实体 ID / 类型</th><th className="p-3">规范属性</th><th className="p-3">来源成员</th><th className="p-3">冲突</th></tr></thead><tbody>{snapshotEntities.items.map((entity) => <tr key={entity.entity_id} className="border-t border-neutral-100 align-top"><td className="p-3"><div className="font-mono text-[10px] font-medium text-neutral-900">{entity.entity_id}</div><div className="mt-1 text-[10px] text-neutral-500">{entity.entity_type} · {entity.status}</div></td><td className="p-3"><pre className="max-w-sm overflow-x-auto font-mono text-[10px] leading-4 text-neutral-700">{JSON.stringify(entity.attributes, null, 2)}</pre>{canEdit && snapshotEntities.fields.length > 0 && <div className="mt-2 flex gap-2"><select aria-label={`选择实体 ${entity.entity_id} 的字段`} value={overrideFields[entity.entity_id] || snapshotEntities.fields[0]} onChange={(event) => setOverrideFields((current) => ({ ...current, [entity.entity_id]: event.target.value }))} className="rounded border border-neutral-300 px-2 py-1">{snapshotEntities.fields.map((field) => <option key={field} value={field}>{field}</option>)}</select><button type="button" disabled={busy || snapshotEntities.snapshot_id !== currentSnapshotId} onClick={() => void overrideAttribute(entity.entity_id)} className="rounded border border-neutral-300 px-2 py-1 text-xs font-medium text-neutral-700 disabled:opacity-50">覆盖属性</button></div>}</td><td className="p-3"><div className="space-y-1">{entity.members.map((member) => <div key={member.source_revision_id} className="font-mono text-[10px] text-neutral-600">{member.source_key.slice(1).join(' / ')}</div>)}</div></td><td className="p-3">{entity.conflicts.length ? <span className="rounded bg-amber-100 px-2 py-1 text-[10px] font-medium text-amber-900">{entity.conflicts.length} 项</span> : <span className="text-[10px] text-neutral-400">无</span>}</td></tr>)}</tbody></table></div>}
             {currentSnapshotId && <p className="mt-3 font-mono text-[10px] text-neutral-400">snapshot_id: {currentSnapshotId}</p>}
           </section>
+        </div>
+      )}
+      {reviewDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-lg rounded-xl border border-neutral-200 bg-white shadow-xl">
+            <div className="border-b border-neutral-100 px-5 py-4">
+              <h2 className="text-base font-semibold text-neutral-900">
+                {reviewDialog.action === 'MERGE' ? '记录合并裁决' : '记录保持分离'}
+              </h2>
+              <p className="mt-1 text-xs text-neutral-500">选择最能说明判断的原因，必要时补充说明。裁决会写入身份修订历史。</p>
+            </div>
+            <div className="space-y-3 px-5 py-4">
+              <div className="rounded-lg bg-neutral-50 p-3 text-xs text-neutral-600">
+                <div>{reviewDialog.pair.left?.record_ref || reviewDialog.pair.left_source_revision_id.slice(0, 10)} ↔ {reviewDialog.pair.right?.record_ref || reviewDialog.pair.right_source_revision_id.slice(0, 10)}</div>
+                {reviewDialog.pair.why && <p className="mt-1 text-neutral-500">{reviewDialog.pair.why}</p>}
+              </div>
+              <div className="space-y-1.5">
+                {REVIEW_REASONS[reviewDialog.action].map((reason) => (
+                  <label key={reason} className="flex items-center gap-2 rounded-md border border-neutral-200 px-3 py-2 text-xs text-neutral-700">
+                    <input type="radio" name="review-reason" checked={reviewReason === reason} onChange={() => setReviewReason(reason)} />
+                    {reason}
+                  </label>
+                ))}
+              </div>
+              <label className="block text-xs font-medium text-neutral-700">
+                {reviewReason === '其他' ? '说明（必填）' : '补充说明（可选）'}
+                <textarea value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm" />
+              </label>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-neutral-100 px-5 py-3">
+              <button onClick={() => setReviewDialog(null)} className="rounded-lg border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700">取消</button>
+              <button
+                onClick={() => void submitReview()}
+                disabled={busy || !reviewReason || (reviewReason === '其他' && !reviewNote.trim())}
+                className="rounded-lg bg-neutral-900 px-3 py-2 text-xs font-medium text-white disabled:opacity-40"
+              >
+                确认记录
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

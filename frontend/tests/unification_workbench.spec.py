@@ -112,8 +112,17 @@ def test_workbench_real_browser_flow_publishes_reviewed_snapshot_and_exports():
             page.get_by_role("button", name="人工复核 1 待处理").click()
             page.get_by_text("查看原始证据", exact=True).first.click()
             expect(page.get_by_text("CANDIDATE", exact=True).first).to_be_visible()
-            page.once("dialog", lambda dialog: dialog.accept("人工确认同一供应商"))
+
+            page.get_by_role("button", name="保持分离").click()
+            expect(page.get_by_role("heading", name="记录保持分离")).to_be_visible()
+            expect(page.get_by_label("税号或联系方式不同")).to_be_visible()
+            page.get_by_role("button", name="取消", exact=True).click()
+
             page.get_by_role("button", name="确认同一实体").click()
+            expect(page.get_by_role("heading", name="记录合并裁决")).to_be_visible()
+            page.get_by_role("radio", name="同一公司的不同写法").check()
+            expect(page.get_by_role("button", name="确认记录", exact=True)).to_be_enabled()
+            page.get_by_role("button", name="确认记录", exact=True).click()
             expect(page.get_by_text("已记录合并裁决")).to_be_visible()
             expect(page.get_by_role("button", name="人工复核 0 待处理")).to_be_visible()
 
@@ -121,8 +130,11 @@ def test_workbench_real_browser_flow_publishes_reviewed_snapshot_and_exports():
             page.get_by_role("button", name="撤销").click()
             expect(page.get_by_text("撤销错误合并")).to_be_visible()
             expect(page.get_by_role("button", name="人工复核 1 待处理")).to_be_visible()
-            page.once("dialog", lambda dialog: dialog.accept("复核后再次确认同一供应商"))
             page.get_by_role("button", name="确认同一实体").click()
+            expect(page.get_by_role("heading", name="记录合并裁决")).to_be_visible()
+            page.get_by_role("radio", name="人工核实为同一实体").check()
+            expect(page.get_by_role("button", name="确认记录", exact=True)).to_be_enabled()
+            page.get_by_role("button", name="确认记录", exact=True).click()
             expect(page.get_by_text("已记录合并裁决")).to_be_visible()
 
             page.get_by_role("button", name="快照与导出 尚未发布").click()
@@ -150,7 +162,7 @@ def test_workbench_real_browser_flow_publishes_reviewed_snapshot_and_exports():
             assert assignments["S-1001"] == assignments["P-77"]
             assert assignments["P-78"] != assignments["P-77"]
             assert set(assignments.values()) == entity_ids
-            assert [decision["reason"] for decision in outputs["decisions"]["decisions"] if decision["change_type"] == "MERGE"] == ["人工确认同一供应商", "复核后再次确认同一供应商"]
+            assert [decision["reason"] for decision in outputs["decisions"]["decisions"] if decision["change_type"] == "MERGE"] == ["同一公司的不同写法", "人工核实为同一实体"]
             assert outputs["decisions"]["identity_revision"] == 4
             assert all(change["trace_id"] for change in outputs["decisions"]["decisions"])
             assert outputs["delta"]["delta"]["added_entities"]
@@ -215,8 +227,11 @@ def test_workbench_real_browser_flow_publishes_reviewed_snapshot_and_exports():
             page.get_by_role("button", name="提交运行").click()
             expect(page.get_by_text("运行完成")).to_be_visible(timeout=10000)
             page.get_by_role("button", name="人工复核 1 待处理").click()
-            page.once("dialog", lambda dialog: dialog.accept("Customer reviewed"))
             page.get_by_role("button", name="确认同一实体").click()
+            expect(page.get_by_role("heading", name="记录合并裁决")).to_be_visible()
+            page.get_by_role("radio", name="同一公司的不同写法").check()
+            expect(page.get_by_role("button", name="确认记录", exact=True)).to_be_enabled()
+            page.get_by_role("button", name="确认记录", exact=True).click()
             expect(page.get_by_role("button", name="人工复核 0 待处理")).to_be_visible()
             page.get_by_role("button", name="快照与导出 尚未发布").click()
             expect(page.get_by_role("heading", name="发布快照有什么用")).to_be_visible()
@@ -241,7 +256,7 @@ def test_workbench_real_browser_flow_publishes_reviewed_snapshot_and_exports():
             assert len(customer_outputs["entities"]["entities"]) == 1
             assert {item["source_key"][-1] for item in customer_outputs["mappings"]["mappings"]} == {"L02", "R02"}
             assert len({item["entity_id"] for item in customer_outputs["mappings"]["mappings"]}) == 1
-            assert any(item["reason"] == "Customer reviewed" for item in customer_outputs["decisions"]["decisions"])
+            assert any(item["reason"] == "同一公司的不同写法" for item in customer_outputs["decisions"]["decisions"])
             assert customer_outputs["delta"]["delta"]["added_entities"]
 
             # Exercise the real authentication and workspace guard for the same snapshot.
