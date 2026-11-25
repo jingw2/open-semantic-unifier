@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { ArrowRight, Bot, CheckCircle2, ChevronRight, LoaderCircle, Send } from 'lucide-react'
 import { apiFetch, DataSourceItem, JobItem } from '../lib/api'
 import { explainPage } from '../lib/pageHelp'
 
 type AssistantTaskKey = 'clean' | 'match' | 'entity' | 'metrics' | 'contract'
-type AssistantStage = 'welcome' | 'plan' | 'running' | 'done' | 'error'
+type AssistantStage = 'idle' | 'running' | 'done' | 'error'
 
 type TaskDef = {
   key: AssistantTaskKey
@@ -22,30 +22,60 @@ const TASKS: TaskDef[] = [
   { key: 'contract', label: '生成数据契约', method: 'LinkML W3C 契约', stage: 'L3' },
 ]
 
+const PARAM_LABELS: Record<string, string> = {
+  target_col: '目标列',
+  amount_col: '金额列',
+  name_col: '名称列',
+  tax_col: '税号列',
+  phone_col: '电话列',
+  city_col: '城市列',
+  metric_name: '指标',
+  group_by: '分组',
+}
+
+type PlanOption = { label: string; message: string }
+type PlanPayload = {
+  intent: string
+  confidence: number
+  explanation: string
+  source: 'model' | 'rules'
+  suggested_task: string | null
+  needs_clarification: boolean
+  question: string | null
+  options: PlanOption[]
+  datasource_id: string | null
+  params: Record<string, string> | null
+  recipe_id: string | null
+}
+
+type ChatMessage =
+  | { id: number; role: 'user'; content: string }
+  | { id: number; role: 'assistant'; content: string; plan: PlanPayload | null }
+
 interface Props {
   projectId: string
   currentPage: string
   onRoute: (hash: string) => void
 }
 
-function taskForIntent(intent: string): TaskDef | undefined {
+function taskForIntent(intent: string | null | undefined): TaskDef | undefined {
+  if (!intent) return undefined
   return TASKS.find((task) => task.key === intent)
 }
 
 export default function AssistantPanel({ projectId, currentPage, onRoute }: Props) {
   const [open, setOpen] = useState(true)
-  const [stage, setStage] = useState<AssistantStage>('welcome')
-  const [task, setTask] = useState<TaskDef | null>(null)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [stage, setStage] = useState<AssistantStage>('idle')
+  const [activeTask, setActiveTask] = useState<TaskDef | null>(null)
   const [datasources, setDatasources] = useState<DataSourceItem[]>([])
   const [selectedId, setSelectedId] = useState('')
   const [routing, setRouting] = useState<any>(null)
-  const [explanation, setExplanation] = useState('')
-  const [steps, setSteps] = useState<string[]>([])
   const [error, setError] = useState('')
   const [resultRoute, setResultRoute] = useState('')
   const [message, setMessage] = useState('')
-  const [sourceNote, setSourceNote] = useState('')
   const [providerId, setProviderId] = useState('')
+  const idRef = useRef(0)
 
   useEffect(() => {
     if (!projectId) return
@@ -64,51 +94,111 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
       .catch(() => undefined)
   }, [projectId])
 
-  const selectTask = (next: TaskDef) => {
-    setTask(next)
-    setStage('plan')
-    setError('')
-    setResultRoute('')
-    setExplanation('')
-    const source = datasources.find((item) => item.id === selectedId) || datasources[0]
-    setSelectedId(source?.id || '')
-    setRouting(source?.routing || null)
-    setSteps(['① 选数据', '② 运行', '③ 看结果'])
+  const pushUser = (content: string) => {
+    idRef.current += 1
+    setMessages((prev) => [...prev, { id: idRef.current, role: 'user', content }])
   }
 
-  const sendText = async () => {
-    if (!message.trim()) return
+  const pushAssistant = (content: string, plan: PlanPayload | null) => {
+    idRef.current += 1
+    setMessages((prev) => [...prev, { id: idRef.current, role: 'assistant', content, plan }])
+  }
+
+  const requestPlan = (text: string, history: { role: 'user' | 'assistant'; content: string }[]) =>
+    apiFetch<PlanPayload>(`/api/v1/projects/${projectId}/assistant/plan`, {
+      method: 'POST',
+      body: JSON.stringify({ message: text, page: currentPage, history }),
+    })
+
+  const submit = async (text: string) => {
+    const history = messages.slice(-6).map((item) => ({ role: item.role, content: item.content }))
+    pushUser(text)
+    setStage('idle')
+    setError('')
+    setResultRoute('')
+    setActiveTask(null)
     try {
-      const plan = await apiFetch<{ intent: string; explanation: string; source: string }>(
-        `/api/v1/projects/${projectId}/assistant/plan`,
-        { method: 'POST', body: JSON.stringify({ message: message.trim(), page: currentPage }) },
-      )
-      setSourceNote(plan.source === 'rules' ? '本地规则' : '')
-      setExplanation(plan.explanation)
-      const next = taskForIntent(plan.intent)
-      if (next) selectTask(next)
+      const plan = await requestPlan(text, history)
+      pushAssistant(plan.explanation || '', plan)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '助手请求失败')
       setStage('error')
     }
   }
 
-  const run = async () => {
+  const sendText = () => {
+    const text = message.trim()
+    if (!text) return
+    setMessage('')
+    void submit(text)
+  }
+
+  const sendOption = (optionMessage: string) => {
+    void submit(optionMessage)
+  }
+
+  const selectTask = (next: TaskDef) => {
+    const source = datasources.find((item) => item.id === selectedId) || datasources[0]
+    if (source) {
+      setSelectedId(source.id)
+      setRouting(source.routing || null)
+    }
+    const plan: PlanPayload = {
+      intent: next.key,
+      confidence: 1,
+      explanation: `已选择：${next.label}。`,
+      source: 'rules',
+      suggested_task: next.key,
+      needs_clarification: false,
+      question: null,
+      options: [],
+      datasource_id: null,
+      params: null,
+      recipe_id: null,
+    }
+    setActiveTask(next)
+    setStage('idle')
+    setError('')
+    setResultRoute('')
+    pushAssistant(plan.explanation, plan)
+  }
+
+  const explainCurrentPage = async () => {
+    const history = messages.slice(-6).map((item) => ({ role: item.role, content: item.content }))
+    setStage('idle')
+    setError('')
+    setResultRoute('')
+    setActiveTask(null)
+    try {
+      const plan = await requestPlan(`请解释当前页面：${currentPage}`, history)
+      if (plan.source === 'model') {
+        pushAssistant(plan.explanation || explainPage(currentPage), null)
+      } else {
+        pushAssistant(explainPage(currentPage), null)
+      }
+    } catch {
+      pushAssistant(explainPage(currentPage), null)
+    }
+  }
+
+  const run = async (plan: PlanPayload) => {
+    const task = taskForIntent(plan.suggested_task || plan.intent)
     if (!task) return
+    setActiveTask(task)
     setStage('running')
     setError('')
-    setSteps(['① 选数据', '② 运行', '③ 看结果'])
+    setResultRoute('')
     try {
-      let dsIds = selectedId ? [selectedId] : []
-      let currentRouting = routing
-      if (task.demo && !selectedId) {
+      let dsIds = plan.datasource_id ? [plan.datasource_id] : (selectedId ? [selectedId] : [])
+      const source = datasources.find((item) => item.id === (plan.datasource_id || selectedId))
+      let currentRouting = source?.routing || routing
+      if (task.demo && !dsIds.length) {
         const demo = await apiFetch<{ datasource_ids: string[]; profile: any; routing: any }>(
           `/api/v1/projects/${projectId}/datasources/demo/${task.demo}`,
           { method: 'POST' },
         )
         dsIds = demo.datasource_ids
         currentRouting = demo.routing
-        setSteps((items) => [...items, '已加载示例数据'])
       }
 
       if (task.stage === 'ENTITY') {
@@ -143,11 +233,13 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
       }
 
       const sp = currentRouting?.suggested_params || {}
-      const params = task.stage === 'L1'
-        ? { target_col: sp.name_col, amount_col: sp.amount_col }
-        : task.stage === 'L2'
-          ? { name_col: sp.name_col, tax_col: sp.tax_col, phone_col: sp.phone_col, city_col: sp.city_col, enable_hybrid_llm: true }
-          : { metric_name: 'net_gmv', group_by: 'order_channel' }
+      const params = plan.params && Object.keys(plan.params).length > 0
+        ? plan.params
+        : task.stage === 'L1'
+          ? { target_col: sp.name_col, amount_col: sp.amount_col }
+          : task.stage === 'L2'
+            ? { name_col: sp.name_col, tax_col: sp.tax_col, phone_col: sp.phone_col, city_col: sp.city_col, enable_hybrid_llm: true }
+            : { metric_name: 'net_gmv', group_by: 'order_channel' }
       const created = await apiFetch<JobItem>(`/api/v1/projects/${projectId}/jobs`, {
         method: 'POST',
         body: JSON.stringify({ stage: task.stage, datasource_ids: dsIds, provider_id: providerId || null, params }),
@@ -167,9 +259,18 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
     }
   }
 
-  const manualRoute = task?.stage === 'L3' ? '#/tasks/new/contract'
-    : task?.stage === 'ENTITY' ? '#/tasks/new/entity' : '#/data'
-  const methodLabel = routing?.method?.label || task?.method || ''
+  const manualRoute = activeTask?.stage === 'L3' ? '#/tasks/new/contract'
+    : activeTask?.stage === 'ENTITY' ? '#/tasks/new/entity' : '#/data'
+
+  const lastPlanIndex = (() => {
+    for (let idx = messages.length - 1; idx >= 0; idx -= 1) {
+      const item = messages[idx]
+      if (item.role === 'assistant' && item.plan && taskForIntent(item.plan.suggested_task || item.plan.intent)) {
+        return idx
+      }
+    }
+    return -1
+  })()
 
   if (!open) {
     return (
@@ -180,92 +281,132 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
   }
 
   return (
-    <aside className="hidden w-80 shrink-0 border-l border-neutral-200 bg-white p-4 lg:flex lg:flex-col">
-      <div className="flex items-center justify-between">
+    <aside className="hidden w-80 shrink-0 border-l border-neutral-200 bg-white lg:flex lg:flex-col">
+      <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
           <Bot className="h-4 w-4 text-neutral-500" /> 助手
         </div>
         <button onClick={() => setOpen(false)} className="text-[11px] text-neutral-500 hover:text-neutral-900">收起</button>
       </div>
 
-      <p className="mt-3 text-xs leading-5 text-neutral-500">你想完成什么？</p>
-      <div className="mt-2 grid grid-cols-1 gap-1.5">
-        {TASKS.map((item) => (
-          <button
-            key={item.key}
-            onClick={() => selectTask(item)}
-            className={`flex items-center justify-between rounded-md border px-3 py-2 text-left text-xs ${
-              task?.key === item.key ? 'border-neutral-900 bg-neutral-50 text-neutral-900' : 'border-neutral-200 text-neutral-700 hover:bg-neutral-50'
-            }`}
-          >
-            {item.label} <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-        ))}
+      <div className="flex-1 overflow-y-auto px-4 py-3">
+        {messages.length === 0 && (
+          <p className="text-xs leading-5 text-neutral-500">你想完成什么？试试下面的快捷任务，或直接输入一句话。</p>
+        )}
+        <div className="space-y-3">
+          {messages.map((msg, idx) => {
+            if (msg.role === 'user') {
+              return (
+                <div key={msg.id} className="flex justify-end">
+                  <div className="max-w-[85%] rounded-lg bg-neutral-900 px-3 py-2 text-xs leading-5 text-white">{msg.content}</div>
+                </div>
+              )
+            }
+            const plan = msg.plan
+            const planTask = plan ? taskForIntent(plan.suggested_task || plan.intent) : undefined
+            const isLastPlan = idx === lastPlanIndex
+            return (
+              <div key={msg.id} className="flex justify-start">
+                <div className="max-w-[85%] space-y-2">
+                  {msg.content && (
+                    <div className="rounded-lg bg-neutral-50 px-3 py-2 text-xs leading-5 text-neutral-700">{msg.content}</div>
+                  )}
+                  {plan?.needs_clarification && plan.question && (
+                    <div className="rounded-lg border border-neutral-200 bg-white p-2.5">
+                      <p className="text-xs leading-5 text-neutral-700">{plan.question}</p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {plan.options.map((option) => (
+                          <button
+                            key={option.message}
+                            onClick={() => sendOption(option.message)}
+                            className="rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-50"
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {plan && planTask && (
+                    <div className="rounded-lg border border-neutral-200 bg-white p-3">
+                      <div className="text-xs font-semibold text-neutral-900">{planTask.label}</div>
+                      <div className="mt-1 text-[11px] text-neutral-500">
+                        建议方法：{routing?.method?.label || planTask.method}
+                      </div>
+                      {plan.recipe_id && <div className="mt-1 text-[11px] text-neutral-500">配方：{plan.recipe_id}</div>}
+                      {(() => {
+                        const source = datasources.find((item) => item.id === (plan.datasource_id || selectedId))
+                        return source ? <div className="mt-1 text-[11px] text-neutral-500">数据源：{source.name}</div> : null
+                      })()}
+                      {plan.params && Object.keys(plan.params).length > 0 && (
+                        <div className="mt-2 space-y-0.5 border-t border-neutral-100 pt-2">
+                          {Object.entries(plan.params).map(([key, value]) => (
+                            <div key={key} className="text-[11px] text-neutral-600">{PARAM_LABELS[key] || key}：{value}</div>
+                          ))}
+                        </div>
+                      )}
+                      <ol className="mt-2 space-y-1 text-[11px] text-neutral-500">
+                        {['① 选数据', '② 运行', '③ 看结果'].map((step) => <li key={step}>{step}</li>)}
+                      </ol>
+                      {isLastPlan && stage === 'idle' && (
+                        <button onClick={() => void run(plan)} className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-neutral-900 px-3 py-2 text-xs font-medium text-white">
+                          开始 <ArrowRight className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      {isLastPlan && stage === 'running' && (
+                        <p className="mt-2 flex items-center gap-1.5 text-[11px] text-neutral-500"><LoaderCircle className="h-3.5 w-3.5 animate-spin" /> 正在执行...</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {stage === 'done' && (
+          <div className="mt-3 space-y-1.5">
+            <p className="flex items-center gap-1.5 text-[11px] font-medium text-green-700"><CheckCircle2 className="h-3.5 w-3.5" /> 已完成</p>
+            <button onClick={() => onRoute(resultRoute)} className="w-full rounded-md bg-neutral-900 px-3 py-2 text-xs font-medium text-white">查看结果</button>
+            {activeTask?.stage === 'ENTITY' && <button onClick={() => onRoute(resultRoute)} className="w-full rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700">去复核</button>}
+          </div>
+        )}
+        {stage === 'error' && (
+          <div className="mt-3 space-y-1.5">
+            <p role="alert" className="text-[11px] text-red-600">{error}</p>
+            <button onClick={() => onRoute(manualRoute)} className="w-full rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700">去手动处理</button>
+          </div>
+        )}
       </div>
 
-      <div className="mt-3 flex gap-1.5">
-        <input
-          value={message}
-          onChange={(event) => setMessage(event.target.value)}
-          onKeyDown={(event) => { if (event.key === 'Enter') void sendText() }}
-          placeholder="也可以直接说，例如：帮我把客户名单去重"
-          className="min-w-0 flex-1 rounded-md border border-neutral-300 px-2.5 py-2 text-xs"
-        />
-        <button onClick={() => void sendText()} className="rounded-md bg-neutral-900 px-2.5 text-white" aria-label="发送">
-          <Send className="h-3.5 w-3.5" />
+      <div className="border-t border-neutral-100 px-4 py-3">
+        <div className="flex flex-wrap gap-1.5">
+          {TASKS.map((item) => (
+            <button
+              key={item.key}
+              onClick={() => selectTask(item)}
+              className="flex items-center gap-1 rounded-md border border-neutral-200 px-2 py-1 text-[11px] text-neutral-700 hover:bg-neutral-50"
+            >
+              {item.label} <ChevronRight className="h-3 w-3" />
+            </button>
+          ))}
+        </div>
+        <div className="mt-2 flex gap-1.5">
+          <input
+            value={message}
+            onChange={(event) => setMessage(event.target.value)}
+            onKeyDown={(event) => { if (event.key === 'Enter') sendText() }}
+            placeholder="也可以直接说，例如：帮我把客户名单去重"
+            className="min-w-0 flex-1 rounded-md border border-neutral-300 px-2.5 py-2 text-xs"
+          />
+          <button onClick={sendText} className="rounded-md bg-neutral-900 px-2.5 text-white" aria-label="发送">
+            <Send className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <button onClick={() => void explainCurrentPage()} className="mt-2 text-left text-[11px] text-neutral-500 underline">
+          解释当前页面
         </button>
       </div>
-      {sourceNote && <p className="mt-1 text-[10px] text-neutral-400">{sourceNote}</p>}
-      {explanation && <p className="mt-2 rounded-md bg-neutral-50 p-2 text-[11px] leading-5 text-neutral-600">{explanation}</p>}
-
-      {task && stage !== 'welcome' && (
-        <div className="mt-3 rounded-lg border border-neutral-200 p-3">
-          <div className="text-xs font-semibold text-neutral-900">{task.label}</div>
-          <div className="mt-1 text-[11px] text-neutral-500">建议方法：{methodLabel}</div>
-          {routing?.method?.reason && <p className="mt-1 text-[11px] leading-5 text-neutral-500">{routing.method.reason}</p>}
-          {datasources.length > 0 && (
-            <select
-              value={selectedId}
-              onChange={(event) => {
-                setSelectedId(event.target.value)
-                const source = datasources.find((item) => item.id === event.target.value)
-                setRouting(source?.routing || null)
-              }}
-              className="mt-2 w-full rounded-md border border-neutral-300 px-2 py-1.5 text-[11px]"
-            >
-              {datasources.map((source) => (
-                <option key={source.id} value={source.id}>{source.name}</option>
-              ))}
-            </select>
-          )}
-          <ol className="mt-2 space-y-1 text-[11px] text-neutral-500">
-            {steps.map((step) => <li key={step}>{step}</li>)}
-          </ol>
-          {stage === 'plan' && (
-            <button onClick={() => void run()} className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-neutral-900 px-3 py-2 text-xs font-medium text-white">
-              开始 <ArrowRight className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {stage === 'running' && <p className="mt-2 flex items-center gap-1.5 text-[11px] text-neutral-500"><LoaderCircle className="h-3.5 w-3.5 animate-spin" /> 正在执行...</p>}
-          {stage === 'done' && (
-            <div className="mt-2 space-y-1.5">
-              <p className="flex items-center gap-1.5 text-[11px] font-medium text-green-700"><CheckCircle2 className="h-3.5 w-3.5" /> 已完成</p>
-              <button onClick={() => onRoute(resultRoute)} className="w-full rounded-md bg-neutral-900 px-3 py-2 text-xs font-medium text-white">查看结果</button>
-              {task.stage === 'ENTITY' && <button onClick={() => onRoute(resultRoute)} className="w-full rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700">去复核</button>}
-            </div>
-          )}
-          {stage === 'error' && (
-            <div className="mt-2 space-y-1.5">
-              <p role="alert" className="text-[11px] text-red-600">{error}</p>
-              <button onClick={() => onRoute(manualRoute)} className="w-full rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700">去手动处理</button>
-            </div>
-          )}
-        </div>
-      )}
-
-      <button onClick={() => setExplanation(explainPage(currentPage))} className="mt-auto pt-3 text-left text-[11px] text-neutral-500 underline">
-        解释当前页面
-      </button>
     </aside>
   )
 }

@@ -32,6 +32,59 @@ class AssistantHandler(BaseHTTPRequestHandler):
                 "confidence": 0.9,
                 "explanation": "客户名单去重属于字段清洗。",
             })
+        elif self.behavior == "plan":
+            content = json.dumps({
+                "intent": "clean",
+                "confidence": 0.9,
+                "explanation": "我来清洗字段。",
+                "needs_clarification": False,
+                "question": None,
+                "options": [],
+                "datasource_id": "ds-assistant",
+                "params": {"target_col": "company_name", "amount_col": "tax_id"},
+                "recipe_id": "normalize_company_name",
+            })
+        elif self.behavior == "invalid_plan":
+            content = json.dumps({
+                "intent": "clean",
+                "confidence": 0.9,
+                "explanation": "我来清洗字段。",
+                "needs_clarification": False,
+                "question": None,
+                "options": [],
+                "datasource_id": "nope",
+                "params": {"target_col": "SECRET-COLUMN", "bogus": "x"},
+                "recipe_id": "not_a_recipe",
+            })
+        elif self.behavior == "answer":
+            content = json.dumps({
+                "intent": "answer",
+                "confidence": 0.95,
+                "explanation": "这是一个语义统一平台。",
+                "needs_clarification": False,
+                "question": None,
+                "options": [],
+                "datasource_id": "ds-assistant",
+                "params": {"target_col": "company_name"},
+                "recipe_id": "normalize_company_name",
+            })
+        elif self.behavior == "clarify":
+            content = json.dumps({
+                "intent": "unknown",
+                "confidence": 0.6,
+                "explanation": "你想做什么？",
+                "needs_clarification": True,
+                "question": "请选择一个任务。",
+                "options": [
+                    {"label": "清洗", "message": "清洗供应商名单"},
+                    {"label": "匹配", "message": "跨系统匹配客户"},
+                    {"label": "指标", "message": "统一 GMV 口径"},
+                    {"label": "契约", "message": "生成数据契约"},
+                ],
+                "datasource_id": None,
+                "params": None,
+                "recipe_id": None,
+            })
         else:
             content = json.dumps({
                 "intent": "match",
@@ -149,6 +202,11 @@ def test_assistant_falls_back_to_rules_without_a_usable_provider(public_api):
     payload = response.json()
     assert payload["source"] == "rules"
     assert payload["intent"] == "match"
+    assert payload["needs_clarification"] is False
+    assert payload["options"] == []
+    assert payload["datasource_id"] is None
+    assert payload["params"] is None
+    assert payload["recipe_id"] is None
 
 
 def test_assistant_falls_back_when_the_model_returns_invalid_json(public_api, assistant_server):
@@ -163,6 +221,114 @@ def test_assistant_falls_back_when_the_model_returns_invalid_json(public_api, as
     payload = response.json()
     assert payload["source"] == "rules"
     assert payload["intent"] == "match"
+
+
+def test_assistant_keeps_valid_source_params_and_recipe(public_api, assistant_server):
+    client, _maker, _identity = public_api
+    _seed_providers(public_api, assistant_server.server_port)
+    AssistantHandler.behavior = "plan"
+    response = client.post(
+        "/api/v1/projects/project-one/assistant/plan",
+        json={"message": "帮我清洗字段", "page": "data"},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["source"] == "model"
+    assert payload["intent"] == "clean"
+    assert payload["datasource_id"] == "ds-assistant"
+    assert payload["params"] == {"target_col": "company_name", "amount_col": "tax_id"}
+    assert payload["recipe_id"] == "normalize_company_name"
+
+
+def test_assistant_drops_invalid_source_params_and_recipe(public_api, assistant_server):
+    client, _maker, _identity = public_api
+    _seed_providers(public_api, assistant_server.server_port)
+    AssistantHandler.behavior = "invalid_plan"
+    response = client.post(
+        "/api/v1/projects/project-one/assistant/plan",
+        json={"message": "帮我清洗字段", "page": "data"},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["source"] == "model"
+    assert payload["intent"] == "clean"
+    assert payload["datasource_id"] is None
+    assert payload["params"] is None
+    assert payload["recipe_id"] is None
+
+
+def test_assistant_answer_shape(public_api, assistant_server):
+    client, _maker, _identity = public_api
+    _seed_providers(public_api, assistant_server.server_port)
+    AssistantHandler.behavior = "answer"
+    response = client.post(
+        "/api/v1/projects/project-one/assistant/plan",
+        json={"message": "这个产品是做什么的？", "page": "data"},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["source"] == "model"
+    assert payload["intent"] == "answer"
+    assert payload["suggested_task"] is None
+    assert payload["explanation"] == "这是一个语义统一平台。"
+    assert payload["needs_clarification"] is False
+    assert payload["datasource_id"] is None
+    assert payload["params"] is None
+    assert payload["recipe_id"] is None
+
+
+def test_assistant_clarification_shape(public_api, assistant_server):
+    client, _maker, _identity = public_api
+    _seed_providers(public_api, assistant_server.server_port)
+    AssistantHandler.behavior = "clarify"
+    response = client.post(
+        "/api/v1/projects/project-one/assistant/plan",
+        json={"message": "帮我做点什么", "page": "data"},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["source"] == "model"
+    assert payload["intent"] == "unknown"
+    assert payload["suggested_task"] is None
+    assert payload["needs_clarification"] is True
+    assert payload["question"] == "请选择一个任务。"
+    assert len(payload["options"]) == 3
+    assert all("label" in item and "message" in item for item in payload["options"])
+
+
+def test_assistant_history_appears_in_prompt(public_api, assistant_server):
+    client, _maker, _identity = public_api
+    _seed_providers(public_api, assistant_server.server_port)
+    response = client.post(
+        "/api/v1/projects/project-one/assistant/plan",
+        json={
+            "message": "帮我把客户名单去重",
+            "page": "data",
+            "history": [
+                {"role": "user", "content": "之前问过这个问题"},
+                {"role": "assistant", "content": "上次回答过"},
+            ],
+        },
+    )
+    assert response.status_code == 200, response.text
+    prompt = AssistantHandler.requests[0]["messages"][0]["content"]
+    assert "之前问过这个问题" in prompt
+    assert "上次回答过" in prompt
+
+
+def test_assistant_unknown_fallback_adds_clarification(public_api):
+    client, _maker, _identity = public_api
+    response = client.post(
+        "/api/v1/projects/project-one/assistant/plan",
+        json={"message": "今天天气怎么样", "page": "data"},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["source"] == "rules"
+    assert payload["intent"] == "unknown"
+    assert payload["suggested_task"] is None
+    assert payload["needs_clarification"] is True
+    assert len(payload["options"]) == 3
 
 
 def test_deterministic_intent_keywords():

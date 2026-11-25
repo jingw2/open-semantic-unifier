@@ -1,5 +1,5 @@
 """Project-scoped assistant planning; classification and explanation only."""
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -17,9 +17,15 @@ router = APIRouter(
 )
 
 
+class AssistantTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(max_length=1000)
+
+
 class AssistantPlanRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
     page: str = Field(default="data", max_length=80)
+    history: list[AssistantTurn] = Field(default_factory=list, max_length=6)
 
 
 @router.post("/projects/{project_id}/assistant/plan")
@@ -33,6 +39,7 @@ def assistant_plan(
     if project is None or project.workspace_id != ctx["workspace_id"]:
         raise HTTPException(status_code=404, detail="项目不存在")
     try:
-        return classify_assistant_message(db, project_id, request.message, request.page)
+        history = [turn.model_dump() for turn in request.history]
+        return classify_assistant_message(db, project_id, request.message, request.page, history)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
