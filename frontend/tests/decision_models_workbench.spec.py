@@ -151,7 +151,7 @@ def test_decision_models_workbench_provider_test_and_review_evidence():
             page.get_by_role("button", name="编辑").click()
             page.get_by_label("最大重试次数").fill("1")
             page.get_by_role("button", name="更新 Provider").click()
-            expect(page.get_by_text("已配置模型 Provider (1)")).to_be_visible()
+            expect(page.get_by_role("button", name="保存并加密入库", exact=True)).to_be_visible()
             updated = [item for item in page.request.get("http://127.0.0.1:8765/api/v1/providers").json()["configured"] if item["id"] == provider_id]
             assert updated and updated[0]["max_retries"] == 1
             assert updated[0]["send_fields"] == ["name"]
