@@ -687,6 +687,73 @@ def validate_with_schema_text(schema_text: str, entity_name: str, payload: Dict[
 
 # ==================== L4 执行引擎（YAML 指标语义层 + 版本化 DRAFT 指标） ====================
 
+
+L4_TABLE_COLUMNS = {
+    "SalesOrder": ("order_id", "order_channel", "total_amount"),
+    "ShipmentOrder": ("shipment_id", "order_id", "delivery_status"),
+    "SettlementBill": ("bill_id", "shipment_id", "settled_amount", "settlement_status"),
+}
+L4_WIDE_COLUMNS = ("order_id", "order_channel", "total_amount", "delivery_status", "settled_amount")
+
+
+def _wide_l4_tables(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+    order_id = df["order_id"].astype(str)
+    shipment_id = df["shipment_id"].astype(str) if "shipment_id" in df.columns else order_id
+    carrier = df["carrier_code"].astype(str) if "carrier_code" in df.columns else pd.Series([""] * len(df), index=df.index)
+    bill_id = df["bill_id"].astype(str) if "bill_id" in df.columns else order_id
+    settlement_status = (
+        df["settlement_status"].astype(str) if "settlement_status" in df.columns
+        else pd.Series(["SETTLED"] * len(df), index=df.index)
+    )
+    return {
+        "SalesOrder": pd.DataFrame({
+            "order_id": order_id,
+            "order_channel": df["order_channel"].astype(str),
+            "total_amount": pd.to_numeric(df["total_amount"], errors="coerce"),
+        }),
+        "ShipmentOrder": pd.DataFrame({
+            "shipment_id": shipment_id,
+            "order_id": order_id,
+            "carrier_code": carrier,
+            "delivery_status": df["delivery_status"].astype(str),
+        }),
+        "SettlementBill": pd.DataFrame({
+            "bill_id": bill_id,
+            "shipment_id": shipment_id,
+            "settled_amount": pd.to_numeric(df["settled_amount"], errors="coerce"),
+            "settlement_status": settlement_status,
+        }),
+    }
+
+
+def build_l4_tables(dfs: List[pd.DataFrame]) -> Dict[str, pd.DataFrame]:
+    """Map selected tables onto the metric model, or explain exactly what is missing."""
+    for df in dfs:
+        if set(L4_WIDE_COLUMNS) <= set(df.columns):
+            return _wide_l4_tables(df)
+    tables: Dict[str, pd.DataFrame] = {}
+    for df in dfs:
+        for role, required in L4_TABLE_COLUMNS.items():
+            if role not in tables and set(required) <= set(df.columns):
+                frame = df.copy()
+                if role == "SalesOrder":
+                    frame["total_amount"] = pd.to_numeric(frame["total_amount"], errors="coerce")
+                elif role == "SettlementBill":
+                    frame["settled_amount"] = pd.to_numeric(frame["settled_amount"], errors="coerce")
+                tables[role] = frame
+                break
+    missing = [role for role in L4_TABLE_COLUMNS if role not in tables]
+    if missing:
+        raise ValueError(
+            "所选数据源不包含 L4 指标所需的订单/物流/结算字段，缺少表："
+            + "、".join(missing)
+            + "。请选择三张标准表，或一张同时包含 "
+            + "、".join(L4_WIDE_COLUMNS)
+            + " 的宽表；也可以加载 L4 示例。"
+        )
+    return tables
+
+
 def compile_and_query_metric_yaml(yaml_text: str, db_path: str, metric_name: str, group_by: Optional[str] = None) -> Tuple[str, List[Dict[str, Any]], Dict[str, Any]]:
     spec = yaml.safe_load(yaml_text)
     metrics = spec.get("metrics", {})
@@ -713,6 +780,8 @@ def execute_l4(
     metric_name: str = "net_gmv",
     group_by: Optional[str] = "order_channel",
     progress_cb: Optional[Callable[[int, str], None]] = None,
+    tables: Optional[Dict[str, pd.DataFrame]] = None,
+    data_kind: str = "demo",
 ) -> Dict[str, Any]:
     if progress_cb:
         progress_cb(30, "正在准备标准业务库并编译 YAML 指标语义层...")
@@ -721,12 +790,19 @@ def execute_l4(
     duck_key = f"projects/{project_id}/duckdb/unified.duckdb"
     with tempfile.TemporaryDirectory() as tmp:
         duck_path = os.path.join(tmp, "unified.duckdb")
-        try:
-            storage.materialize_to_local(duck_key, duck_path)
-        except Exception:
-            # 尚未跑过 L3 时自动初始化示范库
-            execute_l3(db, project_id, job_id)
-            storage.materialize_to_local(duck_key, duck_path)
+        if tables is not None:
+            con = duckdb.connect(duck_path)
+            for role, frame in tables.items():
+                con.register(f"{role}_source", frame)
+                con.execute(f"CREATE TABLE {role} AS SELECT * FROM {role}_source")
+            con.close()
+        else:
+            try:
+                storage.materialize_to_local(duck_key, duck_path)
+            except Exception:
+                # 尚未跑过 L3 时自动初始化示范库
+                execute_l3(db, project_id, job_id)
+                storage.materialize_to_local(duck_key, duck_path)
 
         con = duckdb.connect(duck_path, read_only=True)
         op_val = con.execute("SELECT SUM(total_amount) FROM SalesOrder WHERE order_channel='CROSS_BORDER_DTC'").fetchone()[0]
@@ -743,6 +819,7 @@ def execute_l4(
         "metrics_version": art.version_no,
         "selected_metric": metric_name,
         "metric_meta": meta,
+        "data_source_kind": data_kind,
         "compiled_sql": sql,
         "result_rows": rows,
         "conflict_rows": [

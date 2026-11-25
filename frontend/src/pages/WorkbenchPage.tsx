@@ -637,6 +637,9 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
                   ))}
                 </div>
               </div>
+              <p className="text-xs text-neutral-500">
+                数据来源：{job.result.data_source_kind === 'sources' ? '所选订单、物流与结算数据' : '演示数据'}
+              </p>
               <pre className="bg-neutral-900 text-neutral-100 p-4 rounded-xl text-xs overflow-x-auto">{job.result.compiled_sql}</pre>
             </div>
           )}

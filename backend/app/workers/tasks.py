@@ -15,6 +15,7 @@ from app.models.entities import DataSource, Job, LLMProvider
 from app.services.connectors import extract_db_to_parquet, load_file
 from app.services.engines import (
     build_demo_cross_db_tables,
+    build_l4_tables,
     execute_l1,
     execute_l2,
     execute_l4,
@@ -140,6 +141,18 @@ def run_job_sync(job_id: str) -> Dict[str, Any]:
             raise ValueError("L3 job execution is retired; use the contracts workflow")
 
         elif job.stage == "L4":
+            dfs = _load_datasource_dataframes(db, ds_ids, cb) if ds_ids else []
+            tables = None
+            data_kind = "demo"
+            if dfs:
+                tables = build_l4_tables(dfs)
+                data_kind = "sources"
+            elif ds_ids:
+                sources = db.query(DataSource).filter(
+                    DataSource.project_id == job.project_id, DataSource.id.in_(ds_ids),
+                ).all()
+                if not any((source.profile_json or {}).get("has_metric_yaml") for source in sources):
+                    raise ValueError("所选数据源没有可执行的表格数据，无法计算 L4 指标；请选择订单、物流、结算数据或加载 L4 示例。")
             result = execute_l4(
                 db,
                 job.project_id,
@@ -148,6 +161,8 @@ def run_job_sync(job_id: str) -> Dict[str, Any]:
                 metric_name=params.get("metric_name", "net_gmv"),
                 group_by=params.get("group_by", "order_channel"),
                 progress_cb=cb,
+                tables=tables,
+                data_kind=data_kind,
             )
         else:
             raise ValueError(f"未知处理阶段: {job.stage}")

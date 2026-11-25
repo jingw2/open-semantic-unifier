@@ -225,6 +225,9 @@ def test_guided_assistant_model_plan_and_answer():
                 page.goto(APP)
                 page.wait_for_load_state("networkidle")
                 expect(page.get_by_text("你想完成什么？")).to_be_visible(timeout=15000)
+                assistant = page.locator("aside").last
+                box = assistant.bounding_box()
+                assert box and abs(box["height"] - page.viewport_size["height"]) <= 1, box
 
                 page.get_by_placeholder("也可以直接说，例如：帮我把客户名单去重").fill("帮我清洗供应商字段")
                 page.get_by_placeholder("也可以直接说，例如：帮我把客户名单去重").press("Enter")
@@ -236,6 +239,10 @@ def test_guided_assistant_model_plan_and_answer():
 
                 page.get_by_role("button", name="解释当前页面", exact=True).click()
                 expect(page.get_by_text("模型说明：这里是当前页面。", exact=False)).to_be_visible(timeout=15000)
+
+                page.get_by_role("button", name="统一 GMV 口径", exact=True).click()
+                page.get_by_role("button", name="开始", exact=True).click()
+                expect(page.get_by_role("alert")).to_contain_text("不能计算 L4 指标")
                 browser.close()
     finally:
         provider_server.shutdown()
