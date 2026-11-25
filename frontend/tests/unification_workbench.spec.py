@@ -106,6 +106,8 @@ def test_workbench_real_browser_flow_publishes_reviewed_snapshot_and_exports():
             page.get_by_role("button", name="运行记录 1 次").click()
             expect(page.get_by_text("trace_id:")).to_be_visible()
             expect(page.get_by_role("link", name="在 Phoenix 中打开")).to_be_visible()
+            expect(page.get_by_text("实体概览", exact=True).first).to_be_visible()
+            expect(page.get_by_text("需要人工确认", exact=False)).to_be_visible()
 
             page.get_by_role("button", name="人工复核 1 待处理").click()
             page.get_by_text("查看原始证据", exact=True).first.click()
@@ -124,6 +126,8 @@ def test_workbench_real_browser_flow_publishes_reviewed_snapshot_and_exports():
             expect(page.get_by_text("已记录合并裁决")).to_be_visible()
 
             page.get_by_role("button", name="快照与导出 尚未发布").click()
+            expect(page.get_by_role("heading", name="发布快照有什么用")).to_be_visible()
+            expect(page.get_by_role("heading", name="实体概览")).to_be_visible()
             page.get_by_role("button", name="发布快照").click()
             expect(page.get_by_text("已发布快照 v1")).to_be_visible()
             expect(page.get_by_text("supplier · ACTIVE", exact=True).first).to_be_visible()
@@ -215,6 +219,8 @@ def test_workbench_real_browser_flow_publishes_reviewed_snapshot_and_exports():
             page.get_by_role("button", name="确认同一实体").click()
             expect(page.get_by_role("button", name="人工复核 0 待处理")).to_be_visible()
             page.get_by_role("button", name="快照与导出 尚未发布").click()
+            expect(page.get_by_role("heading", name="发布快照有什么用")).to_be_visible()
+            expect(page.get_by_role("heading", name="实体概览")).to_be_visible()
             page.get_by_role("button", name="发布快照").click()
             expect(page.get_by_text("已发布快照 v1")).to_be_visible()
             expect(page.get_by_text("customer · ACTIVE", exact=True)).to_be_visible()

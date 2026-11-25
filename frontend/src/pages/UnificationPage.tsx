@@ -703,6 +703,20 @@ export default function UnificationPage({ projectId, canEdit, initialRunId }: { 
                 <div className="rounded-lg bg-amber-50 p-3"><div className="text-[10px] font-medium text-amber-700">待复核</div><div className="mt-1 text-xl font-semibold text-amber-950">{reviewPairs.length}</div></div>
                 <div className="rounded-lg bg-neutral-50 p-3"><div className="text-[10px] font-medium text-neutral-700">实体数</div><div className="mt-1 text-xl font-semibold text-neutral-950">{Object.keys(activeRun.result?.entities || {}).length}</div></div>
               </div>}
+              {activeRun.status === 'SUCCEEDED' && (
+                <div className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 p-4 text-xs leading-5 text-neutral-600">
+                  <div className="text-sm font-semibold text-neutral-900">实体概览</div>
+                  <p className="mt-1">
+                    本次运行读取当前输入批次，按方案 v{scheme.revision} 生成 {activeRun.result?.pairs?.length ?? 0} 组候选配对；
+                    其中 {reviewPairs.length} 组需要人工确认，{autoSeparated.length} 组由系统保持分离，最终形成 {Object.keys(activeRun.result?.entities || {}).length} 个统一实体。
+                  </p>
+                  <p className="mt-1">这一步不会自动合并或发布。先去「人工复核」处理待定配对，确认后再到「快照与导出」发布一个不可变版本。</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button onClick={() => setTab('review')} className="rounded-lg bg-neutral-900 px-3 py-2 text-xs font-medium text-white">去人工复核</button>
+                    <button onClick={() => setTab('release')} className="rounded-lg border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700">去发布快照</button>
+                  </div>
+                </div>
+              )}
               {activeRun.trace_id && <div className="mt-3 flex flex-wrap items-center gap-2 font-mono text-[10px] text-neutral-400"><span>trace_id: {activeRun.trace_id}</span><a href={phoenixProjectId ? `${phoenixUiUrl}/projects/${encodeURIComponent(phoenixProjectId)}/traces/${activeRun.trace_id}` : phoenixUiUrl} target="_blank" rel="noreferrer" className="rounded border border-neutral-200 px-2 py-1 font-sans font-medium text-neutral-800 hover:bg-neutral-50">在 Phoenix 中打开</a></div>}
             </div>}
           </section>
@@ -759,6 +773,15 @@ export default function UnificationPage({ projectId, canEdit, initialRunId }: { 
 
       {tab === 'release' && (
         <div className="space-y-5">
+          <section className="rounded-xl border border-neutral-200 bg-white p-5 md:p-6">
+            <div className="text-[11px] text-neutral-500">作用</div>
+            <h2 className="mt-1 text-lg font-semibold text-neutral-900">发布快照有什么用</h2>
+            <p className="mt-2 max-w-3xl text-xs leading-5 text-neutral-600">
+              发布会把当前运行的结果冻结成一个不可变版本，包括统一实体、来源成员、规范属性、冲突证据和方案版本。
+              契约统一、JSON-LD 导出和对外 Serving 都读取已发布快照。发布不会修改原始记录，也不会自动合并未复核的配对；
+              重新运行只产生新的候选快照，不会覆盖当前版本。
+            </p>
+          </section>
           <div className="grid items-start gap-5 xl:grid-cols-[0.7fr_1.3fr]">
             <section className="rounded-xl border border-neutral-200 bg-white p-5  md:p-6">
               <div className="text-[11px] text-neutral-500">快照</div>
@@ -783,7 +806,7 @@ export default function UnificationPage({ projectId, canEdit, initialRunId }: { 
             </section>
           </div>
           <section className="rounded-xl border border-neutral-200 bg-white p-5  md:p-6">
-            <div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><div className="text-[11px] text-neutral-500">实体版本</div><h2 className="mt-1 text-lg font-semibold text-neutral-900">发布实体预览</h2><p className="mt-1 text-xs text-neutral-500">读取必须指定快照。历史版本不会随当前发布切换而改写。</p></div>
+            <div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><div className="text-[11px] text-neutral-500">实体版本</div><h2 className="mt-1 text-lg font-semibold text-neutral-900">实体概览</h2><p className="mt-1 max-w-3xl text-xs leading-5 text-neutral-500">查看当前快照里的统一实体：每个实体由哪些来源记录组成、规范属性是什么、有哪些字段冲突。覆盖属性会生成新的身份版本，需要重新发布；历史快照不会随当前发布切换而改写。</p></div>
               {currentSnapshotId && <div className="flex flex-wrap gap-2">{(['entities', 'mappings', 'decisions', 'delta'] as const).map((kind) => <button key={kind} onClick={() => void downloadSnapshot(kind)} className="inline-flex items-center gap-1 rounded-lg border border-neutral-300 px-2.5 py-2 text-[11px] font-medium text-neutral-700 hover:bg-neutral-50"><ArrowDownToLine className="h-3 w-3" />{kind}</button>)}</div>}
             </div>
             {!snapshotEntities ? <div className="rounded-xl border border-dashed border-neutral-300 p-8 text-center text-xs text-neutral-500">当前没有可读取的已发布快照。</div> : snapshotEntities.items.length === 0 ? <p className="text-xs text-neutral-500">该快照未包含实体。</p> : <div className="overflow-x-auto rounded-xl border border-neutral-200"><table className="w-full min-w-[760px] text-left text-xs"><thead className="bg-neutral-50 text-[10px] tracking-wide text-neutral-500"><tr><th className="p-3">实体 ID / 类型</th><th className="p-3">规范属性</th><th className="p-3">来源成员</th><th className="p-3">冲突</th></tr></thead><tbody>{snapshotEntities.items.map((entity) => <tr key={entity.entity_id} className="border-t border-neutral-100 align-top"><td className="p-3"><div className="font-mono text-[10px] font-medium text-neutral-900">{entity.entity_id}</div><div className="mt-1 text-[10px] text-neutral-500">{entity.entity_type} · {entity.status}</div></td><td className="p-3"><pre className="max-w-sm overflow-x-auto font-mono text-[10px] leading-4 text-neutral-700">{JSON.stringify(entity.attributes, null, 2)}</pre>{canEdit && snapshotEntities.fields.length > 0 && <div className="mt-2 flex gap-2"><select aria-label={`选择实体 ${entity.entity_id} 的字段`} value={overrideFields[entity.entity_id] || snapshotEntities.fields[0]} onChange={(event) => setOverrideFields((current) => ({ ...current, [entity.entity_id]: event.target.value }))} className="rounded border border-neutral-300 px-2 py-1">{snapshotEntities.fields.map((field) => <option key={field} value={field}>{field}</option>)}</select><button type="button" disabled={busy || snapshotEntities.snapshot_id !== currentSnapshotId} onClick={() => void overrideAttribute(entity.entity_id)} className="rounded border border-neutral-300 px-2 py-1 text-xs font-medium text-neutral-700 disabled:opacity-50">覆盖属性</button></div>}</td><td className="p-3"><div className="space-y-1">{entity.members.map((member) => <div key={member.source_revision_id} className="font-mono text-[10px] text-neutral-600">{member.source_key.slice(1).join(' / ')}</div>)}</div></td><td className="p-3">{entity.conflicts.length ? <span className="rounded bg-amber-100 px-2 py-1 text-[10px] font-medium text-amber-900">{entity.conflicts.length} 项</span> : <span className="text-[10px] text-neutral-400">无</span>}</td></tr>)}</tbody></table></div>}
