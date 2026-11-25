@@ -24,6 +24,7 @@ from app.services.engines import (
 )
 from app.services.openrefine.recipes import openrefine_limits_ok
 from app.services.profiler import method_for_routing, profile_items, recommend_pipeline
+from app.services.roster import RosterError, normalize_roster_config
 from app.services.storage import storage
 
 router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_resource_access)], tags=["Projects & DataSources"])
@@ -51,6 +52,28 @@ class DBConnectRequest(BaseModel):
     custom_sql: Optional[str] = None
     name: Optional[str] = None
     user_goal: Optional[str] = None
+
+
+class RosterRequest(BaseModel):
+    id_column: Optional[str] = None
+    name_column: Optional[str] = None
+    alias_columns: Optional[List[str]] = None
+    tax_id_column: Optional[str] = None
+    phone_column: Optional[str] = None
+
+
+def _profile_columns(profile: Dict[str, object]) -> List[str]:
+    tables = (profile or {}).get("tables") or []
+    if not tables:
+        return []
+    return list((tables[0] or {}).get("columns") or [])
+
+
+def _roster_source(db: Session, project_id: str, data_source_id: str) -> DataSource:
+    source = db.get(DataSource, data_source_id)
+    if source is None or source.project_id != project_id:
+        raise HTTPException(status_code=404, detail={"code": "DATA_SOURCE_NOT_FOUND", "message": "数据源不存在于当前项目"})
+    return source
 
 
 @router.get("/projects")
@@ -234,3 +257,46 @@ def load_demo_datasource(
 
     db.commit()
     return {"datasource_ids": ds_ids, "profile": prof, "routing": rt}
+
+
+@router.put("/projects/{project_id}/datasources/{data_source_id}/roster")
+def set_roster(
+    project_id: str,
+    data_source_id: str,
+    request: RosterRequest,
+    ctx: Dict[str, str] = Depends(require_role("admin", "editor")),
+    db: Session = Depends(get_db),
+):
+    source = _roster_source(db, project_id, data_source_id)
+    if source.source_type != "file":
+        raise HTTPException(status_code=422, detail={"code": "ROSTER_SOURCE_NOT_FILE", "message": "只有文件数据源可以设为标准花名册。"})
+    columns = _profile_columns(source.profile_json)
+    if not columns:
+        raise HTTPException(status_code=422, detail={"code": "ROSTER_COLUMN_NOT_FOUND", "message": "数据源没有可用的列，无法设为标准花名册。"})
+    try:
+        config = normalize_roster_config(request.model_dump(exclude_none=True), columns)
+    except RosterError as exc:
+        raise HTTPException(status_code=422, detail={"code": exc.code, "message": str(exc)}) from exc
+
+    routing = dict(source.routing_json or {})
+    routing["role"] = "standard_roster"
+    routing["roster"] = config.model_dump()
+    source.routing_json = routing
+    db.commit()
+    return {"data_source_id": source.id, "role": "standard_roster", "roster": config.model_dump()}
+
+
+@router.delete("/projects/{project_id}/datasources/{data_source_id}/roster")
+def delete_roster(
+    project_id: str,
+    data_source_id: str,
+    ctx: Dict[str, str] = Depends(require_role("admin", "editor")),
+    db: Session = Depends(get_db),
+):
+    source = _roster_source(db, project_id, data_source_id)
+    routing = dict(source.routing_json or {})
+    routing.pop("role", None)
+    routing.pop("roster", None)
+    source.routing_json = routing
+    db.commit()
+    return {"data_source_id": source.id, "role": None}

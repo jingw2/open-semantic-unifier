@@ -60,6 +60,7 @@ jobs:
           python frontend/tests/result_viewer.spec.py
           python frontend/tests/method_recommendation.spec.py
           python frontend/tests/openrefine_diff.spec.py
+          python frontend/tests/roster.spec.py
           python frontend/tests/jsonld_viewer.spec.py
 
   compose-config:

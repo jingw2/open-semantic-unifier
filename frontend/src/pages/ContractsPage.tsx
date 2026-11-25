@@ -568,7 +568,7 @@ export default function ContractsPage({ projectId, canEdit, initialVersionId }: 
                 <label className="text-xs font-semibold text-neutral-700">数据源
                   <select aria-label="JSON-LD 数据源" value={jsonldSourceId} onChange={(event) => changeJsonldSource(event.target.value)} className="mt-1.5 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm">
                     <option value="">选择 CSV 数据源</option>
-                    {fileDataSources.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
+                    {fileDataSources.map((source) => <option key={source.id} value={source.id}>{source.name}{source.routing?.role === 'standard_roster' ? ' · 标准花名册' : ''}</option>)}
                   </select>
                 </label>
                 <label className="text-xs font-semibold text-neutral-700">类

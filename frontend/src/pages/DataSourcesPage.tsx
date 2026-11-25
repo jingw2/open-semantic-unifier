@@ -19,12 +19,38 @@ function methodLabel(routing: any): string {
   return routing?.method?.label || METHOD_LABELS[routing?.recommended_stage || 'L1'] || METHOD_LABELS.L1
 }
 
+function isCsvTsv(source: DataSourceItem): boolean {
+  return source.source_type === 'file' && /\.(csv|tsv)$/i.test(source.name)
+}
+
+interface RosterEditorState {
+  sourceId: string
+  idColumn: string
+  nameColumn: string
+  aliasColumns: string[]
+  taxIdColumn: string
+  phoneColumn: string
+}
+
+function rosterEditorState(source: DataSourceItem): RosterEditorState {
+  const roster = source.routing?.roster || {}
+  return {
+    sourceId: source.id,
+    idColumn: roster.id_column || '',
+    nameColumn: roster.name_column || '',
+    aliasColumns: roster.alias_columns || [],
+    taxIdColumn: roster.tax_id_column || '',
+    phoneColumn: roster.phone_column || '',
+  }
+}
+
 export default function DataSourcesPage({ projectId, onRouteReady }: Props) {
   const [tab, setTab] = useState<'file' | 'db'>('file')
   const [sources, setSources] = useState<DataSourceItem[]>([])
   const [goal, setGoal] = useState('')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState('')
+  const [editing, setEditing] = useState<RosterEditorState | null>(null)
 
   // DB form state
   const [dbType, setDbType] = useState('duckdb')
@@ -123,6 +149,71 @@ export default function DataSourcesPage({ projectId, onRouteReady }: Props) {
   }
 
   const isFileDb = dbType === 'duckdb' || dbType === 'sqlite'
+
+  const handleSetRoster = async (source: DataSourceItem) => {
+    setBusy(true)
+    setMsg('正在设为标准花名册...')
+    try {
+      const res = await apiFetch<any>(`/api/v1/projects/${projectId}/datasources/${source.id}/roster`, {
+        method: 'PUT',
+        body: JSON.stringify({}),
+      })
+      await refreshSources()
+      const roster = res.roster || {}
+      setEditing({
+        sourceId: source.id,
+        idColumn: roster.id_column || '',
+        nameColumn: roster.name_column || '',
+        aliasColumns: roster.alias_columns || [],
+        taxIdColumn: roster.tax_id_column || '',
+        phoneColumn: roster.phone_column || '',
+      })
+      setMsg('已设为标准花名册，请确认字段映射。')
+    } catch (e: any) {
+      setMsg('错误：' + e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleSaveRoster = async () => {
+    if (!editing) return
+    setBusy(true)
+    setMsg('正在保存字段映射...')
+    try {
+      await apiFetch(`/api/v1/projects/${projectId}/datasources/${editing.sourceId}/roster`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          id_column: editing.idColumn || null,
+          name_column: editing.nameColumn || null,
+          alias_columns: editing.aliasColumns,
+          tax_id_column: editing.taxIdColumn || null,
+          phone_column: editing.phoneColumn || null,
+        }),
+      })
+      await refreshSources()
+      setMsg('已保存花名册字段映射。')
+    } catch (e: any) {
+      setMsg('错误：' + e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleCancelRoster = async (sourceId: string) => {
+    setBusy(true)
+    setMsg('正在取消标准花名册...')
+    try {
+      await apiFetch(`/api/v1/projects/${projectId}/datasources/${sourceId}/roster`, { method: 'DELETE' })
+      await refreshSources()
+      setEditing(null)
+      setMsg('已取消标准花名册。')
+    } catch (e: any) {
+      setMsg('错误：' + e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -302,25 +393,138 @@ export default function DataSourcesPage({ projectId, onRouteReady }: Props) {
           <p className="text-xs text-neutral-400">暂无数据源，请先上传文件、连接数据库或加载内置示例。</p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {sources.map((s) => (
-              <div key={s.id} className="border border-neutral-200 rounded-xl p-4 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-medium text-neutral-900 flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-green-600" /> {s.name}
+            {sources.map((s) => {
+              const columns: string[] = s.profile?.tables?.[0]?.columns || []
+              const isRoster = s.routing?.role === 'standard_roster'
+              return (
+                <div key={s.id} className="border border-neutral-200 rounded-xl p-4 flex flex-col gap-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-medium text-neutral-900 flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-green-600" /> {s.name}
+                        {isRoster && (
+                          <span className="rounded-md border border-neutral-200 bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-600">标准花名册</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-neutral-500 mt-1">
+                        类型：{s.source_type} · 行数：{s.profile?.total_rows?.toLocaleString() ?? 0} · 建议方法：
+                        <span className="font-medium text-neutral-900 ml-1">{methodLabel(s.routing)}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {isCsvTsv(s) && !isRoster && (
+                        <button
+                          disabled={busy}
+                          onClick={() => handleSetRoster(s)}
+                          className="px-2.5 py-1.5 border border-neutral-300 text-neutral-700 hover:bg-neutral-50 rounded-lg text-xs font-medium"
+                        >
+                          设为标准花名册
+                        </button>
+                      )}
+                      {isCsvTsv(s) && isRoster && (
+                        <button
+                          onClick={() => setEditing(rosterEditorState(s))}
+                          className="px-2.5 py-1.5 border border-neutral-300 text-neutral-700 hover:bg-neutral-50 rounded-lg text-xs font-medium"
+                        >
+                          编辑字段
+                        </button>
+                      )}
+                      <button
+                        onClick={() => onRouteReady([s.id], s.profile, s.routing)}
+                        className="px-3 py-1.5 bg-neutral-100 text-neutral-800 rounded-lg text-xs font-medium shrink-0"
+                      >
+                        进入处理方法 →
+                      </button>
+                    </div>
                   </div>
-                  <div className="text-xs text-neutral-500 mt-1">
-                    类型：{s.source_type} · 行数：{s.profile?.total_rows?.toLocaleString() ?? 0} · 建议方法：
-                    <span className="font-medium text-neutral-900 ml-1">{methodLabel(s.routing)}</span>
-                  </div>
+
+                  {editing?.sourceId === s.id && (
+                    <div className="border-t border-neutral-100 pt-3 space-y-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <label className="block text-xs font-semibold text-neutral-600">ID 列
+                          <select
+                            value={editing.idColumn}
+                            onChange={(e) => setEditing({ ...editing, idColumn: e.target.value })}
+                            className="mt-1 w-full border border-neutral-200 rounded-lg px-3 py-2 text-xs font-normal"
+                          >
+                            <option value="">自动生成</option>
+                            {columns.map((c) => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </label>
+                        <label className="block text-xs font-semibold text-neutral-600">名称列
+                          <select
+                            value={editing.nameColumn}
+                            onChange={(e) => setEditing({ ...editing, nameColumn: e.target.value })}
+                            className="mt-1 w-full border border-neutral-200 rounded-lg px-3 py-2 text-xs font-normal"
+                          >
+                            <option value="">请选择</option>
+                            {columns.map((c) => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </label>
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold text-neutral-600 mb-1">别名列</div>
+                        <div className="flex flex-wrap gap-x-3 gap-y-1">
+                          {columns.map((c) => (
+                            <label key={c} className="inline-flex items-center gap-1.5 text-xs text-neutral-600 font-normal">
+                              <input
+                                type="checkbox"
+                                checked={editing.aliasColumns.includes(c)}
+                                onChange={() => {
+                                  const next = editing.aliasColumns.includes(c)
+                                    ? editing.aliasColumns.filter((col) => col !== c)
+                                    : [...editing.aliasColumns, c]
+                                  setEditing({ ...editing, aliasColumns: next })
+                                }}
+                              />
+                              {c}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <label className="block text-xs font-semibold text-neutral-600">税号列
+                          <select
+                            value={editing.taxIdColumn}
+                            onChange={(e) => setEditing({ ...editing, taxIdColumn: e.target.value })}
+                            className="mt-1 w-full border border-neutral-200 rounded-lg px-3 py-2 text-xs font-normal"
+                          >
+                            <option value="">不使用</option>
+                            {columns.map((c) => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </label>
+                        <label className="block text-xs font-semibold text-neutral-600">电话列
+                          <select
+                            value={editing.phoneColumn}
+                            onChange={(e) => setEditing({ ...editing, phoneColumn: e.target.value })}
+                            className="mt-1 w-full border border-neutral-200 rounded-lg px-3 py-2 text-xs font-normal"
+                          >
+                            <option value="">不使用</option>
+                            {columns.map((c) => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          disabled={busy || !editing.nameColumn}
+                          onClick={handleSaveRoster}
+                          className="px-3 py-1.5 bg-brand-600 text-white rounded-lg text-xs font-medium disabled:opacity-40"
+                        >
+                          保存字段
+                        </button>
+                        <button
+                          disabled={busy}
+                          onClick={() => handleCancelRoster(s.id)}
+                          className="px-3 py-1.5 border border-neutral-300 text-neutral-700 hover:bg-neutral-50 rounded-lg text-xs font-medium"
+                        >
+                          取消花名册
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <button
-                  onClick={() => onRouteReady([s.id], s.profile, s.routing)}
-                  className="px-3 py-1.5 bg-neutral-100 text-neutral-800 rounded-lg text-xs font-medium shrink-0"
-                >
-                  进入处理方法 →
-                </button>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

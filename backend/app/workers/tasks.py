@@ -20,6 +20,7 @@ from app.services.engines import (
     execute_l4,
 )
 from app.services.storage import storage
+from app.services.roster import roster_catalog_for_project
 from app.workers.celery_app import celery_app
 from app.services.unification.releases import execute_unification_run, recover_interrupted_run
 from app.services.unification.telemetry import attach_trace_context, inject_trace_context
@@ -110,12 +111,24 @@ def run_job_sync(job_id: str) -> Dict[str, Any]:
             dfs = _load_datasource_dataframes(db, ds_ids, cb)
             if not dfs:
                 raise ValueError("L1 requires a data source; load the explicit demo fixture or add your own source first")
-            sources = db.query(DataSource).filter(DataSource.project_id == job.project_id, DataSource.id.in_(ds_ids)).all()
-            demo_catalog = supplier_catalog_for_sources(sources)
+            roster_catalog, roster_source = roster_catalog_for_project(db, job.project_id)
+            if roster_catalog is not None:
+                catalog = roster_catalog
+                reference_catalog = {"kind": "roster", "name": roster_source.name, "source_id": roster_source.id}
+            else:
+                sources = db.query(DataSource).filter(DataSource.project_id == job.project_id, DataSource.id.in_(ds_ids)).all()
+                demo_catalog = supplier_catalog_for_sources(sources)
+                if demo_catalog is not None:
+                    catalog = demo_catalog
+                    reference_catalog = {"kind": "demo", "name": None, "source_id": None}
+                else:
+                    catalog = None
+                    reference_catalog = {"kind": "none", "name": None, "source_id": None}
             df = dfs[0]
             target_col = params.get("target_col") or ("supplier_raw_name" if "supplier_raw_name" in df.columns else df.columns[0])
             amount_col = params.get("amount_col") or ("order_amount_cny" if "order_amount_cny" in df.columns else None)
-            result = execute_l1(db, job.project_id, job.id, df, target_col=target_col, amount_col=amount_col, progress_cb=cb, demo_catalog=demo_catalog)
+            result = execute_l1(db, job.project_id, job.id, df, target_col=target_col, amount_col=amount_col, progress_cb=cb, demo_catalog=catalog)
+            result["reference_catalog"] = reference_catalog
 
         elif job.stage == "L2":
             dfs = _load_datasource_dataframes(db, ds_ids, cb)
