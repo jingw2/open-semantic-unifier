@@ -6,6 +6,7 @@ import { parseCsv } from '../lib/csv'
 export type ResultViewerSource =
   | { kind: 'artifact'; id: string; filename: string }
   | { kind: 'contract'; projectId: string; versionId: string; filename: string }
+  | { kind: 'jsonld'; data: unknown; filename: string }
 
 interface Props {
   source: ResultViewerSource | null
@@ -83,6 +84,10 @@ export default function ResultViewer({ source, onClose }: Props) {
     setModel(null)
     setError('')
     setShowJson(false)
+    if (source.kind === 'jsonld') {
+      setText(JSON.stringify(source.data, null, 2))
+      return
+    }
     const token = getToken()
     const url = source.kind === 'artifact'
       ? `/api/v1/artifacts/${source.id}/content`

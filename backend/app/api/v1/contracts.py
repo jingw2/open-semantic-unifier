@@ -1,4 +1,6 @@
 """Project-scoped contract sources, model versions, releases, and exports for the L3 workbench."""
+import csv
+import io
 from datetime import datetime, timezone
 from typing import Any
 
@@ -9,6 +11,8 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_resource_access, require_role
 from app.core.db import get_db
 from app.models.contracts import ContractAuditRecord, ContractModelVersion, ContractReleaseState, ContractSource
+from app.models.entities import DataSource
+from app.services.contracts.jsonld import JsonLdInvalid, JsonLdNoContract, build_jsonld, infer_jsonld_mapping, jsonld_model
 from app.services.contracts.releases import (
     ContractReleasesError,
     ContractReleaseConflict,
@@ -35,6 +39,7 @@ from app.services.contracts.sources import (
     create_contract_source,
     list_contract_sources,
 )
+from app.services.storage import storage
 from app.services.unification.telemetry import start_span
 
 router = APIRouter(
@@ -297,3 +302,78 @@ def export_contract_model_version(
         raise HTTPException(status_code=404, detail="contract version not found")
     content, media_type = export_contract_version(version, kind)
     return Response(content=content, media_type=media_type)
+
+
+class JsonLdGenerateRequest(BaseModel):
+    data_source_id: str = Field(min_length=1, max_length=32)
+    class_name: str = Field(min_length=1, max_length=120)
+    id_slot: str = Field(min_length=1, max_length=120)
+    columns: dict[str, str] = {}
+
+
+def _instance_sheet(db: Session, project_id: str, data_source_id: str) -> tuple[list[str], list[dict[str, str]]]:
+    source = db.get(DataSource, data_source_id)
+    if source is None or source.project_id != project_id:
+        raise HTTPException(status_code=404, detail={"code": "DATA_SOURCE_NOT_FOUND", "message": "数据源不存在于当前项目"})
+    if source.source_type != "file" or not source.object_key:
+        raise HTTPException(status_code=422, detail={"code": "JSONLD_UNSUPPORTED_SOURCE", "message": "JSON-LD 实例只支持已上传的 CSV 文件"})
+    try:
+        content = storage.get_bytes(source.object_key).decode("utf-8-sig")
+        rows = list(csv.reader(io.StringIO(content)))
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail={"code": "JSONLD_UNREADABLE_SOURCE", "message": "数据源不是可读取的 CSV 文件"}) from exc
+    if not rows or not rows[0]:
+        raise HTTPException(status_code=422, detail={"code": "JSONLD_EMPTY_SOURCE", "message": "数据源没有表头"})
+    header = [str(cell) for cell in rows[0]]
+    if len(set(header)) != len(header):
+        raise HTTPException(status_code=422, detail={"code": "JSONLD_DUPLICATE_HEADER", "message": "数据源表头有重名列，无法映射"})
+    body = [dict(zip(header, [str(cell) for cell in row])) for row in rows[1:]]
+    return header, body
+
+
+def _jsonld_version(db: Session, project_id: str, version_id: str) -> ContractModelVersion:
+    version = get_contract_version(db, project_id=project_id, version_id=version_id)
+    if version is None:
+        raise HTTPException(status_code=404, detail={"code": "NO_CONTRACT", "message": "先上传并编译契约，再导出 JSON-LD"})
+    return version
+
+
+@router.get("/projects/{project_id}/contracts/versions/{version_id}/jsonld/preview")
+def preview_contract_jsonld(
+    project_id: str,
+    version_id: str,
+    data_source_id: str = Query(min_length=1, max_length=32),
+    ctx: dict[str, str] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    version = _jsonld_version(db, project_id, version_id)
+    columns, _rows = _instance_sheet(db, project_id, data_source_id)
+    try:
+        model = jsonld_model(version)
+        mapping = infer_jsonld_mapping(model, columns)
+    except JsonLdNoContract as exc:
+        raise HTTPException(status_code=404, detail={"code": exc.code, "message": exc.message}) from exc
+    return {"model": model, "inferred_mapping": mapping}
+
+
+@router.post("/projects/{project_id}/contracts/versions/{version_id}/jsonld")
+def generate_contract_jsonld(
+    project_id: str,
+    version_id: str,
+    request: JsonLdGenerateRequest,
+    ctx: dict[str, str] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    version = _jsonld_version(db, project_id, version_id)
+    _columns, rows = _instance_sheet(db, project_id, request.data_source_id)
+    try:
+        model = jsonld_model(version)
+        return build_jsonld(model, rows, {
+            "class_name": request.class_name,
+            "id_slot": request.id_slot,
+            "columns": request.columns,
+        })
+    except JsonLdNoContract as exc:
+        raise HTTPException(status_code=404, detail={"code": exc.code, "message": exc.message}) from exc
+    except JsonLdInvalid as exc:
+        raise HTTPException(status_code=422, detail={"code": exc.code, "message": exc.message}) from exc

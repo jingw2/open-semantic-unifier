@@ -144,6 +144,14 @@ export default function ContractsPage({ projectId, canEdit, initialVersionId }: 
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [viewerSource, setViewerSource] = useState<ResultViewerSource | null>(null)
+  const [jsonldVersion, setJsonldVersion] = useState<ContractVersionItem | null>(null)
+  const [jsonldSourceId, setJsonldSourceId] = useState('')
+  const [jsonldModel, setJsonldModel] = useState<any>(null)
+  const [jsonldClass, setJsonldClass] = useState('')
+  const [jsonldIdSlot, setJsonldIdSlot] = useState('')
+  const [jsonldColumns, setJsonldColumns] = useState<Record<string, string>>({})
+  const [jsonldError, setJsonldError] = useState('')
+  const [jsonldBusy, setJsonldBusy] = useState(false)
 
   const base = `/api/v1/projects/${projectId}`
 
@@ -181,6 +189,10 @@ export default function ContractsPage({ projectId, canEdit, initialVersionId }: 
     setSelectedSourceId('')
     setSelectedSnapshotId('')
     setPublishVersionId('')
+    setJsonldVersion(null)
+    setJsonldSourceId('')
+    setJsonldModel(null)
+    setJsonldError('')
     setLoaded(false)
     void loadWorkspace()
   }, [projectId])
@@ -286,6 +298,81 @@ export default function ContractsPage({ projectId, canEdit, initialVersionId }: 
       setError(errorText(caught))
     }
   }
+
+  const applyJsonldMapping = (model: any, mapping: any) => {
+    const classModel = model?.classes?.[mapping?.class_name]
+    const columns: Record<string, string> = {}
+    Object.keys(classModel?.slots || {}).forEach((slot) => {
+      columns[slot] = mapping?.columns?.[slot] || ''
+    })
+    setJsonldClass(mapping?.class_name || '')
+    setJsonldIdSlot(mapping?.id_slot || classModel?.id_slot || '')
+    setJsonldColumns(columns)
+  }
+
+  const loadJsonldPreview = async (version: ContractVersionItem, sourceId: string) => {
+    setJsonldBusy(true)
+    setJsonldError('')
+    try {
+      const preview = await apiFetch<any>(`${base}/contracts/versions/${version.id}/jsonld/preview?data_source_id=${encodeURIComponent(sourceId)}`)
+      setJsonldModel(preview.model)
+      applyJsonldMapping(preview.model, preview.inferred_mapping)
+    } catch (caught) {
+      setJsonldError(errorText(caught))
+      setJsonldModel(null)
+    } finally {
+      setJsonldBusy(false)
+    }
+  }
+
+  const openJsonld = (version: ContractVersionItem) => {
+    setJsonldVersion(version)
+    setJsonldError('')
+    setJsonldModel(null)
+    const sourceId = jsonldSourceId || fileDataSources[0]?.id || ''
+    setJsonldSourceId(sourceId)
+    if (sourceId) void loadJsonldPreview(version, sourceId)
+    else setJsonldError('先上传一份 CSV 数据源，再导出 JSON-LD 实例。')
+  }
+
+  const changeJsonldSource = (sourceId: string) => {
+    setJsonldSourceId(sourceId)
+    if (jsonldVersion) void loadJsonldPreview(jsonldVersion, sourceId)
+  }
+
+  const changeJsonldClass = (className: string) => {
+    setJsonldClass(className)
+    const classModel = jsonldModel?.classes?.[className]
+    setJsonldIdSlot(classModel?.id_slot || '')
+    const columns: Record<string, string> = {}
+    Object.keys(classModel?.slots || {}).forEach((slot) => { columns[slot] = '' })
+    setJsonldColumns(columns)
+  }
+
+  const generateJsonld = async () => {
+    if (!jsonldVersion || !jsonldSourceId || !jsonldClass || !jsonldIdSlot) return
+    setJsonldBusy(true)
+    setJsonldError('')
+    try {
+      const payload = await apiFetch<any>(`${base}/contracts/versions/${jsonldVersion.id}/jsonld`, {
+        method: 'POST',
+        body: JSON.stringify({
+          data_source_id: jsonldSourceId,
+          class_name: jsonldClass,
+          id_slot: jsonldIdSlot,
+          columns: Object.fromEntries(Object.entries(jsonldColumns).filter(([, column]) => column)),
+        }),
+      })
+      setViewerSource({ kind: 'jsonld', data: payload, filename: `contract-v${jsonldVersion.version}.jsonld` })
+    } catch (caught) {
+      setJsonldError(errorText(caught))
+    } finally {
+      setJsonldBusy(false)
+    }
+  }
+
+  const selectedJsonldSource = fileDataSources.find((source) => source.id === jsonldSourceId)
+  const jsonldColumnOptions: string[] = selectedJsonldSource?.profile?.tables?.[0]?.columns || []
 
   const tabs: Array<{ key: Tab; title: string; detail: string }> = [
     { key: 'sources', title: '契约源与模型版本', detail: `${sources.length} 个契约源` },
@@ -448,6 +535,9 @@ export default function ContractsPage({ projectId, canEdit, initialVersionId }: 
                           <button onClick={() => setViewerSource({ kind: 'contract', projectId, versionId: item.id, filename: `contract-v${item.version}-model.json` })} className="inline-flex items-center gap-1 rounded-lg border border-neutral-300 px-2 py-1.5 text-[11px] font-medium text-neutral-700 hover:bg-neutral-50">
                             查看模型
                           </button>
+                          <button onClick={() => openJsonld(item)} className="inline-flex items-center gap-1 rounded-lg border border-neutral-300 px-2 py-1.5 text-[11px] font-medium text-neutral-700 hover:bg-neutral-50">
+                            JSON-LD
+                          </button>
                           {(['model', 'json_schema', 'sql_ddl', 'er_diagram'] as const).map((kind) => (
                             <button key={kind} onClick={() => void exportVersion(item, kind)} className="inline-flex items-center gap-1 rounded-lg border border-neutral-300 px-2 py-1.5 text-[11px] font-medium text-neutral-700 hover:bg-neutral-50">
                               <ArrowDownToLine className="h-3 w-3" />{kind}
@@ -459,6 +549,83 @@ export default function ContractsPage({ projectId, canEdit, initialVersionId }: 
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {jsonldVersion && (
+            <div className="mt-5 rounded-xl border border-neutral-200 bg-neutral-50/60 p-4 md:p-5">
+              <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-neutral-900">JSON-LD 实例 · v{jsonldVersion.version}</div>
+                  <p className="mt-1 text-xs text-neutral-500">选择 CSV 数据源，把契约槽位映射到列，再生成 W3C JSON-LD。</p>
+                </div>
+                <button onClick={() => setJsonldVersion(null)} className="self-start rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-600">
+                  关闭
+                </button>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <label className="text-xs font-semibold text-neutral-700">数据源
+                  <select aria-label="JSON-LD 数据源" value={jsonldSourceId} onChange={(event) => changeJsonldSource(event.target.value)} className="mt-1.5 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm">
+                    <option value="">选择 CSV 数据源</option>
+                    {fileDataSources.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
+                  </select>
+                </label>
+                <label className="text-xs font-semibold text-neutral-700">类
+                  <select aria-label="JSON-LD 类" value={jsonldClass} onChange={(event) => changeJsonldClass(event.target.value)} className="mt-1.5 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm" disabled={!jsonldModel}>
+                    {Object.keys(jsonldModel?.classes || {}).map((name) => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                </label>
+                <label className="text-xs font-semibold text-neutral-700">ID 槽
+                  <select aria-label="JSON-LD ID 槽" value={jsonldIdSlot} onChange={(event) => setJsonldIdSlot(event.target.value)} className="mt-1.5 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm" disabled={!jsonldClass}>
+                    {Object.keys(jsonldModel?.classes?.[jsonldClass]?.slots || {}).map((name) => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                </label>
+              </div>
+
+              {jsonldError && <p role="alert" className="mt-3 text-xs text-rose-700">{jsonldError}</p>}
+              {jsonldBusy && <p className="mt-3 text-xs text-neutral-500">正在读取契约与数据…</p>}
+
+              {jsonldModel && jsonldClass && (
+                <div className="mt-4 overflow-hidden rounded-lg border border-neutral-200 bg-white">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-neutral-50 text-[10px] tracking-wide text-neutral-500">
+                      <tr><th className="p-2.5">槽位</th><th className="p-2.5">类型</th><th className="p-2.5">必填</th><th className="p-2.5">CSV 列</th></tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(jsonldModel.classes[jsonldClass].slots).map(([slot, info]: [string, any]) => (
+                        <tr key={slot} className="border-t border-neutral-100">
+                          <td className="p-2.5 font-mono text-neutral-800">{slot}{slot === jsonldIdSlot ? '（ID）' : ''}</td>
+                          <td className="p-2.5 text-neutral-500">{info.range}</td>
+                          <td className="p-2.5 text-neutral-500">{info.required ? '是' : '—'}</td>
+                          <td className="p-2.5">
+                            <select
+                              aria-label={`${slot} 列`}
+                              value={jsonldColumns[slot] || ''}
+                              onChange={(event) => setJsonldColumns((current) => ({ ...current, [slot]: event.target.value }))}
+                              className="w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-xs"
+                            >
+                              <option value="">不映射</option>
+                              {jsonldColumnOptions.map((column) => <option key={column} value={column}>{column}</option>)}
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button
+                  disabled={jsonldBusy || !jsonldClass || !jsonldIdSlot || !jsonldColumns[jsonldIdSlot]}
+                  onClick={() => void generateJsonld()}
+                  className="rounded-lg bg-neutral-900 px-4 py-2 text-xs font-medium text-white disabled:opacity-40"
+                >
+                  生成预览
+                </button>
+                <span className="text-[11px] text-neutral-500">最多生成 5,000 条实例；ID 槽必须映射到一列。</span>
+              </div>
             </div>
           )}
         </section>
