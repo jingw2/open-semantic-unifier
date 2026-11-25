@@ -329,7 +329,7 @@
       "stage": "V0.1",
       "status": "PASS",
       "evidence": [
-        "LICENSE is Apache-2.0 and permits commercial use. docs/reference/license-audit-summary.json covers 182 Python and 184 npm packages plus pinned images; every package now has an identifiable license.",
+        "LICENSE is MIT and permits commercial use. docs/reference/license-audit-summary.json covers 182 Python and 184 npm packages plus pinned images; every package now has an identifiable license.",
         "schemasheets 0.4.0 metadata gap resolved from the upstream Apache-2.0 LICENSE. Copyleft/source-available obligations are recorded for rfc3987, psycopg2-binary, MPL packages, MinIO, Phoenix and Redis 7.4.",
         "The MinIO container uses bitnamilegacy/minio:latest (MinIO 2025.5.24, AGPL-3.0) because the official image is no longer anonymously pullable. The legacy namespace may not receive updates.",
         "The audit is an inventory, not legal clearance."

@@ -196,7 +196,7 @@
     {
       "id": "OSS-01",
       "status": "PASS",
-      "note": "LICENSE is Apache-2.0 and permits commercial use. docs/reference/license-audit-summary.json covers 182 Python and 184 npm packages plus pinned container images. Every package has an identifiable license; schemasheets metadata gap resolved from its upstream Apache-2.0 LICENSE. Copyleft/source-available obligations are recorded for rfc3987, psycopg2-binary, MPL packages, MinIO, Phoenix and Redis 7.4. The audit is an inventory, not legal clearance. The MinIO container now uses bitnamilegacy/minio:latest (MinIO 2025.5.24, AGPL-3.0) because the official image is no longer anonymously pullable; the legacy namespace may not receive updates."
+      "note": "LICENSE was Apache-2.0 at this audit and is MIT as of 2026-11-25; both permit commercial use. docs/reference/license-audit-summary.json covers 182 Python and 184 npm packages plus pinned container images. Every package has an identifiable license; schemasheets metadata gap resolved from its upstream Apache-2.0 LICENSE. Copyleft/source-available obligations are recorded for rfc3987, psycopg2-binary, MPL packages, MinIO, Phoenix and Redis 7.4. The audit is an inventory, not legal clearance. The MinIO container now uses bitnamilegacy/minio:latest (MinIO 2025.5.24, AGPL-3.0) because the official image is no longer anonymously pullable; the legacy namespace may not receive updates."
     },
     {
       "id": "OSS-02",

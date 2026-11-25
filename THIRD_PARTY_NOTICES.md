@@ -4,7 +4,7 @@ The project installs Python and JavaScript dependencies listed in `backend/requi
 
 ## Audit status
 
-`docs/reference/license-audit-summary.json` records the 2026-11-23 audit. It covers 182 Python packages, 184 npm packages, and the pinned container images. Every Python and npm package now has an identifiable license. The repository license is Apache-2.0, which permits commercial use.
+`docs/reference/license-audit-summary.json` records the 2026-11-23 audit. It covers 182 Python packages, 184 npm packages, and the pinned container images. Every Python and npm package now has an identifiable license. The repository license is MIT, which permits commercial use.
 
 The audit flags these obligations:
 
