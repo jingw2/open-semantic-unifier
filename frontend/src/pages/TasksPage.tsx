@@ -9,9 +9,9 @@ interface Props {
 }
 
 const NEW_TASKS: Array<{ kind: NewTaskKind; label: string; icon: React.ReactNode }> = [
-  { kind: 'clean', label: '清洗供应商名单', icon: <Rows3 className="h-4 w-4" /> },
-  { kind: 'match', label: '跨系统匹配客户', icon: <Play className="h-4 w-4" /> },
-  { kind: 'entity', label: '实体匹配', icon: <GitMerge className="h-4 w-4" /> },
+  { kind: 'clean', label: '清洗字段', icon: <Rows3 className="h-4 w-4" /> },
+  { kind: 'match', label: '跨系统匹配字段', icon: <Play className="h-4 w-4" /> },
+  { kind: 'entity', label: '实体匹配字段', icon: <GitMerge className="h-4 w-4" /> },
   { kind: 'metrics', label: '统一指标口径', icon: <ListChecks className="h-4 w-4" /> },
   { kind: 'contract', label: '生成数据契约', icon: <Download className="h-4 w-4" /> },
 ]

@@ -15,10 +15,10 @@ type TaskDef = {
 }
 
 const TASKS: TaskDef[] = [
-  { key: 'clean', label: '清洗供应商名单', method: '规则清洗 + W3C 契约', stage: 'L1', demo: 'L1' },
-  { key: 'match', label: '跨系统匹配客户', method: 'Splink + DuckDB', stage: 'L2', demo: 'L2' },
-  { key: 'entity', label: '实体匹配', method: '规则候选 + 模型复核', stage: 'ENTITY' },
-  { key: 'metrics', label: '统一 GMV 口径', method: '指标 YAML', stage: 'L4', demo: 'L4' },
+  { key: 'clean', label: '清洗字段', method: '规则清洗 + W3C 契约', stage: 'L1', demo: 'L1' },
+  { key: 'match', label: '跨系统匹配字段', method: 'Splink + DuckDB', stage: 'L2', demo: 'L2' },
+  { key: 'entity', label: '实体匹配字段', method: '规则候选 + 模型复核', stage: 'ENTITY' },
+  { key: 'metrics', label: '统一指标口径', method: '指标 YAML', stage: 'L4', demo: 'L4' },
   { key: 'contract', label: '生成数据契约', method: 'LinkML W3C 契约', stage: 'L3' },
   { key: 'review', label: '查看待复核', method: '人工复核', stage: 'REVIEW' },
 ]
@@ -80,6 +80,9 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
   const [providerId, setProviderId] = useState('')
   const [thinking, setThinking] = useState(false)
   const [entitySummary, setEntitySummary] = useState<EntitySummary | null>(null)
+  const [matchFields, setMatchFields] = useState<string[]>([])
+  const [entityFields, setEntityFields] = useState<string[]>(['name', 'tax_id'])
+  const [cleanTargetCol, setCleanTargetCol] = useState('')
   const idRef = useRef(0)
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -99,6 +102,25 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
       })
       .catch(() => undefined)
   }, [projectId])
+
+  const selectedSource = datasources.find((item) => item.id === selectedId)
+  const sourceColumns: string[] = Array.from(new Set<string>(
+    ((selectedSource?.profile?.tables || []) as any[]).flatMap((table) => (table.columns || []) as string[]),
+  ))
+  const matchFieldOptions = sourceColumns.length ? sourceColumns : ['company_name', 'tax_id', 'phone', 'city']
+  const cleanFieldOptions = sourceColumns.length ? sourceColumns : ['supplier_raw_name']
+  const entityFieldOptions = ['name', 'tax_id', 'phone']
+
+  useEffect(() => {
+    setMatchFields((current) => {
+      const valid = current.filter((field) => matchFieldOptions.includes(field))
+      return valid.length === current.length ? current : valid
+    })
+  }, [selectedId, matchFieldOptions.join(',')])
+
+  useEffect(() => {
+    setCleanTargetCol((current) => (current && cleanFieldOptions.includes(current) ? current : (cleanFieldOptions[0] || '')))
+  }, [selectedId, cleanFieldOptions.join(',')])
 
   const pushUser = (content: string) => {
     idRef.current += 1
@@ -137,6 +159,14 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
           setSelectedId(source.id)
           setRouting(source.routing || null)
         }
+      }
+      if (plan.intent === 'match') {
+        const planned = Array.isArray(plan.params?.match_fields) ? plan.params.match_fields as string[] : []
+        setMatchFields(planned.length ? planned : matchFieldOptions)
+      }
+      if (plan.intent === 'clean') {
+        const planned = typeof plan.params?.target_col === 'string' ? plan.params.target_col : ''
+        setCleanTargetCol(planned && cleanFieldOptions.includes(planned) ? planned : (cleanFieldOptions[0] || ''))
       }
       pushAssistant(plan.explanation || '', plan)
     } catch (caught) {
@@ -182,6 +212,9 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
     setError('')
     setResultRoute('')
     setEntitySummary(null)
+    if (next.key === 'match' && !matchFields.length) setMatchFields(matchFieldOptions)
+    if (next.key === 'entity' && !entityFields.length) setEntityFields(['name', 'tax_id'])
+    if (next.key === 'clean' && !cleanTargetCol) setCleanTargetCol(cleanFieldOptions[0] || '')
     pushAssistant(plan.explanation, plan)
   }
 
@@ -233,7 +266,11 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
       }
 
       if (task.stage === 'ENTITY') {
-        const demo = await apiFetch<{ run_id: string }>(`/api/v1/projects/${projectId}/unification/demo`, { method: 'POST' })
+        if (!entityFields.length) throw new Error('请至少选择一个实体匹配字段。')
+        const demo = await apiFetch<{ run_id: string }>(`/api/v1/projects/${projectId}/unification/demo`, {
+          method: 'POST',
+          body: JSON.stringify({ match_fields: entityFields }),
+        })
         let detail: any = null
         for (let attempt = 0; attempt < 120; attempt += 1) {
           detail = await apiFetch(`/api/v1/projects/${projectId}/unification/runs/${demo.run_id}`)
@@ -283,12 +320,12 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
       }
 
       const sp = currentRouting?.suggested_params || {}
-      const params = plan.params && Object.keys(plan.params).length > 0
-        ? plan.params
-        : task.stage === 'L1'
-          ? { target_col: sp.name_col, amount_col: sp.amount_col }
-          : task.stage === 'L2'
-            ? { name_col: sp.name_col, tax_col: sp.tax_col, phone_col: sp.phone_col, city_col: sp.city_col, enable_hybrid_llm: true }
+      const params = task.stage === 'L2'
+        ? { ...(plan.params || {}), match_fields: matchFields, enable_hybrid_llm: true }
+        : plan.params && Object.keys(plan.params).length > 0
+          ? plan.params
+          : task.stage === 'L1'
+            ? { target_col: cleanTargetCol || sp.name_col, amount_col: sp.amount_col }
             : { metric_name: 'net_gmv', group_by: 'order_channel' }
       const created = await apiFetch<JobItem>(`/api/v1/projects/${projectId}/jobs`, {
         method: 'POST',
@@ -421,6 +458,59 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
                         const source = datasources.find((item) => item.id === (plan.datasource_id || selectedId))
                         return source ? <div className="mt-1 text-[11px] text-neutral-500">数据源：{source.name}</div> : null
                       })()}
+                      {isLastPlan && planTask.key === 'clean' && (
+                        <label className="mt-2 block text-[11px] font-medium text-neutral-800">清洗目标字段
+                          <select
+                            aria-label="清洗目标字段"
+                            value={cleanTargetCol}
+                            onChange={(event) => setCleanTargetCol(event.target.value)}
+                            className="mt-1 w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-xs font-normal"
+                          >
+                            {cleanFieldOptions.map((field) => <option key={field} value={field}>{field}</option>)}
+                          </select>
+                          <span className="mt-1 block font-normal text-neutral-500">规则清洗按一个字段；多字段请在处理方法使用 OpenRefine 字段设置。</span>
+                        </label>
+                      )}
+                      {isLastPlan && planTask.key === 'match' && (
+                        <div className="mt-2 rounded-md border border-neutral-200 p-2.5">
+                          <div className="text-[11px] font-medium text-neutral-800">确认匹配字段（可多选）</div>
+                          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+                            {matchFieldOptions.map((field) => (
+                              <label key={field} className="inline-flex items-center gap-1 text-[11px] text-neutral-600">
+                                <input
+                                  type="checkbox"
+                                  checked={matchFields.includes(field)}
+                                  onChange={(event) => setMatchFields(event.target.checked
+                                    ? [...matchFields, field]
+                                    : matchFields.filter((item) => item !== field))}
+                                />
+                                {field}
+                              </label>
+                            ))}
+                          </div>
+                          {!matchFields.length && <p className="mt-1 text-[11px] text-red-600">至少选择一个字段。</p>}
+                        </div>
+                      )}
+                      {isLastPlan && planTask.key === 'entity' && (
+                        <div className="mt-2 rounded-md border border-neutral-200 p-2.5">
+                          <div className="text-[11px] font-medium text-neutral-800">确认实体匹配字段（可多选）</div>
+                          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+                            {entityFieldOptions.map((field) => (
+                              <label key={field} className="inline-flex items-center gap-1 text-[11px] text-neutral-600">
+                                <input
+                                  type="checkbox"
+                                  checked={entityFields.includes(field)}
+                                  onChange={(event) => setEntityFields(event.target.checked
+                                    ? [...entityFields, field]
+                                    : entityFields.filter((item) => item !== field))}
+                                />
+                                {field}
+                              </label>
+                            ))}
+                          </div>
+                          {!entityFields.length && <p className="mt-1 text-[11px] text-red-600">至少选择一个字段。</p>}
+                        </div>
+                      )}
                       {plan.params && Object.keys(plan.params).length > 0 && (
                         <div className="mt-2 space-y-0.5 border-t border-neutral-100 pt-2">
                           {Object.entries(plan.params).map(([key, value]) => (
@@ -431,7 +521,9 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
                       <ol className="mt-2 space-y-1 text-[11px] text-neutral-500">
                         {['① 选数据', '② 运行', '③ 看结果'].map((step) => <li key={step}>{step}</li>)}
                       </ol>
-                      {isLastPlan && stage === 'idle' && !plan.needs_clarification && (
+                      {isLastPlan && stage === 'idle' && !plan.needs_clarification
+                        && !(planTask.key === 'match' && !matchFields.length)
+                        && !(planTask.key === 'entity' && !entityFields.length) && (
                         <button onClick={() => void run(plan)} className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-neutral-900 px-3 py-2 text-xs font-medium text-white">
                           开始 <ArrowRight className="h-3.5 w-3.5" />
                         </button>

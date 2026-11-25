@@ -86,6 +86,8 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
   const [providerId, setProviderId] = useState('')
   const [metricName, setMetricName] = useState('net_gmv')
   const [enableHybrid, setEnableHybrid] = useState(true)
+  const [matchFields, setMatchFields] = useState<string[]>([])
+  const [cleanTargetCol, setCleanTargetCol] = useState('')
   const [localDsIds, setLocalDsIds] = useState<string[]>(activeDsIds)
   const [localProfile, setLocalProfile] = useState<any>(activeProfile)
   const [effectiveRouting, setEffectiveRouting] = useState<any>(activeRouting)
@@ -117,7 +119,12 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
   const profile = localProfile || activeProfile
   const routing = effectiveRouting || activeRouting
   const needsDataSource = stage === 'L1' && dsIds.length === 0
+  const needsMatchFields = stage === 'L2' && matchFields.length === 0
   const isOpenRefine = stage === 'L1' && routing?.method?.key === 'openrefine_w3c'
+  const profileColumns: string[] = Array.from(new Set<string>(
+    ((profile?.tables || []) as any[]).flatMap((table) => (table.columns || []) as string[]),
+  ))
+  const matchFieldOptions = profileColumns.length ? profileColumns : ['company_name', 'tax_id', 'phone', 'city']
   const currentRecipe = recipes.find((recipe) => recipe.id === recipeId) || recipes[0]
   const targetOptions = datasources.filter((ds) => ETL_SINK_TYPES.includes(ds.source_type))
   const canSaveSchedule = Boolean(etlTargetId && etlTable.trim() && scheduleInterval)
@@ -160,6 +167,27 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
       setStage(normalizeStage(activeRouting.recommended_stage))
     }
   }, [activeRouting, initialStage])
+
+  useEffect(() => {
+    if (stage !== 'L1') return
+    const sp = routing?.suggested_params || {}
+    const preferred = typeof sp.name_col === 'string' && matchFieldOptions.includes(sp.name_col)
+      ? sp.name_col
+      : (matchFieldOptions[0] || '')
+    setCleanTargetCol((current) => (current && matchFieldOptions.includes(current) ? current : preferred))
+  }, [stage, dsIds.join(','), routing, profileColumns.join(',')])
+
+  useEffect(() => {
+    if (stage !== 'L2') return
+    const sp = routing?.suggested_params || {}
+    const suggested = [sp.name_col, sp.tax_col, sp.phone_col, sp.city_col]
+      .filter((value: unknown): value is string => typeof value === 'string' && matchFieldOptions.includes(value))
+    setMatchFields((current) => {
+      const valid = current.filter((field) => matchFieldOptions.includes(field))
+      if (valid.length) return valid
+      return suggested.length ? suggested : matchFieldOptions
+    })
+  }, [stage, dsIds.join(','), routing, profileColumns.join(',')])
 
   useEffect(() => {
     if (!initialJobId) return
@@ -233,9 +261,9 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
 
   const stageParams = (): Record<string, any> => {
     const sp = routing?.suggested_params || {}
-    if (stage === 'L1') return { target_col: sp.name_col, amount_col: sp.amount_col }
+    if (stage === 'L1') return { target_col: cleanTargetCol || sp.name_col, amount_col: sp.amount_col }
     if (stage === 'L2')
-      return { name_col: sp.name_col, tax_col: sp.tax_col, phone_col: sp.phone_col, city_col: sp.city_col, enable_hybrid_llm: enableHybrid }
+      return { match_fields: matchFields, enable_hybrid_llm: enableHybrid }
     if (stage === 'L4') return { metric_name: metricName, group_by: 'order_channel' }
     return {}
   }
@@ -454,7 +482,7 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
               </button>
             )}
             <button
-              disabled={running || needsDataSource || needTargetTable}
+              disabled={running || needsDataSource || needTargetTable || needsMatchFields}
               onClick={submitJob}
               className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-white font-medium text-sm rounded-lg flex items-center gap-2 disabled:opacity-40"
             >
@@ -648,8 +676,40 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
             已接入 {profile.file_count} 份数据 · {profile.total_rows?.toLocaleString()} 行
           </span>
         )}
+        {stage === 'L1' && matchFieldOptions.length > 0 && (
+          <label className="flex flex-col gap-1 text-xs">
+            <span className="font-semibold text-neutral-700">清洗目标字段</span>
+            <select
+              aria-label="清洗目标字段"
+              value={cleanTargetCol}
+              onChange={(event) => setCleanTargetCol(event.target.value)}
+              className="border border-neutral-300 rounded-md px-2.5 py-1.5 bg-white"
+            >
+              {matchFieldOptions.map((column) => <option key={column} value={column}>{column}</option>)}
+            </select>
+          </label>
+        )}
         {stage === 'L2' && (
           <>
+            <div className="w-full">
+              <div className="mb-1.5 font-semibold text-neutral-700">匹配字段（可单选或多选）</div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                {matchFieldOptions.map((column) => (
+                  <label key={column} className="flex items-center gap-1.5 text-neutral-700">
+                    <input
+                      type="checkbox"
+                      aria-label={`匹配字段 ${column}`}
+                      checked={matchFields.includes(column)}
+                      onChange={(e) => setMatchFields(e.target.checked
+                        ? [...matchFields, column]
+                        : matchFields.filter((field) => field !== column))}
+                    />
+                    {column}
+                  </label>
+                ))}
+              </div>
+              {needsMatchFields && <p className="mt-1 text-[11px] text-red-600">至少选择一个匹配字段。</p>}
+            </div>
             <label className="flex items-center gap-1.5 font-semibold text-neutral-700">
               <input type="checkbox" checked={enableHybrid} onChange={(e) => setEnableHybrid(e.target.checked)} />
               灰色地带交给 LLM 终审并进入复核
@@ -856,6 +916,9 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
                 <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-200"><div className="text-2xl font-semibold text-neutral-900">{job.result.unique_clusters?.toLocaleString()}</div><div className="text-xs text-neutral-500">归并唯一实体</div></div>
                 <div className="p-4 bg-brand-50 rounded-xl border border-brand-200"><div className="text-2xl font-semibold text-brand-600">{job.result.token_cost_saved_pct}%</div><div className="text-xs text-brand-700">漏斗节省 Token</div></div>
               </div>
+              {Array.isArray(job.result.match_fields) && job.result.match_fields.length > 0 && (
+                <p className="text-xs text-neutral-500">匹配字段：{job.result.match_fields.join('、')}</p>
+              )}
               {job.result.weights_artifact_id && (
                 <ArtifactPreview id={job.result.weights_artifact_id} className="w-full h-80 border border-neutral-200 rounded-xl" />
               )}

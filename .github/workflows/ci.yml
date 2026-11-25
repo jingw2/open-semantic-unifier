@@ -76,6 +76,7 @@ jobs:
           python frontend/tests/roster.spec.py
           python frontend/tests/jsonld_viewer.spec.py
           python frontend/tests/etl.spec.py
+          python frontend/tests/match_fields.spec.py
 
   compose-config:
     runs-on: ubuntu-latest

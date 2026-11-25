@@ -164,8 +164,9 @@ def test_guided_assistant_runs_l1_and_entity_demo():
                 page.wait_for_load_state("networkidle")
                 expect(page.get_by_text("你想完成什么？")).to_be_visible(timeout=15000)
 
-                page.get_by_role("button", name="清洗供应商名单", exact=True).click()
+                page.get_by_role("button", name="清洗字段", exact=True).click()
                 expect(page.get_by_text("规则清洗 + W3C 契约", exact=False).first).to_be_visible()
+                expect(page.get_by_label("清洗目标字段")).to_be_visible()
 
                 route_pattern = "**/api/v1/projects/*/datasources/demo/L1"
                 page.route(route_pattern, lambda route: route.abort())
@@ -173,7 +174,7 @@ def test_guided_assistant_runs_l1_and_entity_demo():
                 expect(page.get_by_role("button", name="去手动处理", exact=True)).to_be_visible(timeout=15000)
                 page.unroute(route_pattern)
 
-                page.get_by_role("button", name="清洗供应商名单", exact=True).click()
+                page.get_by_role("button", name="清洗字段", exact=True).click()
                 page.get_by_role("button", name="开始", exact=True).click()
                 expect(page.get_by_text("已完成", exact=False).first).to_be_visible(timeout=30000)
 
@@ -185,9 +186,11 @@ def test_guided_assistant_runs_l1_and_entity_demo():
 
                 page.get_by_placeholder("也可以直接说，例如：帮我把客户名单去重").fill("帮我把客户名单去重")
                 page.get_by_placeholder("也可以直接说，例如：帮我把客户名单去重").press("Enter")
-                expect(page.get_by_text("跨系统匹配客户", exact=True).first).to_be_visible(timeout=15000)
+                expect(page.get_by_text("跨系统匹配字段", exact=True).first).to_be_visible(timeout=15000)
+                expect(page.get_by_text("确认匹配字段（可多选）", exact=False)).to_be_visible()
 
-                page.get_by_role("button", name="实体匹配", exact=True).click()
+                page.get_by_role("button", name="实体匹配字段", exact=True).click()
+                expect(page.get_by_text("确认实体匹配字段（可多选）", exact=False)).to_be_visible()
                 page.get_by_role("button", name="开始", exact=True).click()
                 expect(page.get_by_text("已完成", exact=False).first).to_be_visible(timeout=30000)
                 page.get_by_role("button", name="查看结果", exact=True).click()
@@ -245,7 +248,7 @@ def test_guided_assistant_model_plan_and_answer():
                 page.get_by_role("button", name="解释当前页面", exact=True).click()
                 expect(page.get_by_text("模型说明：这里是当前页面。", exact=False)).to_be_visible(timeout=15000)
 
-                page.get_by_role("button", name="统一 GMV 口径", exact=True).click()
+                page.get_by_role("button", name="统一指标口径", exact=True).click()
                 page.get_by_role("button", name="开始", exact=True).click()
                 expect(page.get_by_role("alert")).to_contain_text("不能计算 L4 指标")
                 page.get_by_label("选择数据源").select_option(label="demo_metrics.yaml")
