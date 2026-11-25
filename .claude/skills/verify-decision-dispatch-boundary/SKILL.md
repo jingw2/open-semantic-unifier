@@ -40,7 +40,7 @@ The check calls the real `PerplexityDecisionsAdapter._body`, the shared body bui
 | `backend/app/services/unification/matching.py` | Evidence entries that carry `value`, `left`, `right` | `507254c` |
 | `backend/app/services/unification/releases.py` | `field_names` selection and the empty-send-fields guard | `f4c3a01` |
 
-Sync commit: `f4c3a01`. The check was added after that commit and describes the covered code at it. Move the sync commit forward only after you confirm the check still describes these functions at the new commit.
+Sync commit: `1284db2`. The check was added in that commit and confirmed against the covered files at it. Move the sync commit forward only after you confirm the check still describes these functions at the new commit.
 
 ## If it fails
 

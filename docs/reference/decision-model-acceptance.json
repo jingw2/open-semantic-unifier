@@ -1,10 +1,10 @@
 {
   "scope": "Decision model adapters (T-DM-1 through T-DM-9)",
   "branch": "codex/decision-models-l3",
-  "head": "09e9eeb37563a0412505d7ba868823f7be0b0507",
-  "as_of": "2026-11-24",
+  "head": "5356513c2ac61e2f31f2d06a0801864d481a876f",
+  "as_of": "2026-11-25",
   "environment": "Isolated SQLite database, inline FastAPI on 127.0.0.1:8765, Vite on 127.0.0.1:5173, and a controlled ThreadingHTTPServer for provider responses. No external network.",
-  "note": "DM-01 through DM-05 PASS. DM-06 and DM-07 BLOCKED: no real Perplexity or TypeSafe API keys and no independent holdout evaluation. This record does not change the V0.1 or L3 product status.",
+  "note": "DM-01 through DM-05 PASS. DM-06 and DM-07 BLOCKED: no real Perplexity or TypeSafe credential. The frozen holdout, evaluator, and formal dispatch check are ready. This record does not change the V0.1 or L3 product status.",
   "checks": {
     "dm_01_contracts": {
       "status": "PASS",
@@ -24,7 +24,7 @@
     "dm_04_security": {
       "status": "PASS",
       "command": "python -m pytest backend/tests/test_decision_models_provider_config.py backend/tests/test_decision_models_persistence.py backend/tests/test_decision_models_providers.py backend/tests/test_decision_models_run_integration.py -q",
-      "evidence": "Credentials are Fernet-encrypted at rest, masked on list, and excluded from logs, exports, audit rows, spans, and error messages; provider test redacts credentials. A decision provider requires at least one send field at save. Dispatch sends only the configured send fields, and it removes value, left, and right from evidence entries for fields outside them. A legacy decision provider with no send fields returns a typed missing_send_fields error and never calls the provider. The run test sends tax_id TAX-SECRET-9 in the scheme and asserts that it appears nowhere in the outbound body while a configured name value does."
+      "evidence": "Credentials are Fernet-encrypted at rest, masked on list, and excluded from logs, exports, audit rows, spans, and error messages; provider test redacts credentials. A decision provider requires at least one send field at save. Dispatch sends only the configured send fields, and it removes value, left, and right from evidence entries for fields outside them. A legacy decision provider with no send fields returns a typed missing_send_fields error and never calls the provider. The run test sends tax_id TAX-SECRET-9 in the scheme and asserts that it appears nowhere in the outbound body while a configured name value does. Editing a provider keeps the stored key when the key field is blank, replaces it when a new key is sent, and revalidates the send fields."
     },
     "dm_05_observability_audit": {
       "status": "PASS",
@@ -33,7 +33,9 @@
     },
     "dm_06_evaluation": {
       "status": "BLOCKED",
-      "reason": "No independent golden/holdout evaluation exists yet. Scores are not treated as calibrated probabilities and no automatic merge threshold is set."
+      "command": "python3 scripts/evaluate_decision_models.py --validate-only && python3 -m pytest tests/test_decision_model_holdout.py -q",
+      "evidence": "The frozen holdout tests/holdout/v1 has 60 records, 30 labeled pairs, and 3 domains. The manifest records a SHA-256 for every file. The validator rejects any shared record ref, source key, case id, or attribute value with the Golden set, and rejects a label key in records or scheme input. The evaluator scores a controlled adapter without network access, and it prints a BLOCKED report with exit 2 when no credential exists.",
+      "reason": "No real provider run exists yet. Set TYPESAFE_API_KEY or PERPLEXITY_API_KEY and run scripts/evaluate_decision_models.py to produce the report. Scores are not treated as calibrated probabilities and no automatic merge threshold is set."
     },
     "dm_07_real_service_smoke": {
       "status": "BLOCKED",
@@ -43,7 +45,7 @@
   "ui_browser_flow": {
     "status": "PASS",
     "command": "python frontend/tests/decision_models_workbench.spec.py",
-    "evidence": "Chromium created a perplexity_decisions provider against the controlled server, the test button showed verdict SAME with provider kind perplexity_decisions and model controlled-flash, and the review panel showed the SAME badge, 90% confidence, 80/15/5 distribution, provider kind/key, model version, and no alert banner. The same run put a tax_id value in the scheme evidence and asserts that the whole outbound body carries only name in left and right, removes tax_id value from evidence, and contains no TAX-SECRET-9, SECRET-1, or SECRET-2 value.",
+    "evidence": "Chromium created a perplexity_decisions provider against the controlled server, the test button showed verdict SAME with provider kind perplexity_decisions and model controlled-flash, and the review panel showed the SAME badge, 90% confidence, 80/15/5 distribution, provider kind/key, model version, and no alert banner. The same run put a tax_id value in the scheme evidence and asserts that the whole outbound body carries only name in left and right, removes tax_id value from evidence, and contains no TAX-SECRET-9, SECRET-1, or SECRET-2 value. The same spec edits the provider, raises its retry limit, saves it, and asserts the stored key remains masked and the send fields are unchanged.",
     "regression_specs": [
       "python frontend/tests/unification_workbench.spec.py",
       "python frontend/tests/contracts_workbench.spec.py"
@@ -52,20 +54,37 @@
   },
   "backend_suite": {
     "command": "python -m pytest backend/tests/test_decision_models_contracts.py backend/tests/test_decision_models_adapters.py backend/tests/test_decision_models_providers.py backend/tests/test_decision_models_precedence.py backend/tests/test_decision_models_persistence.py backend/tests/test_decision_models_provider_config.py backend/tests/test_decision_models_run_integration.py backend/tests/test_decision_models_migrations.py -q",
-    "result": "201 passed, 2 warnings in 57.91s"
+    "result": "205 passed, 2 warnings in 58.35s"
   },
   "full_backend_suite": {
     "command": "python -m pytest backend/tests -q",
-    "result": "421 passed, 6 skipped, 2 warnings in 112.12s"
+    "result": "425 passed, 6 skipped, 2 warnings in 112.45s"
   },
   "frontend_build": {
     "command": "npm run build (frontend)",
     "result": "tsc and vite build passed; 1585 modules transformed."
   },
+  "holdout": {
+    "version": "1.0.0",
+    "manifest_sha256": "df8fa2a0e542923aaeb5f356d5aef839c59472c4bd44c666a1c66673d7b2c57c",
+    "record_count": 60,
+    "pair_case_count": 30,
+    "domains": ["vendor", "contact", "catalog_item"],
+    "frozen_at": "2026-11-25",
+    "golden_overlap": "checked, none",
+    "truth_in_input": false
+  },
+  "formal_verification": {
+    "property": "The serialized choice-provider body carries no value of a record field outside field_names, and every listed value survives in left, right, and evidence.",
+    "command": "python3 tests/formal/check_decision_dispatch_boundary.py",
+    "result": "PASS: 1536 exhaustive cases across 6 fields and every send-field subset.",
+    "skill": ".claude/skills/verify-decision-dispatch-boundary/SKILL.md",
+    "sync_commit": "1284db2"
+  },
   "limitations": [
     "Direct fetches of the official provider documentation remain blocked by the fetch proxy; the adapter shape is derived from the user-provided TypeSafe models URL, the official typesafe-sdk 0.7.5 schema, and the Perplexity Decisions documentation.",
     "Confidence is not a calibrated probability and is never used as an automatic merge threshold.",
     "A missing distribution or explanation is displayed as unknown rather than fabricated.",
-    "Perplexity flash (pplx-decider-flash-latest) is the intended first provider; the real-service smoke and evaluation stay BLOCKED until credentials and a frozen holdout set exist."
+    "Perplexity flash (pplx-decider-flash-latest) is the intended first provider; the real-service smoke and evaluation stay BLOCKED until a real credential exists. The frozen holdout and evaluator are ready."
   ]
 }

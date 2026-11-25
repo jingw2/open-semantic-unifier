@@ -1,6 +1,6 @@
 # 决策模型适配器实施计划
 
-> **状态：** T-DM-1 至 T-DM-5、T-DM-7、T-DM-9 已实现并验收。T-DM-8 的独立留出集评估和真实服务烟测仍 BLOCKED：没有独立留出集，也没有 Perplexity 或 TypeSafe 的真实凭据。证据见 [决策模型验收记录](../../reference/decision-model-acceptance.json)。
+> **状态：** T-DM-1 至 T-DM-5、T-DM-7、T-DM-9 已实现并验收。T-DM-8 的独立留出集和评估工具已冻结（`tests/holdout/v1`），真实服务评估与烟测仍 BLOCKED：没有 Perplexity 或 TypeSafe 的真实凭据。证据见 [决策模型验收记录](../../reference/decision-model-acceptance.json) 和 [评估说明](../../reference/decision-model-evaluation.md)。
 
 **目标：** 在实体配对复核中增加可插拔、类型化的决策模型建议。规则冲突、人工禁止合并和已确认裁决继续优先；模型建议默认只进入复核，不直接触发合并。
 
