@@ -16,6 +16,7 @@ from app.core.security import decrypt_secret, encrypt_secret, mask_secret
 from app.models.entities import DataSource, Job, LLMProvider
 from app.services.decision_models.contracts import DecisionError, DecisionRequest, DecisionSuggestion
 from app.services.decision_models.providers import DECISION_PROVIDER_KINDS, adapter_for_kind
+from app.services.etl import SUPPORTED_SINK_TYPES, validate_table_name
 from app.services.llm_client import BUILTIN_PROVIDERS, ProviderConfig, test_llm_connectivity
 from app.workers.tasks import dispatch_job
 
@@ -90,6 +91,18 @@ class SubmitJobRequest(BaseModel):
     datasource_ids: List[str] = []
     provider_id: Optional[str] = None
     params: Dict[str, Any] = {}
+    etl_target_datasource_id: Optional[str] = None
+    etl_target_table: Optional[str] = None
+    etl_write_mode: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_etl_options(self):
+        present = [f is not None for f in (self.etl_target_datasource_id, self.etl_target_table, self.etl_write_mode)]
+        if any(present) and not all(present):
+            raise ValueError("etl_target_datasource_id, etl_target_table and etl_write_mode must all be set together")
+        if self.etl_write_mode is not None and self.etl_write_mode not in ("replace", "append"):
+            raise ValueError("etl_write_mode must be replace or append")
+        return self
 
 
 @router.get("/providers")
@@ -285,9 +298,26 @@ def submit_job(
     ).first():
         raise HTTPException(status_code=404, detail="Provider 不存在")
 
+    if req.etl_target_datasource_id is not None:
+        try:
+            validate_table_name(req.etl_target_table)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        target = db.query(DataSource).filter(
+            DataSource.id == req.etl_target_datasource_id, DataSource.project_id == project_id
+        ).first()
+        if not target:
+            raise HTTPException(status_code=404, detail="目标数据源不存在于当前项目")
+        if target.source_type not in SUPPORTED_SINK_TYPES:
+            raise HTTPException(status_code=400, detail=f"目标数据源不是可写入的数据库类型: {target.source_type}")
+
     full_params = dict(req.params)
     full_params["datasource_ids"] = req.datasource_ids
     full_params["provider_id"] = req.provider_id
+    if req.etl_target_datasource_id is not None:
+        full_params["etl_target_datasource_id"] = req.etl_target_datasource_id
+        full_params["etl_target_table"] = req.etl_target_table
+        full_params["etl_write_mode"] = req.etl_write_mode
 
     job = Job(project_id=project_id, stage=st, status="PENDING", progress=0, stage_message="任务已创建，等待执行...", params_json=full_params)
     db.add(job)

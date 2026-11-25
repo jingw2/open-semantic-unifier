@@ -31,7 +31,7 @@ Open the workbench at `http://localhost:8080`; API docs are at `http://localhost
 - Optional OpenRefine sidecar for built-in cleaning recipes and before/after adoption; JSON-LD instances are generated from contract versions.
 - Optional Phoenix tracing. It is not required for core matching.
 
-Connector code paths exist for DuckDB, SQLite, MySQL, PostgreSQL, and MongoDB. The project has automated unit/API coverage for SQLite and the Compose PostgreSQL deployment. MySQL, standalone DuckDB, and MongoDB live connection tests have not been run in this release task; see [connector validation](docs/how-to/connectors.md).
+Connector code paths exist for DuckDB, SQLite, MySQL, PostgreSQL, and MongoDB. The project has automated unit coverage for SQLite and DuckDB sinks and the Compose PostgreSQL deployment; live PostgreSQL, MySQL, and MongoDB connection tests are available as an opt-in job. See [connector validation](docs/how-to/connectors.md). Job results can be written directly to a target database, with persisted schedules for interval runs; see [writing results and scheduling](docs/how-to/etl.md).
 
 ## Guides
 
@@ -44,6 +44,7 @@ Connector code paths exist for DuckDB, SQLite, MySQL, PostgreSQL, and MongoDB. T
 - [Guided assistant and review readability design](docs/superpowers/specs/2026-11-25-guided-assistant-design.md)
 - [Decision model evaluation](docs/reference/decision-model-evaluation.md)
 - [Database connectors and validation](docs/how-to/connectors.md)
+- [Writing results to a database and scheduling runs](docs/how-to/etl.md)
 - [Contribution guide](CONTRIBUTING.md)
 - [Acceptance baseline and current status](docs/reference/acceptance-baseline.md)
 - [Golden Test Set](tests/golden/README.md)

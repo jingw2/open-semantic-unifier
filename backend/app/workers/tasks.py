@@ -3,6 +3,7 @@
 import json
 import os
 import tempfile
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -12,7 +13,9 @@ from app.core.db import SessionLocal
 from app.core.security import decrypt_secret
 from app.demo.catalogs import supplier_catalog_for_sources
 from app.models.entities import DataSource, Job, LLMProvider
+from app.models.etl import EtlSchedule
 from app.services.connectors import extract_db_to_parquet, load_file
+from app.services.etl import load_job_frame, resolve_target, write_dataframe
 from app.services.engines import (
     build_demo_cross_db_tables,
     build_l4_tables,
@@ -167,6 +170,34 @@ def run_job_sync(job_id: str) -> Dict[str, Any]:
         else:
             raise ValueError(f"未知处理阶段: {job.stage}")
 
+        etl_target_id = params.get("etl_target_datasource_id")
+        if etl_target_id:
+            try:
+                target_ds, target_cfg = resolve_target(db, job.project_id, etl_target_id)
+                frame = load_job_frame(db, job.stage, result)
+                rows_written = write_dataframe(
+                    target_cfg,
+                    params.get("etl_target_table") or "",
+                    frame,
+                    params.get("etl_write_mode") or "replace",
+                )
+                result["etl"] = {
+                    "status": "SUCCEEDED",
+                    "target_type": target_ds.source_type,
+                    "target_table": params.get("etl_target_table"),
+                    "write_mode": params.get("etl_write_mode") or "replace",
+                    "rows_written": int(rows_written),
+                }
+            except Exception as exc:
+                message = str(exc) or exc.__class__.__name__
+                job.status = "FAILED"
+                job.error_message = f"ETL_LOAD_FAILED: {message}"
+                job.stage_message = f"ETL 落库失败: {message[:120]}"
+                job.result_json = result
+                db.commit()
+                _publish_progress(job_id, "FAILED", 100, job.stage_message, db=db)
+                return result
+
         job.status = "SUCCESS"
         job.progress = 100
         job.stage_message = f"{job.stage} 执行完成！"
@@ -192,6 +223,10 @@ if celery_app is not None:
     @celery_app.task(name="semantic_unifier.run_job")
     def run_job_celery(job_id: str):
         return run_job_sync(job_id)
+
+    @celery_app.task(name="semantic_unifier.run_due_etl_schedules")
+    def run_due_etl_schedules_celery():
+        return run_due_etl_schedules()
 
     @celery_app.task(
         bind=True,
@@ -234,6 +269,73 @@ def dispatch_job(job_id: str) -> None:
         run_job_celery.delay(job_id)
     else:
         run_job_sync(job_id)
+
+
+def _as_utc(value: Optional[datetime]) -> Optional[datetime]:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def schedule_job_params(schedule: EtlSchedule) -> Dict[str, Any]:
+    """Build Job params from a schedule, always carrying the ETL sink options."""
+    params = dict(schedule.params or {})
+    params["datasource_ids"] = list(schedule.datasource_ids or [])
+    params["etl_target_datasource_id"] = schedule.target_datasource_id
+    params["etl_target_table"] = schedule.target_table
+    params["etl_write_mode"] = schedule.write_mode
+    return params
+
+
+def dispatch_schedule_now(db, schedule: EtlSchedule) -> str:
+    """Create a normal Job from a schedule, advance it, commit, then dispatch."""
+    now = datetime.now(timezone.utc)
+    job = Job(
+        project_id=schedule.project_id,
+        stage=schedule.stage,
+        status="PENDING",
+        progress=0,
+        stage_message="定时任务已创建，等待执行...",
+        params_json=schedule_job_params(schedule),
+    )
+    db.add(job)
+    db.flush()
+    schedule.last_run_at = now
+    schedule.last_job_id = job.id
+    schedule.next_run_at = now + timedelta(minutes=schedule.interval_minutes)
+    db.commit()
+    dispatch_job(job.id)
+    return job.id
+
+
+def run_due_etl_schedules() -> Dict[str, Any]:
+    """Dispatch one Job for every enabled schedule whose next_run_at has passed.
+
+    Each schedule is committed (and advanced by its interval) before dispatch, so a
+    failed dispatch leaves it enabled and due on the next tick instead of double-running.
+    """
+    db = SessionLocal()
+    dispatched = 0
+    try:
+        now = datetime.now(timezone.utc)
+        due = [
+            s
+            for s in db.query(EtlSchedule).filter(EtlSchedule.enabled.is_(True)).all()
+            if _as_utc(s.next_run_at) <= now
+        ]
+        due.sort(key=lambda s: _as_utc(s.next_run_at))
+        for schedule in due:
+            try:
+                dispatch_schedule_now(db, schedule)
+                dispatched += 1
+            except Exception:
+                db.rollback()
+                continue
+        return {"dispatched": dispatched}
+    finally:
+        db.close()
 
 
 def run_unification_sync(run_id: str) -> dict[str, Any]:

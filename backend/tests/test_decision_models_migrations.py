@@ -7,7 +7,7 @@ import sys
 from sqlalchemy import create_engine, inspect, text
 
 BACKEND = Path(__file__).resolve().parents[1]
-NEW_REVISION = "a1b2c3d4e5f6"
+NEW_REVISION = "e4f5a6b7c8d9"
 CALL_COLUMNS = {
     "id", "project_id", "run_id", "left_source_revision_id", "right_source_revision_id",
     "provider_kind", "provider_key", "model_version", "prompt_version",
@@ -16,6 +16,11 @@ CALL_COLUMNS = {
     "error_code", "error_message", "retryable", "trace_id", "created_at",
 }
 PROVIDER_COLUMNS = {"provider_kind", "send_fields_json", "timeout_seconds", "max_retries", "prompt_version"}
+ETL_SCHEDULE_COLUMNS = {
+    "id", "project_id", "name", "stage", "datasource_ids", "params",
+    "target_datasource_id", "target_table", "write_mode", "interval_minutes",
+    "enabled", "next_run_at", "last_run_at", "last_job_id", "created_at", "updated_at",
+}
 
 
 def run_alembic(database_url: str, *args: str) -> None:
@@ -53,6 +58,9 @@ def test_upgrade_creates_call_table_and_provider_columns(tmp_path):
         assert CALL_COLUMNS <= {column["name"] for column in inspector.get_columns("decision_model_calls")}
         assert PROVIDER_COLUMNS <= {column["name"] for column in inspector.get_columns("llm_providers")}
         assert "input_source_system" in {column["name"] for column in inspector.get_columns("unification_runs")}
+        assert ETL_SCHEDULE_COLUMNS <= {column["name"] for column in inspector.get_columns("etl_schedules")}
+        index_names = {item["name"] for item in inspector.get_indexes("etl_schedules")}
+        assert "ix_etl_schedules_project_id" in index_names
         constraint_names = {item["name"] for item in inspector.get_unique_constraints("decision_model_calls")}
         assert "uq_decision_model_call_pair" in constraint_names
         index_names = {item["name"] for item in inspector.get_indexes("decision_model_calls")}
@@ -98,6 +106,7 @@ def test_downgrade_removes_call_table_and_provider_columns(tmp_path):
     try:
         inspector = inspect(engine)
         assert "decision_model_calls" not in set(inspector.get_table_names())
+        assert "etl_schedules" not in set(inspector.get_table_names())
         remaining = {column["name"] for column in inspector.get_columns("llm_providers")}
         assert not PROVIDER_COLUMNS & remaining
         assert "input_source_system" not in {column["name"] for column in inspector.get_columns("unification_runs")}
