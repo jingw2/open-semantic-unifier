@@ -33,6 +33,15 @@ from app.services.unification.schemes import (
 )
 from app.services.unification.contracts import IngestMode, SourceRecordInput
 from app.services.unification.ingest import ingest_batch
+from app.services.unification.reviews import (
+    AUTO_SEPARATED_CODES,
+    CONSEQUENCE,
+    auto_separated_items,
+    compare_attributes,
+    explain_review,
+    record_payload,
+    suggest_action,
+)
 from app.services.unification.matching import CannotLink, MatchAction, match_records
 from app.services.unification.locking import lock_project_identity_state
 from app.services.unification.releases import RunConflict, diff_snapshots, get_current_snapshot, publish_snapshot, rollback_snapshot, submit_run as submit_run_service
@@ -830,9 +839,15 @@ def list_unification_reviews(
     ))
     if run is None or run.result_json is None:
         raise HTTPException(status_code=404, detail="completed run not found")
-    pairs = [item for item in run.result_json.get("pairs", []) if item.get("action") == "REVIEW"]
+    all_pairs = list(run.result_json.get("pairs", []))
+    pairs = [item for item in all_pairs if item.get("action") == "REVIEW"]
     pairs.sort(key=lambda item: (item.get("left_source_revision_id", ""), item.get("right_source_revision_id", "")))
-    revision_ids = {revision_id for pair in pairs for revision_id in (
+    auto_pairs = [
+        item for item in all_pairs
+        if item.get("action") == "DISTINCT"
+        and set(item.get("evidence_codes") or ()) & AUTO_SEPARATED_CODES
+    ]
+    revision_ids = {revision_id for pair in pairs + auto_pairs for revision_id in (
         pair.get("left_source_revision_id"), pair.get("right_source_revision_id"),
     ) if revision_id}
     revisions = db.scalars(select(SourceRevision).join(
@@ -849,6 +864,8 @@ def list_unification_reviews(
         tuple(sorted((resolve_entity_id(db, item.left_entity_id), resolve_entity_id(db, item.right_entity_id))))
         for item in active_decisions
     }
+    scheme_version = db.get(UnificationSchemeVersion, run.scheme_revision)
+    scheme = MatchScheme.model_validate(scheme_version.scheme_json) if scheme_version else None
     pending = []
     for pair in pairs:
         left = revisions_by_id.get(pair.get("left_source_revision_id"))
@@ -860,8 +877,29 @@ def list_unification_reviews(
         if left_entity == right_entity:
             continue
         if tuple(sorted((left_entity, right_entity))) not in decision_pairs:
-            pending.append(pair)
-    return {"items": pending[offset:offset + limit], "limit": limit, "offset": offset, "total": len(pending), "run_id": run.id}
+            left_payload = record_payload(left, scheme)
+            right_payload = record_payload(right, scheme)
+            codes = tuple(pair.get("evidence_codes") or ())
+            recommendation = pair.get("recommendation") or {}
+            pending.append({
+                **pair,
+                "left": left_payload,
+                "right": right_payload,
+                "comparison": compare_attributes(left_payload["attributes"], right_payload["attributes"], scheme),
+                "why": explain_review(codes),
+                "suggestion": suggest_action(recommendation.get("verdict"), codes),
+                "consequence": CONSEQUENCE,
+            })
+    auto_separated_all = auto_separated_items(run.result_json, revisions_by_id, scheme, cap=10 ** 9)
+    return {
+        "items": pending[offset:offset + limit],
+        "limit": limit,
+        "offset": offset,
+        "total": len(pending),
+        "run_id": run.id,
+        "auto_separated": auto_separated_all[:20],
+        "auto_separated_total": len(auto_separated_all),
+    }
 
 
 @router.post("/projects/{project_id}/unification/reviews", status_code=status.HTTP_201_CREATED)
