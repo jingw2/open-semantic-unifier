@@ -18,7 +18,8 @@
 - The assistant LLM uses the default `openai_compatible` provider. It sends only the user message, current page, and a data summary of counts and field names. It never sends record values. Failures fall back to deterministic rules.
 - `GET /unification/reviews` keeps `items` limited to `action == "REVIEW"` and adds a separate `auto_separated` list of meaningful `DISTINCT` pairs, capped at 20.
 - Keep the existing review strings `模型建议 · SAME`, confidence, distribution, model version, provider kind/key, and latency visible. Move only evidence codes and raw JSON behind a disclosure.
-- No database migration in this plan. Use existing tables and file-backed constants.
+- One nullable `unification_runs.input_source_system` column migration is allowed for the demo scope, with no backfill. No other database migration in this plan; use existing tables and file-backed constants.
+- Every new backend test module starts by inserting `backend` into `sys.path`, matching the existing tests. Every new Playwright spec starts its own isolated backend and uses the existing `open_route` helper.
 - Reuse existing page components. Do not rewrite the unification, contracts, or workbench business logic.
 - All primary actions use the existing neutral theme. No new gradients, emoji, or decorative dark headers.
 - Backend tests use `python3 -m pytest`. Frontend tests are standalone Playwright scripts under `frontend/tests/`. The three existing specs must stay green.
@@ -47,6 +48,11 @@
 - [ ] **Step 1: Write failing tests for the four method routes and LinkML detection**
 
 ```python
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from app.services.profiler import profile_items, recommend_pipeline
 
 
@@ -284,12 +290,14 @@ git commit -m "feat(assistant): classify goals with the default provider and a d
 **Files:**
 - Create: `backend/app/demo/entity_demo.py`
 - Modify: `backend/app/api/v1/unification.py`
-- Modify: `backend/app/services/unification/releases.py` (`submit_run`, `_current_input_manifest`)
+- Modify: `backend/app/models/unification.py` (`UnificationRun.input_source_system`)
+- Create: `backend/alembic/versions/<new>_add_run_input_source_system.py`
+- Modify: `backend/app/services/unification/releases.py` (`submit_run`, `_current_input_manifest`, `_execute_unification_run`, `_snapshot_result_at_publication`)
 - Create: `backend/tests/test_unification_demo.py`
 
 **Interfaces:**
 - Produces: `POST /api/v1/projects/{project_id}/unification/demo`, response `{"run_id": str, "scheme_key": "assistant_entity_demo", "revision": int}`; `select_decision_provider(db, workspace_id) -> LLMProvider | None`.
-- Changes: `submit_run(..., input_source_system: str | None = None)`; `_current_input_manifest(db, project_id, input_source_system=None)` filters `SourceRecord.source_system` when the argument is set. Existing callers keep passing `None`.
+- Changes: `UnificationRun.input_source_system: str | None`; `submit_run(..., input_source_system: str | None = None)`; `_current_input_manifest(db, project_id, input_source_system=None)` filters `SourceRecord.source_system` when the argument is set. Existing callers keep passing `None`.
 - Consumes: `save_scheme`, `ingest_batch`, `submit_run_service`, `dispatch_unification_run`, `select_decision_provider` from `app.services.provider_selection`.
 
 - [ ] **Step 1: Write the failing endpoint test**
@@ -311,7 +319,7 @@ Expected: FAIL with 404.
 
 The endpoint saves the scheme `assistant_entity_demo` with `entity_type="Supplier"`, `identity_granularity="legal_entity"`, `normalizers=["unicode_nfkc","trim","casefold","strip_punctuation"]`, field_map `{"name":"name","tax_id":"tax_id","phone":"phone"}`, strong identifier `tax_id`, conflict constraint on `tax_id`, candidate rules `exact tax_id` and `name_similarity name 0.82`, and failure policy `REVIEW`. It calls `select_decision_provider(db, workspace_id)`; when a provider exists, set `model_judgment_enabled=True` and `model_provider_id=provider.id`; otherwise disable model judgment. It ingests with `input_version="assistant-entity-demo-v1"`, submits with idempotency key `assistant-entity-demo-v1` and `input_source_system="assistant_demo"`, and returns the run. On `RunConflict`, query the existing run by `input_version` and return it. Do not publish a snapshot.
 
-In `releases.py`, `_current_input_manifest` adds `.where(SourceRecord.source_system == input_source_system)` when the filter is set, and `submit_run` forwards the optional argument. Include the filter in the demo endpoint's payload hash so an idempotency key cannot collide with an unfiltered run.
+In `releases.py`, `_current_input_manifest` adds `.where(SourceRecord.source_system == input_source_system)` when the filter is set, and `submit_run` forwards the optional argument. Persist it on the run with a nullable `input_source_system` column and migration. `_execute_unification_run` must pass `run.input_source_system` at both manifest re-reads (`releases.py:357` and `:510`), and `_snapshot_result_at_publication` must do the same at `:599`; filtering only at submit makes the run fail with `RunConflict` whenever any non-demo record exists. Include the filter in the demo endpoint's payload hash so an idempotency key cannot collide with an unfiltered run.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
@@ -321,7 +329,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/app/demo/entity_demo.py backend/app/api/v1/unification.py backend/app/services/unification/releases.py backend/tests/test_unification_demo.py
+git add backend/app/demo/entity_demo.py backend/app/api/v1/unification.py backend/app/models/unification.py backend/alembic/versions backend/app/services/unification/releases.py backend/tests/test_unification_demo.py
 git commit -m "feat(unification): add an idempotent entity demo run for the assistant"
 ```
 
@@ -344,6 +352,7 @@ git commit -m "feat(unification): add an idempotent entity demo run for the assi
 - Modify: `frontend/src/pages/ServingReleasePage.tsx`
 - Create: `frontend/tests/ui_helpers.py`
 - Create: `frontend/tests/menu_shell.spec.py`
+- Create: `frontend/tests/deep_link.spec.py`
 - Modify: `frontend/tests/unification_workbench.spec.py`
 - Modify: `frontend/tests/contracts_workbench.spec.py`
 - Modify: `frontend/tests/decision_models_workbench.spec.py`
@@ -379,25 +388,28 @@ export type TaskItem = {
 
 - `WorkbenchPage` props add `initialJobId?: string`, `initialStage?: 'L1' | 'L2' | 'L4'`; when `activeRouting` is null it fetches `/datasources` and uses the latest source routing locally.
 - `UnificationPage` props add `initialRunId?: string`; it keeps `canEdit`.
-- `TaskDetailPage` props: `{project: ProjectItem, canEdit: boolean, activeDsIds: string[], activeProfile: any, activeRouting: any, task?: TaskItem, newKind?: TaskType}`; use `project.id` for the embedded pages.
-- `ContractsPage` props add `initialVersionId?: string`; when set, open the `versions` tab and highlight that row.
+- `TaskDetailPage` props: `{project: ProjectItem, canEdit: boolean, activeDsIds: string[], activeProfile: any, activeRouting: any, jobId?: string, runId?: string, versionId?: string, newKind?: TaskType, onGoDataSources: () => void, onGoContracts: () => void}`; use `project.id` for the embedded pages.
+- `ContractsPage` props add `initialVersionId?: string`; when set, open the `versions` tab and highlight that row. If the id is not in the first 50 versions, fetch `GET /contracts/versions/{id}` and prepend it.
+- `UnificationPage` props add `initialRunId?: string`; if the id is not in the first 20 runs, fetch `GET /unification/runs/{id}` and prepend it.
 - `SettingsPage` props `{projectId: string, currentUser: UserInfo, canEdit: boolean}` with tabs `providers`, `team`, `api-keys`.
 - `ReviewHomePage` props `{projectId: string}`.
 
 - [ ] **Step 1: Write the failing menu shell spec**
 
-Create `frontend/tests/menu_shell.spec.py` using the isolated backend pattern from `unification_workbench.spec.py`. Seed one workspace and project. After login, assert exactly four menu buttons: 数据, 任务, 复核, 设置. Click 任务 and assert a heading `任务`. Click 复核 and assert `人工复核` and `实体配对` text. Click 设置 and assert tabs `模型 Provider`, `团队`, `API Key`. Visit `http://127.0.0.1:5173/#/tasks/publish` and assert the `发布中心` heading and a publish button. Visit `http://127.0.0.1:5173/#/tasks/new/entity` and assert the `实体统一工作台` heading. Visit `http://127.0.0.1:5173/#/tasks/job/missing-job` and assert `任务不存在` and a `返回任务` link.
+Create `frontend/tests/menu_shell.spec.py` using the isolated backend pattern from `unification_workbench.spec.py`. Seed one workspace and project. After login, assert exactly four menu buttons: 数据, 任务, 复核, 设置. Click 任务 and assert a heading `任务`. Click 复核 and assert `人工复核` and `实体配对` text. Click 设置 and assert tabs `模型 Provider`, `团队`, `API Key`. Visit `http://127.0.0.1:5173/#/tasks/publish` and assert the `发布中心` heading and the empty-state copy `还没有已生成的版本`; the publish button is asserted in Task 8 after seeding a releasable artifact. Visit `http://127.0.0.1:5173/#/tasks/new/entity` and assert the `实体统一工作台` heading. Visit `http://127.0.0.1:5173/#/tasks/job/missing-job` and assert `任务不存在` and a `返回任务` link.
+
+Create `frontend/tests/deep_link.spec.py`: seed 21 unification runs and 51 contract versions directly in the fixture database, then open the oldest run via `#/tasks/run/{run_id}` and the first version via `#/tasks/contract/{version_id}`. Assert the ids render, proving the single-resource fallback outside the first list page.
 
 - [ ] **Step 2: Run the spec to verify it fails**
 
-Run: `python3 frontend/tests/menu_shell.spec.py`
+Run: `python3 frontend/tests/menu_shell.spec.py` and `python3 frontend/tests/deep_link.spec.py`
 Expected: FAIL because the menu buttons and hash routes do not exist.
 
 - [ ] **Step 3: Implement the router, task aggregation, and shell**
 
 `router.ts` parses and serializes the routes `#/data`, `#/tasks`, `#/tasks/new/{clean|match|metrics|contract|entity}`, `#/tasks/job/{jobId}`, `#/tasks/run/{runId}`, `#/tasks/contract/{versionId}`, `#/reviews`, and `#/settings/{providers|team|api-keys}`. `App.tsx` listens to `hashchange`, falls back to `#/data`, and renders the four menus. `loadTasks` fetches jobs, unification runs, and contract versions, then normalizes them into `TaskItem[]`.
 
-`TasksPage` renders the task list, five "新建任务" buttons that set the hash, and a `产物与发布` button that routes to `#/tasks/publish`. `App.tsx` renders `ServingReleasePage project={activeProject}` for `tasks-publish`, so artifact publishing and rollback remain reachable after the old `serving` menu is removed. `TaskDetailPage` renders `WorkbenchPage` for jobs, `UnificationPage` for runs, or `ContractsPage` for contract versions; pass `project.id`, `canEdit`, and the active data-source context. For a job, pass `activeDsIds`, `activeProfile`, `activeRouting`, and `initialJobId`; for a contract, pass `initialVersionId={task.detail.versionId}`. Its not-found state uses the fixed `任务不存在` copy and a `返回任务` link, not the API's `资源不存在` text. `SettingsPage` renders `ProvidersPage`, `TeamAdminPage currentUser={currentUser}`, and the extracted `ApiKeysPanel`. `ReviewHomePage` renders the existing `ReviewQueuePage` plus a card linking to `#/tasks/new/entity`.
+`TasksPage` renders the task list, five "新建任务" buttons that set the hash, and a `产物与发布` button that routes to `#/tasks/publish`. `App.tsx` renders `ServingReleasePage project={activeProject}` for `tasks-publish`, so artifact publishing and rollback remain reachable after the old `serving` menu is removed. `App.tsx` parses `tasks-job`, `tasks-run`, and `tasks-contract` into `jobId`, `runId`, and `versionId` and passes them to `TaskDetailPage`; it does not depend on a `TaskItem` being present. `TaskDetailPage` renders `WorkbenchPage` for jobs, `UnificationPage` for runs, or `ContractsPage` for contract versions; pass `project.id`, `canEdit`, and the active data-source context. For a job, pass `activeDsIds`, `activeProfile`, `activeRouting`, `initialJobId={jobId}`, `initialStage` derived from `newKind`, and `onGoDataSources`/`onGoContracts` callbacks that route to `#/data` and `#/tasks/new/contract`. For a run, pass `initialRunId={runId}`. For a contract, pass `initialVersionId={versionId}`. Its not-found state uses the fixed `任务不存在` copy and a `返回任务` link, not the API's `资源不存在` text; it is shown only when the single-resource fetch fails. `SettingsPage` renders `ProvidersPage`, `TeamAdminPage currentUser={currentUser}`, and the extracted `ApiKeysPanel`. `ReviewHomePage` renders the existing `ReviewQueuePage` plus a card linking to `#/tasks/new/entity`.
 
 Move the API key state and handlers from `ServingReleasePage` into `ApiKeysPanel`; render the panel from `SettingsPage` and remove the duplicate section from `ServingReleasePage`, which then only handles artifact publishing and rollback.
 
@@ -430,6 +442,7 @@ Start Vite on port 5173 and run:
 
 ```bash
 python3 frontend/tests/menu_shell.spec.py
+python3 frontend/tests/deep_link.spec.py
 python3 frontend/tests/unification_workbench.spec.py
 python3 frontend/tests/contracts_workbench.spec.py
 python3 frontend/tests/decision_models_workbench.spec.py
@@ -486,7 +499,7 @@ The panel fetches `GET /api/v1/projects/{id}/datasources` when opened. It render
 - For L3: fetch `/contracts/sources` and `/unification/snapshots`; if either is empty, show the missing prerequisite and route to `#/tasks/new/contract`; otherwise `POST /contracts/versions` and route to `#/tasks/contract/{id}`.
 - For entity: `POST /unification/demo`, poll the returned run, then route to `#/tasks/run/{runId}`.
 
-On any failure, show the error text and a `去手动处理` button that routes to the relevant page. Do not publish, merge, or decide.
+On success, render a done state: `已完成`, the result summary, and the controls `查看结果` (routes to `#/tasks/job/{jobId}` or `#/tasks/run/{runId}`), `去复核` when the run has review pairs, and `解释当前页面`. On failure, show the error text and a `去手动处理` button that routes to the relevant page. Do not publish, merge, or decide.
 
 `pageHelp.ts` maps each current page key to two or three sentences explaining its purpose and the next action.
 
@@ -520,7 +533,7 @@ git commit -m "feat(assistant): add the guided panel, auto-run, and page explana
 
 - [ ] **Step 1: Write the failing review readability spec**
 
-Start a controlled choice server and seed a default `typesafe_jev` provider pointing at it with `send_fields ["name","tax_id"]`, reusing the setup from `decision_models_workbench.spec.py`. In the spec setup, patch `app.api.v1.unification.dispatch_unification_run` to use the fixture maker; otherwise `POST /unification/demo` returns 500. Call `POST /unification/demo`, poll the run, and open `#/tasks/run/{run_id}` on the review tab. Assert:
+Start a controlled choice server and seed a default `typesafe_jev` provider pointing at it with `send_fields ["name","tax_id"]`, reusing the setup from `decision_models_workbench.spec.py`. In the spec setup, patch `app.api.v1.unification.dispatch_unification_run` to use the fixture maker; otherwise `POST /unification/demo` returns 500. Call `POST /unification/demo`, poll the run, open `#/tasks/run/{run_id}`, then click the `人工复核` tab. Assert:
 
 - `这两条记录是不是同一实体？` is visible.
 - The `why` sentence is visible.
@@ -581,7 +594,7 @@ name,note
 "Acme, Ltd.","line1, line2"
 ```
 
-Write the CSV bytes and the contract YAML to storage with `storage.put_bytes` under the artifact and source object keys. Put `artifacts: [{id, filename, version}]` in the job's `result_json` so the workbench renders the artifact button. Open the task detail, click `查看`, and assert the table shows two columns and the value `Acme, Ltd.`. Then open `#/tasks/contract/{versionId}`; assert the `versions` tab is active and the seeded version row is visible, then click `查看模型` and assert class names `Supplier` and `Country` are visible.
+Write the CSV bytes and the contract YAML to storage with `storage.put_bytes` under the artifact and source object keys. Put `artifacts: [{id, filename, version}]` in the job's `result_json` so the workbench renders the artifact button. Seed one `l4_metrics` artifact and open `#/tasks/publish`; assert a `发布到线上 API` button is visible. Open the task detail, click `查看`, and assert the table shows two columns and the value `Acme, Ltd.`. Then open `#/tasks/contract/{versionId}`; assert the `versions` tab is active and the seeded version row is visible, then click `查看模型` and assert class names `Supplier` and `Country` are visible.
 
 - [ ] **Step 2: Run the spec to verify it fails**
 
@@ -613,7 +626,7 @@ git commit -m "feat(results): view CSV, JSON, and contract models online"
 - Modify: `frontend/src/pages/WorkbenchPage.tsx`
 - Modify: `frontend/src/pages/UnificationPage.tsx`
 - Modify: `frontend/src/App.tsx` (rename `路由工作台` to `处理方法`)
-- Modify: `.github/workflows/ci.yml` (add the five new Playwright specs to the frontend job)
+- Modify: `.github/workflows/ci.yml` (add the six new Playwright specs to the frontend job)
 - Create: `frontend/tests/method_recommendation.spec.py`
 - Modify: `README.md` (one line pointing to the design and plan)
 
@@ -622,7 +635,7 @@ git commit -m "feat(results): view CSV, JSON, and contract models online"
 
 - [ ] **Step 1: Write the failing method recommendation spec**
 
-Seed one L1 data source and one L2 data source with routing `method` objects, plus one legacy data source whose routing only has `recommended_stage: "L1"` and no `method`. Open 数据 and assert `规则清洗 + W3C 契约` and `Splink + DuckDB` labels, and that the legacy source still renders a method label instead of crashing. Open `#/tasks/new/match` directly and assert the workbench header `处理方法` and the method card, proving `WorkbenchPage` fetched the latest routing without the user clicking a data source. Open `#/tasks/new/entity` and assert the banner mention `Splink + DuckDB` and the override link `仍然直接匹配`.
+Seed the legacy data source first (`recommended_stage: "L1"`, no `method`), then the L1 source, then the L2 source last, so the L2 source is the latest by `created_at`. Open 数据 and assert `规则清洗 + W3C 契约` and `Splink + DuckDB` labels, and that the legacy source still renders a method label instead of crashing. Open `#/tasks/new/match` directly and assert the workbench header `处理方法` and the method card, proving `WorkbenchPage` fetched the latest routing without the user clicking a data source. Open `#/tasks/new/entity` and assert the banner mention `Splink + DuckDB` and the override link `仍然直接匹配`.
 
 - [ ] **Step 2: Run the spec to verify it fails**
 
@@ -642,10 +655,11 @@ python3 tests/formal/check_decision_dispatch_boundary.py
 cd frontend && npm run build
 ```
 
-In `.github/workflows/ci.yml`, add the five new specs to the frontend job after the existing three:
+In `.github/workflows/ci.yml`, add the six new specs to the frontend job after the existing three:
 
 ```yaml
           python frontend/tests/menu_shell.spec.py
+          python frontend/tests/deep_link.spec.py
           python frontend/tests/guided_assistant.spec.py
           python frontend/tests/review_readability.spec.py
           python frontend/tests/result_viewer.spec.py
@@ -656,6 +670,7 @@ Then start Vite and run every Playwright spec:
 
 ```bash
 python3 frontend/tests/menu_shell.spec.py
+python3 frontend/tests/deep_link.spec.py
 python3 frontend/tests/guided_assistant.spec.py
 python3 frontend/tests/review_readability.spec.py
 python3 frontend/tests/result_viewer.spec.py

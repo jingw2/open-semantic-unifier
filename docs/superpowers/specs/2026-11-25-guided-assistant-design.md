@@ -146,6 +146,7 @@ done
 - 为 L3 编译 DRAFT 版本，前提是已有契约源和实体快照。
 - 助手触发的实体 demo 只允许产生 REVIEW / DISTINCT 配对。demo 方案和记录不得包含会触发 `AUTO_MATCH` 的强标识匹配；运行后必须断言没有 `MERGE` 决策。真实业务里用户自己配置的 AUTO_MATCH 规则不属于助手行为，但 demo 不能替用户合并。
 - demo 运行必须只使用 demo 记录。`submit_run` / `_current_input_manifest` 增加可选的 `input_source_system` 过滤；demo 记录统一用 `source_system="assistant_demo"`，运行只带这 6 条。项目里已有的其他来源记录不得进入 demo 的 input manifest。
+- `input_source_system` 必须持久化在 `UnificationRun` 上（nullable 列），执行阶段的 `releases.py:357`、`:510` 和发布快照的 `:599` 都用它重算 manifest；只在 submit 过滤不够，否则任何非 demo 记录都会触发 `RunConflict`。
 
 助手不可以：
 
@@ -316,7 +317,7 @@ type TaskItem = {
 - 产物与发布 -> `ServingReleasePage`，保留 `POST /artifacts/{id}/publish`、回滚和导出。这是一个显式视图或 tab，不能只修改组件而不渲染。
 - API Key 在设置里；发布动作在任务详情里。
 
-`TaskDetailPage` props 是 `{projectId, canEdit, activeDsIds, activeProfile, activeRouting, task?, newKind?}`。它必须把现有组件需要的 props 传下去：`ContractsPage` 需要 `projectId`、`canEdit` 和可选的 `initialVersionId`；`UnificationPage` 需要 `projectId`、`canEdit` 和可选的 `initialRunId`；`WorkbenchPage` 需要 `projectId`、`activeDsIds`、`activeProfile`、`activeRouting`、`initialJobId` 和 `onGoDataSources/onGoContracts`。直接打开任务详情时，若 `activeRouting` 为空，`WorkbenchPage` 自己拉 `GET /datasources` 并使用最新一条带 routing 的数据源，方法卡不能依赖用户先点数据源。
+`TaskDetailPage` props 是 `{project, canEdit, activeDsIds, activeProfile, activeRouting, jobId?, runId?, versionId?, newKind?}`。App 从 hash 路由解析出 id 并直接传入，不依赖列表里已经有对应 `TaskItem`。它把现有组件需要的 props 传下去：`ContractsPage` 需要 `projectId`、`canEdit` 和可选的 `initialVersionId`；`UnificationPage` 需要 `projectId`、`canEdit` 和可选的 `initialRunId`；`WorkbenchPage` 需要 `projectId`、`activeDsIds`、`activeProfile`、`activeRouting`、`initialJobId`、`initialStage` 和 `onGoDataSources/onGoContracts`。App 提供这两个回调，分别跳到数据源和契约页。直接打开任务详情时，若 `activeRouting` 为空，`WorkbenchPage` 自己拉 `GET /datasources` 并使用最新一条带 routing 的数据源，方法卡不能依赖用户先点数据源。
 
 ### 9.3 设置
 
@@ -336,6 +337,7 @@ type TaskItem = {
 - 任务详情的 not-found 状态使用固定文案 `任务不存在` 和 `返回任务`，不直接渲染 API 的 `资源不存在` / `run not found`。
 - 测试 helper `open_route` 在应用已加载时必须只改 `window.location.hash`，不能整页 `goto`，否则会丢掉 spec 刚选中的项目。只有在还没有加载应用时才允许 `goto`。
 - 新增的 5 个 Playwright spec（menu_shell、guided_assistant、review_readability、result_viewer、method_recommendation）必须加入 `.github/workflows/ci.yml` 的 frontend job，与原有 3 个一起跑。
+- 深链接 `#/tasks/run/{id}` 和 `#/tasks/contract/{id}` 不能只在前 20 个 run / 前 50 个 version 里找。如果 `initialRunId` / `initialVersionId` 不在列表里，用单资源接口 `GET /unification/runs/{id}` / `GET /contracts/versions/{id}` 拉取并选中；单资源 404 才显示 `任务不存在`。
 - 历史数据源的 `routing_json` 没有 `method` 字段。读取数据源列表时用 `recommended_stage` 做一次只读 fallback，映射到 `METHOD_META` 的默认方法；不写数据库，不做迁移。前端也要对缺失 `method` 的 routing 做同样的兜底。
 
 ## 10. 方法推荐与路由
@@ -459,7 +461,8 @@ RDF/OWL 不在第一版范围；如果客户明确要求，单独评估。
 - `submit_run` / `_current_input_manifest` 增加可选 `input_source_system` 过滤，demo 运行只带 `source_system="assistant_demo"` 的记录。
 - 新增 OpenRefine 适配器和配方注册表；环境变量 `OPENREFINE_URL`、`OPENREFINE_ENABLED`。
 - 新增 JSON-LD 实例导出接口。
-- 第一交付无数据库迁移；第二交付只加必要的配方/映射记录，优先用文件存储，避免迁移。
+- 第一交付只允许一个 nullable 的 `unification_runs.input_source_system` 列迁移，用于 demo 作用域；无数据回填。其余仍无数据库迁移；第二交付只加必要的配方/映射记录，优先用文件存储，避免迁移。
+- 执行、运行中校验和发布快照都必须用 `run.input_source_system` 重算 manifest。
 
 ## 13. 验收标准
 
