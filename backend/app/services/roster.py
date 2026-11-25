@@ -46,13 +46,23 @@ def _match_first(columns: list[str], terms: list[str]) -> Optional[str]:
     for col in columns:
         if _normalized(col) in wanted:
             return col
+    for col in columns:
+        normalized = _normalized(col)
+        if normalized == "id" or normalized.endswith("_id"):
+            return col
+        if any(len(term) >= 2 and (term in normalized or normalized in term) for term in wanted if term != "id"):
+            return col
     return None
 
 
 def detect_roster_columns(columns: list[str]) -> dict:
     """Map a profile's columns onto id/name/alias/tax/phone using the built-in terms."""
     alias_wanted = {term.lower() for term in ALIAS_TERMS}
-    alias_columns = [col for col in columns if _normalized(col) in alias_wanted]
+    alias_columns = [
+        col for col in columns
+        if _normalized(col) in alias_wanted
+        or any(len(term) >= 2 and term in _normalized(col) for term in alias_wanted)
+    ]
     return {
         "id_column": _match_first(columns, ID_TERMS) or "",
         "name_column": _match_first(columns, NAME_TERMS) or "",

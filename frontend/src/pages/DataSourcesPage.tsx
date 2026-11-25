@@ -170,7 +170,15 @@ export default function DataSourcesPage({ projectId, onRouteReady }: Props) {
       })
       setMsg('已设为标准花名册，请确认字段映射。')
     } catch (e: any) {
-      setMsg('错误：' + e.message)
+      setEditing({
+        sourceId: source.id,
+        idColumn: '',
+        nameColumn: '',
+        aliasColumns: [],
+        taxIdColumn: '',
+        phoneColumn: '',
+      })
+      setMsg('自动识别未完成，请手动选择名称列后再保存。' + (e.message ? `（${e.message}）` : ''))
     } finally {
       setBusy(false)
     }

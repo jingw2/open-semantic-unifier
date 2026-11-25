@@ -85,6 +85,15 @@ def test_detect_roster_columns_chinese_terms():
     assert detected["phone_column"] == "手机"
 
 
+def test_detect_roster_columns_matches_substrings():
+    detected = detect_roster_columns(["供应商编号", "供应商名称", "别名1", "统一社会信用代码", "联系电话"])
+    assert detected["id_column"] == "供应商编号"
+    assert detected["name_column"] == "供应商名称"
+    assert detected["alias_columns"] == ["别名1"]
+    assert detected["tax_id_column"] == "统一社会信用代码"
+    assert detected["phone_column"] == "联系电话"
+
+
 def test_detect_roster_columns_requires_a_name_term():
     detected = detect_roster_columns(["amount", "city"])
     assert detected["name_column"] == ""
