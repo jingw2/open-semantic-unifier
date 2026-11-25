@@ -224,7 +224,7 @@ def test_llm_connectivity(llm_cfg: dict[str, Any]) -> dict[str, str]:
     if not llm_cfg.get("api_key") and provider_key != "ollama":
         return {"status": "error", "message": "Provider credentials are required."}
     try:
-        result = call_llm_json('{"ok":true}', llm_cfg)
+        result = call_llm_json('Respond with a JSON object that has a single key "ok" and the boolean value true.', llm_cfg)
     except Exception as exc:
         return {"status": "error", "message": f"Provider check failed ({type(exc).__name__})."}
     return {"status": "ok", "message": f"Connection successful ({result.get('_mode')})."} if result else {"status": "error", "message": "Provider returned no response."}
