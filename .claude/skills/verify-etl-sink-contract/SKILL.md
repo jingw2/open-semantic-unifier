@@ -39,24 +39,28 @@ The transform functions are replaced with small deterministic results so the fau
 
 The property is a finite contract over three stages and five outcomes. Exhaustive fault injection against the real worker covers every case without a hand model that could drift from the code. A model checker would restate the worker rather than exercise it.
 
-## What it does not cover
+## What the checker isolates, and the companion tests that cover it
 
-- Real PostgreSQL, MySQL, or MongoDB writes. The live connector test covers those, including one PostgreSQL-to-MySQL L1 job.
-- Concurrent runs on the same target table.
-- The schedule runner and Celery beat; `run_due_etl_schedules` has separate tests.
-- The real L1/L2/L4 transforms; the check isolates the sink by replacing them.
-- Credential handling beyond `resolve_target` using the encrypted DataSource row.
+The checker replaces the L1/L2/L4 transforms and uses a SQLite target so the fault space stays on the sink contract. These companion tests cover the rest:
+
+- **Real PostgreSQL, MySQL, and MongoDB target writes.** `backend/tests/integration/test_database_connectors.py` writes and reads back each target, runs concurrent appends, and runs one full PostgreSQL-to-MySQL L1 job.
+- **Concurrent writes to one target table.** `test_etl.py::test_concurrent_sqlite_sink_serializes` covers append and replace; the live connector test covers concurrent appends on PostgreSQL, MySQL, and MongoDB.
+- **Real L1, L2, and L4 transforms feeding the sink.** `test_etl.py` covers L1, L2, and L4 target jobs with real engines and real SQLite/DuckDB writes.
+- **Schedule runner and Celery beat.** `test_etl.py` covers run-now, due-run selection, disabled skip, the beat schedule entry, and the Compose beat service.
+- **Credential handling.** `test_etl.py::test_datasource_api_does_not_expose_target_credentials` proves the API and sink errors do not contain the stored password.
+
+The formal checker itself does not spawn live databases, run Celery beat, or execute the heavy transforms; those are intentionally in the companion suites.
 
 ## Coverage
 
 | File | Functions | Last changed |
 | --- | --- | --- |
 | `backend/app/workers/tasks.py` | `run_job_sync` stage result and ETL sink block | `17ebd12` |
-| `backend/app/services/etl.py` | `resolve_target`, `load_job_frame`, `write_dataframe`, `validate_table_name` | `cec8dd5` |
+| `backend/app/services/etl.py` | `resolve_target`, `load_job_frame`, `write_dataframe`, `validate_table_name`, `_sink_lock` | `b08f8ab` |
 | `backend/app/api/v1/providers_jobs.py` | ETL target validation on Job submission | `cec8dd5` |
 | `backend/app/models/entities.py` | `Job`, `DataSource`, `ArtifactVersion` | `8c8a3bd` |
 
-Sync commit: `1b29b81`. The check was added in that commit and confirmed against the covered files at it. Move the sync commit forward only after you confirm the check still describes these functions at the new commit.
+Sync commit: `b08f8ab`. The check was added in `1b29b81` and moved forward after confirming it still describes the sink code with `_sink_lock`. Move the sync commit forward only after you confirm the check still describes these functions at the new commit.
 
 ## If it fails
 
