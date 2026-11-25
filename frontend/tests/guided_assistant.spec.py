@@ -267,6 +267,10 @@ def test_guided_assistant_model_plan_and_answer():
                 page.get_by_role("button", name="开始", exact=True).click()
                 expect(page.get_by_text("数据契约需要先在契约工作台登记", exact=False)).to_be_visible(timeout=15000)
                 expect(page.get_by_text("请求失败 (422)", exact=False)).to_have_count(0)
+
+                expect(page.get_by_label("助手模型")).to_be_visible()
+                page.get_by_role("button", name="新对话", exact=True).click()
+                expect(page.get_by_text("你想完成什么？")).to_be_visible(timeout=15000)
                 browser.close()
     finally:
         provider_server.shutdown()

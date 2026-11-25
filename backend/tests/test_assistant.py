@@ -157,6 +157,12 @@ def _seed_providers(public_api, port: int) -> None:
             is_default=False,
         ))
         db.add(LLMProvider(
+            id="prov-alt", workspace_id="ws-one", provider_key="alt", name="Alt",
+            base_url=f"http://127.0.0.1:{port}/v1", default_model="alt-model",
+            encrypted_api_key=encrypt_secret("alt-key"), provider_kind="openai_compatible",
+            is_default=False,
+        ))
+        db.add(LLMProvider(
             id="prov-jev", workspace_id="ws-one", provider_key="typesafe", name="Jev",
             base_url="http://127.0.0.1:1", default_model="jev",
             encrypted_api_key=encrypt_secret("jev-key"), provider_kind="typesafe_jev",
@@ -174,6 +180,18 @@ def _seed_providers(public_api, port: int) -> None:
             profile_json={"total_rows": 3, "table_count": 1, "tables": [{"columns": ["city"]}]},
         ))
         db.commit()
+
+
+def test_assistant_uses_the_selected_chat_provider(public_api, assistant_server):
+    client, _maker, _identity = public_api
+    _seed_providers(public_api, assistant_server.server_port)
+    response = client.post(
+        "/api/v1/projects/project-one/assistant/plan",
+        json={"message": "帮我把客户名单去重", "page": "data", "provider_id": "prov-alt"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["source"] == "model"
+    assert AssistantHandler.requests[0]["model"] == "alt-model"
 
 
 def test_assistant_uses_chat_provider_by_kind_and_hides_preview_values(public_api, assistant_server):

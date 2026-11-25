@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { ArrowRight, Bot, CheckCircle2, ChevronRight, LoaderCircle, Send } from 'lucide-react'
+import { ArrowRight, Bot, CheckCircle2, ChevronRight, LoaderCircle, RotateCcw, Send } from 'lucide-react'
 import { ApiError, apiFetch, DataSourceItem, JobItem } from '../lib/api'
 import { explainPage } from '../lib/pageHelp'
 
@@ -78,6 +78,7 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
   const [resultRoute, setResultRoute] = useState('')
   const [message, setMessage] = useState('')
   const [providerId, setProviderId] = useState('')
+  const [providers, setProviders] = useState<any[]>([])
   const [thinking, setThinking] = useState(false)
   const [entitySummary, setEntitySummary] = useState<EntitySummary | null>(null)
   const [matchFields, setMatchFields] = useState<string[]>([])
@@ -96,8 +97,9 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
       .catch(() => undefined)
     apiFetch<{ configured: any[] }>('/api/v1/providers')
       .then((data) => {
-        const chat = data.configured.find((p) => p.provider_kind === 'openai_compatible' && p.is_default)
-          || data.configured.find((p) => p.provider_kind === 'openai_compatible')
+        const chatProviders = data.configured.filter((p) => p.provider_kind === 'openai_compatible')
+        setProviders(chatProviders)
+        const chat = chatProviders.find((p) => p.is_default) || chatProviders[0]
         if (chat) setProviderId(chat.id)
       })
       .catch(() => undefined)
@@ -142,8 +144,21 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
   const requestPlan = (text: string, history: { role: 'user' | 'assistant'; content: string }[]) =>
     apiFetch<PlanPayload>(`/api/v1/projects/${projectId}/assistant/plan`, {
       method: 'POST',
-      body: JSON.stringify({ message: text, page: currentPage, history }),
+      body: JSON.stringify({ message: text, page: currentPage, history, provider_id: providerId || null }),
     })
+
+  const resetConversation = () => {
+    setMessages([])
+    setStage('idle')
+    setActiveTask(null)
+    setError('')
+    setResultRoute('')
+    setEntitySummary(null)
+    setThinking(false)
+    setMatchFields([])
+    setCleanFields([])
+    setEntityFields(['name', 'tax_id'])
+  }
 
   const submit = async (text: string) => {
     const history = messages.slice(-6).map((item) => ({ role: item.role, content: item.content }))
@@ -314,7 +329,13 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
           setStage('done')
         } catch (caught) {
           if (caught instanceof ApiError && caught.status === 422) {
-            throw new Error('契约校验未通过：请去契约工作台查看具体字段或实体类型问题，修正后重新生成。')
+            const issues = Array.isArray(caught.detail) ? caught.detail : []
+            const unknown = issues
+              .filter((issue: any) => issue?.code === 'UNKNOWN_ENTITY_TYPE' && typeof issue.path === 'string')
+              .map((issue: any) => issue.path.replace(/^classes\./, ''))
+            throw new Error(unknown.length
+              ? `契约包含未登记实体类型：${unknown.join('、')}。请去契约工作台允许这些新类型后重试。`
+              : '契约校验未通过：请去契约工作台查看具体字段或实体类型问题，修正后重新生成。')
           }
           throw caught
         }
@@ -388,6 +409,23 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
           <Bot className="h-4 w-4 text-neutral-500" /> 助手
         </div>
         <button onClick={() => setOpen(false)} className="text-[11px] text-neutral-500 hover:text-neutral-900">收起</button>
+      </div>
+
+      <div className="flex items-center gap-2 border-b border-neutral-100 px-4 py-2">
+        <select
+          aria-label="助手模型"
+          value={providerId}
+          onChange={(event) => setProviderId(event.target.value)}
+          className="min-w-0 flex-1 rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-[11px] text-neutral-700"
+        >
+          {providers.length === 0 && <option value="">本地规则（未配置模型）</option>}
+          {providers.map((provider) => (
+            <option key={provider.id} value={provider.id}>{provider.name} · {provider.default_model}</option>
+          ))}
+        </select>
+        <button onClick={resetConversation} aria-label="新对话" className="flex items-center gap-1 rounded-md border border-neutral-300 px-2 py-1.5 text-[11px] text-neutral-700">
+          <RotateCcw className="h-3 w-3" /> 新对话
+        </button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">

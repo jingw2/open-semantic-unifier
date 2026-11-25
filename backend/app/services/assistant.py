@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.security import decrypt_secret
-from app.models.entities import DataSource, Project
+from app.models.entities import DataSource, LLMProvider, Project
 from app.services.llm_client import call_llm_json
 from app.services.openrefine.recipes import load_recipes
 from app.services.provider_selection import select_openai_provider
@@ -287,6 +287,7 @@ def classify_assistant_message(
     message: str,
     page: str,
     history: list[dict[str, Any]] | None = None,
+    provider_id: str | None = None,
 ) -> dict[str, Any]:
     project = db.get(Project, project_id)
     if project is None:
@@ -295,7 +296,17 @@ def classify_assistant_message(
     fields_by_id = {source.id: _source_fields(source.profile_json or {}) for source in sources}
     project_fields = set().union(*fields_by_id.values()) if fields_by_id else set()
 
-    provider = select_openai_provider(db, project.workspace_id)
+    provider = None
+    if provider_id:
+        selected = db.get(LLMProvider, provider_id)
+        if (
+            selected is not None
+            and selected.workspace_id == project.workspace_id
+            and selected.provider_kind == "openai_compatible"
+        ):
+            provider = selected
+    if provider is None:
+        provider = select_openai_provider(db, project.workspace_id)
     if provider is not None:
         summaries = [
             {
