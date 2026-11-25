@@ -1,16 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { ArrowRight, Bot, CheckCircle2, ChevronRight, LoaderCircle, RotateCcw, Send } from 'lucide-react'
-import { ApiError, apiFetch, DataSourceItem, JobItem } from '../lib/api'
+import { apiFetch, DataSourceItem, JobItem } from '../lib/api'
 import { explainPage } from '../lib/pageHelp'
 
-type AssistantTaskKey = 'clean' | 'match' | 'entity' | 'metrics' | 'contract' | 'review'
+type AssistantTaskKey = 'clean' | 'match' | 'entity' | 'metrics' | 'contract' | 'review' | 'pipeline'
 type AssistantStage = 'idle' | 'running' | 'done' | 'error'
 
 type TaskDef = {
   key: AssistantTaskKey
   label: string
   method: string
-  stage: 'L1' | 'L2' | 'L3' | 'L4' | 'ENTITY' | 'REVIEW'
+  stage: 'L1' | 'L2' | 'L3' | 'L4' | 'ENTITY' | 'REVIEW' | 'PIPELINE'
   demo?: 'L1' | 'L2' | 'L4'
 }
 
@@ -21,6 +21,7 @@ const TASKS: TaskDef[] = [
   { key: 'metrics', label: '统一指标口径', method: '指标 YAML', stage: 'L4', demo: 'L4' },
   { key: 'contract', label: '生成数据契约', method: 'LinkML W3C 契约', stage: 'L3' },
   { key: 'review', label: '查看待复核', method: '人工复核', stage: 'REVIEW' },
+  { key: 'pipeline', label: '自动处理全流程', method: '清洗 → 匹配 → 指标（按数据）', stage: 'PIPELINE' },
 ]
 
 const PARAM_LABELS: Record<string, string> = {
@@ -79,16 +80,31 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
   const [message, setMessage] = useState('')
   const [providerId, setProviderId] = useState('')
   const [providers, setProviders] = useState<any[]>([])
+  const [chatProject, setChatProject] = useState('')
   const [thinking, setThinking] = useState(false)
   const [entitySummary, setEntitySummary] = useState<EntitySummary | null>(null)
   const [matchFields, setMatchFields] = useState<string[]>([])
   const [entityFields, setEntityFields] = useState<string[]>(['name', 'tax_id'])
+  const [pipelineResult, setPipelineResult] = useState<{ cleanJobId: string; matchJobId: string; metricJobId?: string } | null>(null)
   const [cleanFields, setCleanFields] = useState<string[]>([])
   const idRef = useRef(0)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!projectId) return
+    try {
+      const raw = localStorage.getItem(`su_assistant_chat_${projectId}`)
+      setMessages(raw ? JSON.parse(raw) as ChatMessage[] : [])
+    } catch {
+      setMessages([])
+    }
+    try {
+      const savedProvider = localStorage.getItem(`su_assistant_provider_${projectId}`)
+      setProviderId(savedProvider || '')
+    } catch {
+      setProviderId('')
+    }
+    setChatProject(projectId)
     apiFetch<DataSourceItem[]>(`/api/v1/projects/${projectId}/datasources`)
       .then((items) => {
         setDatasources(items)
@@ -99,8 +115,13 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
       .then((data) => {
         const chatProviders = data.configured.filter((p) => p.provider_kind === 'openai_compatible')
         setProviders(chatProviders)
-        const chat = chatProviders.find((p) => p.is_default) || chatProviders[0]
-        if (chat) setProviderId(chat.id)
+        let saved: string | null = null
+        try { saved = localStorage.getItem(`su_assistant_provider_${projectId}`) } catch { saved = null }
+        if (saved && chatProviders.some((p) => p.id === saved)) setProviderId(saved)
+        else {
+          const chat = chatProviders.find((p) => p.is_default) || chatProviders[0]
+          if (chat) setProviderId(chat.id)
+        }
       })
       .catch(() => undefined)
   }, [projectId])
@@ -127,6 +148,19 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
     })
   }, [selectedId, cleanFieldOptions.join(',')])
 
+  useEffect(() => {
+    if (chatProject !== projectId) return
+    try { localStorage.setItem(`su_assistant_chat_${projectId}`, JSON.stringify(messages)) } catch { /* local memory is optional */ }
+  }, [messages, projectId, chatProject])
+
+  useEffect(() => {
+    if (chatProject !== projectId) return
+    try {
+      if (providerId) localStorage.setItem(`su_assistant_provider_${projectId}`, providerId)
+      else localStorage.removeItem(`su_assistant_provider_${projectId}`)
+    } catch { /* local memory is optional */ }
+  }, [providerId, projectId, chatProject])
+
   const pushUser = (content: string) => {
     idRef.current += 1
     setMessages((prev) => [...prev, { id: idRef.current, role: 'user', content }])
@@ -148,6 +182,7 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
     })
 
   const resetConversation = () => {
+    try { localStorage.removeItem(`su_assistant_chat_${projectId}`) } catch { /* optional */ }
     setMessages([])
     setStage('idle')
     setActiveTask(null)
@@ -158,16 +193,18 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
     setMatchFields([])
     setCleanFields([])
     setEntityFields(['name', 'tax_id'])
+    setPipelineResult(null)
   }
 
   const submit = async (text: string) => {
-    const history = messages.slice(-6).map((item) => ({ role: item.role, content: item.content }))
+    const history = messages.slice(-10).map((item) => ({ role: item.role, content: item.role === 'assistant' && item.plan ? `${item.content}\n[plan] ${item.plan.intent} ${JSON.stringify(item.plan.params || {})}` : item.content }))
     pushUser(text)
     setStage('idle')
     setError('')
     setResultRoute('')
     setActiveTask(null)
     setEntitySummary(null)
+    setPipelineResult(null)
     setThinking(true)
     try {
       const plan = await requestPlan(text, history)
@@ -178,11 +215,12 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
           setRouting(source.routing || null)
         }
       }
-      if (plan.intent === 'match') {
+      if (['match', 'pipeline'].includes(plan.intent)) {
         const planned = Array.isArray(plan.params?.match_fields) ? plan.params.match_fields as string[] : []
-        setMatchFields(planned.length ? planned : matchFieldOptions)
+        const valid = planned.filter((field) => matchFieldOptions.includes(field))
+        setMatchFields(valid.length ? valid : matchFieldOptions)
       }
-      if (plan.intent === 'clean') {
+      if (['clean', 'pipeline'].includes(plan.intent)) {
         const planned = Array.isArray(plan.params?.clean_fields)
           ? plan.params.clean_fields as string[]
           : (typeof plan.params?.target_col === 'string' ? [plan.params.target_col] : [])
@@ -233,14 +271,15 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
     setError('')
     setResultRoute('')
     setEntitySummary(null)
-    if (next.key === 'match' && !matchFields.length) setMatchFields(matchFieldOptions)
+    setPipelineResult(null)
+    if (['match', 'pipeline'].includes(next.key) && !matchFields.length) setMatchFields(matchFieldOptions)
     if (next.key === 'entity' && !entityFields.length) setEntityFields(['name', 'tax_id'])
-    if (next.key === 'clean' && !cleanFields.length) setCleanFields(cleanFieldOptions[0] ? [cleanFieldOptions[0]] : [])
+    if (['clean', 'pipeline'].includes(next.key) && !cleanFields.length) setCleanFields(cleanFieldOptions[0] ? [cleanFieldOptions[0]] : [])
     pushAssistant(plan.explanation, plan)
   }
 
   const explainCurrentPage = async () => {
-    const history = messages.slice(-6).map((item) => ({ role: item.role, content: item.content }))
+    const history = messages.slice(-10).map((item) => ({ role: item.role, content: item.role === 'assistant' && item.plan ? `${item.content}\n[plan] ${item.plan.intent} ${JSON.stringify(item.plan.params || {})}` : item.content }))
     setStage('idle')
     setError('')
     setResultRoute('')
@@ -260,14 +299,60 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
     }
   }
 
+  const submitAndWait = async (stage: string, params: Record<string, any>, dsIds: string[]) => {
+    const created = await apiFetch<JobItem>(`/api/v1/projects/${projectId}/jobs`, {
+      method: 'POST',
+      body: JSON.stringify({ stage, datasource_ids: dsIds, provider_id: providerId || null, params }),
+    })
+    let current = created
+    for (let attempt = 0; attempt < 240; attempt += 1) {
+      if (current.status === 'SUCCESS' || current.status === 'FAILED') break
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      current = await apiFetch<JobItem>(`/api/v1/jobs/${created.id}`)
+    }
+    if (current.status !== 'SUCCESS') throw new Error(current.error_message || `${stage} 运行失败`)
+    return current
+  }
+
+  const runPipeline = async () => {
+    if (!cleanFields.length || !matchFields.length) throw new Error('请至少选择一个清洗字段和一个匹配字段。')
+    if (!selectedId) throw new Error('全流程需要先选择一个数据源。')
+    const ids = [selectedId]
+    const cleanJob = await submitAndWait('L1', { clean_fields: cleanFields }, ids)
+    const cleanArtifact = (cleanJob.result?.artifacts || []).find((item: any) => item.type === 'clean_csv')
+    if (!cleanArtifact) throw new Error('清洗没有生成可匹配的数据产物。')
+    const matchJob = await submitAndWait('L2', {
+      match_fields: matchFields,
+      enable_hybrid_llm: true,
+      input_artifact_id: cleanArtifact.id,
+    }, ids)
+    let metricJobId: string | undefined
+    const wideColumns = ['order_id', 'order_channel', 'total_amount', 'delivery_status', 'settled_amount']
+    if (wideColumns.every((column) => sourceColumns.includes(column))) {
+      const metricJob = await submitAndWait('L4', { metric_name: 'net_gmv', group_by: 'order_channel' }, ids)
+      metricJobId = metricJob.id
+    }
+    setPipelineResult({ cleanJobId: cleanJob.id, matchJobId: matchJob.id, metricJobId })
+    setResultRoute(`#/tasks/job/${matchJob.id}`)
+    setStage('done')
+  }
+
   const run = async (plan: PlanPayload) => {
     const task = taskForIntent(plan.suggested_task || plan.intent)
     if (!task) return
+    if (task.stage === 'L3') {
+      onRoute('#/tasks/new/contract')
+      return
+    }
     setActiveTask(task)
     setStage('running')
     setError('')
     setResultRoute('')
     try {
+      if (task.stage === 'PIPELINE') {
+        await runPipeline()
+        return
+      }
       let dsIds = selectedId ? [selectedId] : (plan.datasource_id ? [plan.datasource_id] : [])
       const source = datasources.find((item) => item.id === (selectedId || plan.datasource_id))
       let currentRouting = source?.routing || routing
@@ -309,36 +394,6 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
         })
         setResultRoute(`#/tasks/run/${demo.run_id}`)
         setStage('done')
-        return
-      }
-
-      if (task.stage === 'L3') {
-        const [sources, snapshots] = await Promise.all([
-          apiFetch<any[]>(`/api/v1/projects/${projectId}/contracts/sources`),
-          apiFetch<{ items: any[] }>(`/api/v1/projects/${projectId}/unification/snapshots?limit=1&offset=0`),
-        ])
-        if (!sources.length || !snapshots.items?.length) {
-          throw new Error('数据契约需要先在契约工作台登记 LinkML/Sheets 契约文件，并发布一个实体快照。')
-        }
-        try {
-          const version = await apiFetch<{ id: string }>(`/api/v1/projects/${projectId}/contracts/versions`, {
-            method: 'POST',
-            body: JSON.stringify({ source_id: sources[0].id, snapshot_id: snapshots.items[0].snapshot_id, allowed_new_entity_types: [] }),
-          })
-          setResultRoute(`#/tasks/contract/${version.id}`)
-          setStage('done')
-        } catch (caught) {
-          if (caught instanceof ApiError && caught.status === 422) {
-            const issues = Array.isArray(caught.detail) ? caught.detail : []
-            const unknown = issues
-              .filter((issue: any) => issue?.code === 'UNKNOWN_ENTITY_TYPE' && typeof issue.path === 'string')
-              .map((issue: any) => issue.path.replace(/^classes\./, ''))
-            throw new Error(unknown.length
-              ? `契约包含未登记实体类型：${unknown.join('、')}。请去契约工作台允许这些新类型后重试。`
-              : '契约校验未通过：请去契约工作台查看具体字段或实体类型问题，修正后重新生成。')
-          }
-          throw caught
-        }
         return
       }
 
@@ -516,7 +571,7 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
                         const source = datasources.find((item) => item.id === (plan.datasource_id || selectedId))
                         return source ? <div className="mt-1 text-[11px] text-neutral-500">数据源：{source.name}</div> : null
                       })()}
-                      {isLastPlan && planTask.key === 'clean' && (
+                      {isLastPlan && ['clean', 'pipeline'].includes(planTask.key) && (
                         <div className="mt-2 rounded-md border border-neutral-200 p-2.5">
                           <div className="text-[11px] font-medium text-neutral-800">清洗字段（可多选）</div>
                           <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
@@ -537,7 +592,7 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
                           {!cleanFields.length && <p className="mt-1 text-[11px] text-red-600">至少选择一个字段。</p>}
                         </div>
                       )}
-                      {isLastPlan && planTask.key === 'match' && (
+                      {isLastPlan && ['match', 'pipeline'].includes(planTask.key) && (
                         <div className="mt-2 rounded-md border border-neutral-200 p-2.5">
                           <div className="text-[11px] font-medium text-neutral-800">确认匹配字段（可多选）</div>
                           <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
@@ -588,8 +643,8 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
                         {['① 选数据', '② 运行', '③ 看结果'].map((step) => <li key={step}>{step}</li>)}
                       </ol>
                       {isLastPlan && stage === 'idle' && !plan.needs_clarification
-                        && !(planTask.key === 'clean' && !cleanFields.length)
-                        && !(planTask.key === 'match' && !matchFields.length)
+                        && !(['clean', 'pipeline'].includes(planTask.key) && !cleanFields.length)
+                        && !(['match', 'pipeline'].includes(planTask.key) && !matchFields.length)
                         && !(planTask.key === 'entity' && !entityFields.length) && (
                         <button onClick={() => void run(plan)} className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-neutral-900 px-3 py-2 text-xs font-medium text-white">
                           开始 <ArrowRight className="h-3.5 w-3.5" />
@@ -622,8 +677,17 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
                 <p className="mt-1">运行本身不会发布快照。先去复核处理待定配对，再到结果的「快照与导出」发布不可变版本，契约和对外服务会读取该版本。</p>
               </div>
             )}
+            {activeTask?.stage === 'PIPELINE' && pipelineResult && (
+              <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-2.5 text-[11px] leading-5 text-neutral-600">
+                <div className="font-medium text-neutral-900">全流程已完成</div>
+                <p className="mt-1">清洗任务 {pipelineResult.cleanJobId.slice(0, 8)} → 匹配任务 {pipelineResult.matchJobId.slice(0, 8)}{pipelineResult.metricJobId ? ` → 指标任务 ${pipelineResult.metricJobId.slice(0, 8)}` : ''}。</p>
+                <p className="mt-1">可自动执行的步骤已经完成。复核、发布快照和契约确认仍需你处理。</p>
+              </div>
+            )}
             <button onClick={() => onRoute(resultRoute)} className="w-full rounded-md bg-neutral-900 px-3 py-2 text-xs font-medium text-white">查看结果</button>
             {activeTask?.stage === 'ENTITY' && <button onClick={() => onRoute('#/reviews')} className="w-full rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700">去复核</button>}
+            {activeTask?.stage === 'PIPELINE' && <button onClick={() => onRoute('#/reviews')} className="w-full rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700">去复核</button>}
+            {activeTask?.stage === 'PIPELINE' && <button onClick={() => onRoute('#/tasks/new/contract')} className="w-full rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium text-neutral-700">去契约工作台</button>}
           </div>
         )}
         {stage === 'error' && (

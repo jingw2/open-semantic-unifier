@@ -11,13 +11,14 @@ from app.services.llm_client import call_llm_json
 from app.services.openrefine.recipes import load_recipes
 from app.services.provider_selection import select_openai_provider
 
-INTENTS = ("clean", "match", "entity", "metrics", "contract", "review", "answer", "unknown")
+INTENTS = ("clean", "match", "entity", "metrics", "contract", "review", "pipeline", "answer", "unknown")
 KEYWORDS = {
     "match": ("匹配", "客户", "跨库", "关联", "认亲"),
     "clean": ("清洗", "名单", "供应商", "标准化", "去重"),
     "metrics": ("指标", "gmv", "口径", "报表"),
     "contract": ("契约", "标准", "linkml", "w3c"),
     "review": ("复核", "审核", "裁决"),
+    "pipeline": ("全流程", "端到端", "自动处理", "一键跑", "流水线"),
 }
 ENTITY_NOUNS = ("客户", "供应商", "公司", "企业", "联系人")
 DEDUP_TERMS = ("去重", "重复", "重名")
@@ -26,8 +27,9 @@ DEDUP_TERMS = ("去重", "重复", "重名")
 ALLOWED_METRIC_NAMES = frozenset({"net_gmv", "signed_fulfillment_rate", "settled_revenue"})
 
 ALLOWED_PARAM_KEYS: dict[str, tuple[str, ...]] = {
-    "clean": ("target_col", "amount_col"),
+    "clean": ("target_col", "amount_col", "clean_fields"),
     "match": ("name_col", "tax_col", "phone_col", "city_col", "match_fields"),
+    "pipeline": ("clean_fields", "match_fields"),
     "metrics": ("metric_name", "group_by"),
 }
 
@@ -162,7 +164,7 @@ def _prune_params(
     params: dict[str, Any] = {}
     for key in allowed:
         value = raw_params.get(key)
-        if key == "match_fields":
+        if key in ("match_fields", "clean_fields"):
             if isinstance(value, list):
                 fields = []
                 for field in value:
@@ -188,7 +190,7 @@ def _prune_params(
 
 def _build_prompt(page: str, summaries: list[dict[str, Any]], history: list[dict[str, Any]] | None, message: str) -> str:
     turns: list[dict[str, str]] = []
-    for turn in (history or [])[-6:]:
+    for turn in (history or [])[-10:]:
         if isinstance(turn, dict) and turn.get("role") in ("user", "assistant") and isinstance(turn.get("content"), str):
             turns.append({"role": turn["role"], "content": turn["content"][:1000]})
     return (
@@ -210,20 +212,22 @@ def _build_prompt(page: str, summaries: list[dict[str, Any]], history: list[dict
         "- match: find or deduplicate the same real-world entity, including requests to 去重 an entity list "
         "such as 客户名单 or 供应商名单. Entity deduplication is match, never clean.\n"
         "- entity: run an entity unification demo over example records.\n"
+        "- pipeline: run the reversible data pipeline end to end when the user asks for the whole flow: clean selected fields, match selected fields, and metrics when the data supports it. Never publish, merge, or decide a review.\n"
         "- metrics: unify metric definitions or report numbers.\n"
         "- contract: create, compile, or validate a data contract.\n"
         "- review: inspect or decide review items.\n"
         "- answer: answer a question about the product or the current page without proposing a task.\n"
         "- unknown: the goal is unclear; ask one short clarifying question.\n"
         "Allowed params by intent:\n"
-        "- clean: target_col, amount_col\n"
+        "- clean: clean_fields (an array of one or more source field names) or target_col\n"
         "- match: match_fields (an array of one or more source field names), or the legacy name_col/tax_col/phone_col/city_col\n"
+        "- pipeline: clean_fields and match_fields arrays\n"
         "- metrics: metric_name, group_by\n"
         "- others: none\n"
         f"Built-in recipe ids: {', '.join(sorted(_builtin_recipe_ids()))}\n"
         f"Page: {page} ({PAGE_LABELS.get(page, '当前页面')})\n"
         f"Data sources: {json.dumps(summaries, ensure_ascii=False, sort_keys=True)}\n"
-        f"Conversation (last 6 turns): {json.dumps(turns, ensure_ascii=False, sort_keys=True)}\n"
+        f"Conversation (last 10 turns): {json.dumps(turns, ensure_ascii=False, sort_keys=True)}\n"
         f"User: {message}"
     )
 

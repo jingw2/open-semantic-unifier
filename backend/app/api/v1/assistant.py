@@ -25,7 +25,7 @@ class AssistantTurn(BaseModel):
 class AssistantPlanRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
     page: str = Field(default="data", max_length=80)
-    history: list[AssistantTurn] = Field(default_factory=list, max_length=6)
+    history: list[AssistantTurn] = Field(default_factory=list, max_length=10)
     provider_id: str | None = Field(default=None, max_length=32)
 
 

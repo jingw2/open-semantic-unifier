@@ -410,6 +410,7 @@ def test_deterministic_intent_keywords():
     assert deterministic_intent("清洗供应商名单")[0] == "clean"
     assert deterministic_intent("帮我把客户名单去重")[0] == "match"
     assert deterministic_intent("统一 GMV 口径")[0] == "metrics"
+    assert deterministic_intent("自动处理全流程")[0] == "pipeline"
     assert deterministic_intent("生成 LinkML 契约")[0] == "contract"
     assert deterministic_intent("看看待复核项")[0] == "review"
     assert deterministic_intent("今天天气怎么样")[0] == "unknown"

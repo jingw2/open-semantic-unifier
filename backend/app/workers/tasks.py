@@ -1,5 +1,6 @@
 """异步任务执行器：支持大表分批抽取 Parquet + L1–L4 全引擎 + 数据库/Redis 实时进度推送"""
 
+import io
 import json
 import os
 import tempfile
@@ -12,7 +13,7 @@ from app.core.config import settings
 from app.core.db import SessionLocal
 from app.core.security import decrypt_secret
 from app.demo.catalogs import supplier_catalog_for_sources
-from app.models.entities import DataSource, Job, LLMProvider
+from app.models.entities import ArtifactVersion, DataSource, Job, LLMProvider
 from app.models.etl import EtlSchedule
 from app.services.connectors import extract_db_to_parquet, load_file
 from app.services.etl import load_job_frame, resolve_target, write_dataframe
@@ -140,7 +141,15 @@ def run_job_sync(job_id: str) -> Dict[str, Any]:
                 result["reference_catalog"] = reference_catalog
 
         elif job.stage == "L2":
-            dfs = _load_datasource_dataframes(db, ds_ids, cb)
+            input_artifact_id = params.get("input_artifact_id")
+            dfs = []
+            if input_artifact_id:
+                artifact = db.get(ArtifactVersion, input_artifact_id)
+                if artifact is None or artifact.project_id != job.project_id:
+                    raise ValueError("L2 输入产物不存在于当前项目")
+                dfs = [pd.read_csv(io.BytesIO(storage.get_bytes(artifact.object_key)))]
+            else:
+                dfs = _load_datasource_dataframes(db, ds_ids, cb)
             if not dfs:
                 dfs = list(build_demo_cross_db_tables(n_erp=20_000, n_wms=15_000))
             result = execute_l2(db, job.project_id, job.id, dfs, params=params, llm_cfg=llm_cfg, progress_cb=cb)
