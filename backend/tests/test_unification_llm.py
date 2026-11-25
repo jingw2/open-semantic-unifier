@@ -15,12 +15,24 @@ from app.services import llm_client
 
 class _OpenAIHandler(BaseHTTPRequestHandler):
     behavior = "valid"
+    requests: list[dict] = []
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", "0"))
-        json.loads(self.rfile.read(length))
+        payload = json.loads(self.rfile.read(length))
+        type(self).requests.append(payload)
         if self.behavior == "timeout":
             time.sleep(0.2)
+        if self.behavior == "require_json_word":
+            prompt = payload["messages"][0]["content"]
+            if "json" not in prompt.lower():
+                body = b'{"error":{"message":"Prompt must contain the word json"}}'
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
         if self.behavior == "provider_error":
             body = b'{"error":{"message":"Invalid API key test-secret-must-not-appear-in-trace"}}'
             self.send_response(401)
@@ -51,6 +63,19 @@ def openai_compatible_server():
     finally:
         server.shutdown()
         thread.join(timeout=2)
+
+
+def test_connectivity_prompt_satisfies_json_mode(openai_compatible_server):
+    _OpenAIHandler.behavior = "require_json_word"
+    _OpenAIHandler.requests = []
+    result = llm_client.test_llm_connectivity({
+        "provider_key": "deepseek",
+        "base_url": f"http://127.0.0.1:{openai_compatible_server.server_port}/v1",
+        "model": "controlled-model",
+        "api_key": "test-secret",
+    })
+    assert result["status"] == "ok", result
+    assert "json" in _OpenAIHandler.requests[0]["messages"][0]["content"].lower()
 
 
 def _request_and_config(server, *, behavior, timeout=0.05, api_key="test-secret"):

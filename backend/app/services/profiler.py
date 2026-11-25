@@ -14,6 +14,83 @@ STAGE_META = {
     "L4": {"title": "L4 · 声明式 YAML 指标语义层（Metric Layer）", "short": "L4 指标语义层", "badge": "统一 GMV / KPI"},
 }
 
+METHOD_META = {
+    "L1": {
+        "key": "rule_clean_w3c",
+        "label": "规则清洗 + W3C 契约",
+        "stage": "L1",
+        "description": "先清洗小表，再用 LinkML 契约固化标准字段。",
+    },
+    "L2": {
+        "key": "splink_duckdb",
+        "label": "Splink + DuckDB",
+        "stage": "L2",
+        "description": "用 DuckDB 做跨库候选，Splink 做概率匹配。",
+    },
+    "L3": {
+        "key": "contract_w3c",
+        "label": "LinkML W3C 契约",
+        "stage": "L3",
+        "description": "编译 LinkML 契约，生成可校验的模型版本。",
+    },
+    "L4": {
+        "key": "metrics_yaml",
+        "label": "指标 YAML",
+        "stage": "L4",
+        "description": "用声明式指标定义统一口径。",
+    },
+}
+
+_LEGACY_METHOD_REASONS = {
+    "L1": "历史数据缺少方法字段，按规则清洗处理。",
+    "L2": "历史数据缺少方法字段，按 Splink + DuckDB 处理。",
+    "L3": "历史数据缺少方法字段，按 LinkML 契约处理。",
+    "L4": "历史数据缺少方法字段，按指标 YAML 处理。",
+}
+
+
+def _method_for_stage(
+    stage: str, *, table_count: int = 0, total_rows: int = 0, legacy: bool = False,
+    openrefine_available: bool = False,
+) -> Dict[str, Any]:
+    if legacy:
+        reason = _LEGACY_METHOD_REASONS[stage]
+    elif stage == "L1":
+        reason = f"检测到 {table_count} 张 {total_rows} 行的小表，字段有空格和大小写噪声。"
+    elif stage == "L2":
+        reason = f"检测到 {table_count} 张表共 {total_rows} 行，需要跨库匹配。"
+    elif stage == "L3":
+        reason = "检测到 LinkML 契约结构。"
+    else:
+        reason = "检测到指标 YAML。"
+    if stage == "L1" and openrefine_available:
+        return {
+            "key": "openrefine_w3c",
+            "label": "OpenRefine + W3C 契约",
+            "stage": "L1",
+            "description": "用内置 OpenRefine 配方清洗，再导出 W3C 标准数据。",
+            "reason": reason,
+            "available": True,
+        }
+    return {**METHOD_META[stage], "reason": reason, "available": True}
+
+
+def method_for_routing(routing: Dict[str, Any] | None, *, openrefine_available: bool = False) -> Dict[str, Any]:
+    """Return the method object, upgrading an L1 clean route when OpenRefine can run it."""
+    if routing and isinstance(routing.get("method"), dict):
+        method = routing["method"]
+        if (
+            openrefine_available
+            and method.get("stage") == "L1"
+            and method.get("key") in ("rule_clean_w3c", "openrefine_w3c")
+        ):
+            return _method_for_stage("L1", openrefine_available=True)
+        return method
+    stage = (routing or {}).get("recommended_stage")
+    if stage not in METHOD_META:
+        stage = "L1"
+    return _method_for_stage(stage, legacy=True, openrefine_available=openrefine_available)
+
 
 def _detect_keys(columns: List[str]) -> Dict[str, Optional[str]]:
     lower_map = {c.lower(): c for c in columns}
@@ -37,7 +114,7 @@ def _detect_keys(columns: List[str]) -> Dict[str, Optional[str]]:
 def profile_items(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     total_rows = 0
     tables: List[Dict[str, Any]] = []
-    has_tsv, has_yaml, has_jargon, has_ws = False, False, False, False
+    has_tsv, has_yaml, has_linkml, has_jargon, has_ws = False, False, False, False, False
     keys: Dict[str, Optional[str]] = {"name_col": None, "tax_col": None, "phone_col": None, "city_col": None, "amount_col": None}
 
     for item in items:
@@ -46,6 +123,8 @@ def profile_items(items: List[Dict[str, Any]]) -> Dict[str, Any]:
             txt = item.get("text", "")
             if "metrics:" in txt or "semantic_model:" in txt:
                 has_yaml = True
+            if "classes:" in txt and any(token in txt for token in ("prefixes:", "default_range:", "imports:")):
+                has_linkml = True
             tables.append({"name": item["name"], "kind": "yaml", "rows": len(txt.splitlines()), "cols": 1, "columns": ["YAML"], "missing_rate": 0.0, "preview": []})
             continue
 
@@ -89,6 +168,7 @@ def profile_items(items: List[Dict[str, Any]]) -> Dict[str, Any]:
         "total_rows": total_rows,
         "has_schemasheet_tsv": has_tsv,
         "has_metric_yaml": has_yaml,
+        "has_linkml_contract": has_linkml,
         "has_jargon": has_jargon,
         "has_whitespace_noise": has_ws,
         "detected_keys": keys,
@@ -96,7 +176,9 @@ def profile_items(items: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-def recommend_pipeline(profile: Dict[str, Any], user_goal: Optional[str] = None) -> Dict[str, Any]:
+def recommend_pipeline(
+    profile: Dict[str, Any], user_goal: Optional[str] = None, *, openrefine_available: bool = False,
+) -> Dict[str, Any]:
     reasons: List[str] = []
     goal = (user_goal or "").strip().upper()
     keys = profile.get("detected_keys", {})
@@ -109,9 +191,9 @@ def recommend_pipeline(profile: Dict[str, Any], user_goal: Optional[str] = None)
     elif profile.get("has_metric_yaml"):
         stage, conf = "L4", 0.98
         reasons.append("检测到声明式 YAML 指标定义文件，自动路由至 L4 指标语义层。")
-    elif profile.get("has_schemasheet_tsv"):
+    elif profile.get("has_schemasheet_tsv") or profile.get("has_linkml_contract"):
         stage, conf = "L3", 0.98
-        reasons.append("检测到 LinkML Schemasheets 词表结构，自动路由至 L3 源头契约编译。")
+        reasons.append("检测到 LinkML 契约结构，自动路由至 L3 源头契约编译。")
     elif table_count >= 2 or total_rows >= 50_000 or (keys.get("tax_col") and keys.get("phone_col")) or profile.get("has_jargon"):
         stage, conf = "L2", 0.94
         if table_count >= 2 or total_rows >= 50_000:
@@ -130,6 +212,10 @@ def recommend_pipeline(profile: Dict[str, Any], user_goal: Optional[str] = None)
         "recommended_stage": stage,
         "meta": STAGE_META[stage],
         "confidence": conf,
+        "method": _method_for_stage(
+            stage, table_count=table_count, total_rows=total_rows,
+            openrefine_available=openrefine_available and stage == "L1",
+        ),
         "reasons": reasons,
         "suggested_params": {
             "name_col": keys.get("name_col") or (profile["tables"][0].get("primary_text_col") if profile.get("tables") else None),

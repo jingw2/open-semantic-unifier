@@ -373,7 +373,86 @@ def execute_l1(
     }
 
 
+
+def execute_clean_fields(
+    db: Session,
+    project_id: str,
+    job_id: str,
+    df: pd.DataFrame,
+    clean_fields: List[str],
+    progress_cb: Optional[Callable[[int, str], None]] = None,
+) -> Dict[str, Any]:
+    """Generic multi-column cleaning: trim and collapse whitespace in selected fields."""
+    fields = [field for field in dict.fromkeys(clean_fields) if field in df.columns]
+    if not fields:
+        raise ValueError("所选清洗字段不在数据表中，请重新选择至少一个字段")
+    if progress_cb:
+        progress_cb(30, f"正在清洗 {len(fields)} 个字段...")
+    result_df = df.copy()
+    changed_cells = 0
+    changed_row_mask = pd.Series(False, index=result_df.index)
+    for field in fields:
+        original = result_df[field]
+        cleaned = original.map(
+            lambda value: " ".join(str(value).strip().split()) if isinstance(value, str) else value
+        )
+        changed = (cleaned.astype(str) != original.astype(str)) & original.notna()
+        changed_cells += int(changed.sum())
+        changed_row_mask |= changed
+        result_df[field] = cleaned
+    if progress_cb:
+        progress_cb(80, "正在保存通用清洗结果...")
+    csv_art = _save_artifact(
+        db, project_id, job_id, "clean_csv", "l1_cleaned.csv",
+        result_df.to_csv(index=False).encode("utf-8-sig"),
+    )
+    rules_art = _save_artifact(
+        db, project_id, job_id, "rules_json", "l1_rules.json",
+        json.dumps({"clean_fields": fields}, ensure_ascii=False, indent=2).encode("utf-8"),
+    )
+    return {
+        "stage": "L1",
+        "clean_fields": fields,
+        "total_rows": len(result_df),
+        "changed_rows": int(changed_row_mask.sum()),
+        "changed_cells": changed_cells,
+        "artifacts": [
+            {"id": csv_art.id, "type": csv_art.artifact_type, "filename": csv_art.filename, "version": csv_art.version_no},
+            {"id": rules_art.id, "type": rules_art.artifact_type, "filename": rules_art.filename, "version": rules_art.version_no},
+        ],
+    }
+
+
 # ==================== L2 执行引擎（Splink 5.0 + Hybrid ER + 灰色队列推送） ====================
+
+
+_L2_NAME_TERMS = ("name", "company", "supplier", "customer", "名称", "公司", "供应商", "客户", "姓名")
+
+
+def resolve_l2_match_fields(params: Dict[str, Any], columns: set[str]) -> tuple[List[str], List[str], List[str]]:
+    """Return (all fields, fuzzy fields, exact fields) for the requested L2 match fields."""
+    raw = params.get("match_fields")
+    selected: List[str] = []
+    if isinstance(raw, list):
+        selected = [field for field in raw if isinstance(field, str) and field in columns]
+        if not selected:
+            raise ValueError("所选匹配字段不在数据表中，请重新选择至少一个字段")
+        selected = list(dict.fromkeys(selected))
+    else:
+        for key in ("name_col", "tax_col", "phone_col", "city_col"):
+            field = params.get(key)
+            if isinstance(field, str) and field in columns and field not in selected:
+                selected.append(field)
+        if not selected:
+            for fallback in ("company_name", "tax_id", "phone", "city"):
+                if fallback in columns:
+                    selected.append(fallback)
+    if not selected:
+        raise ValueError("L2 匹配至少需要一个匹配字段")
+    fuzzy = [field for field in selected if any(term in field.casefold() for term in _L2_NAME_TERMS)]
+    exact = [field for field in selected if field not in fuzzy]
+    return selected, fuzzy, exact
+
 
 def execute_l2(
     db: Session,
@@ -401,29 +480,19 @@ def execute_l2(
         prepared.append(d)
 
     cols = set(prepared[0].columns)
-    name_col = params.get("name_col") if params.get("name_col") in cols else ("company_name" if "company_name" in cols else None)
-    tax_col = params.get("tax_col") if params.get("tax_col") in cols else ("tax_id" if "tax_id" in cols else None)
-    phone_col = params.get("phone_col") if params.get("phone_col") in cols else ("phone" if "phone" in cols else None)
-    city_col = params.get("city_col") if params.get("city_col") in cols else ("city" if "city" in cols else None)
+    selected_fields, fuzzy_fields, exact_fields = resolve_l2_match_fields(params, cols)
 
     blocking_rules, comparisons = [], []
-    if city_col and phone_col:
-        blocking_rules.append(block_on(city_col, phone_col))
-    elif phone_col:
-        blocking_rules.append(block_on(phone_col))
-    if tax_col:
-        blocking_rules.append(block_on(tax_col))
-    if not blocking_rules and name_col:
-        blocking_rules.append(block_on(name_col))
-
-    if name_col:
-        comparisons.append(cl.LevenshteinAtThresholds(name_col, [2, 4]))
-    if tax_col:
-        comparisons.append(cl.ExactMatch(tax_col).configure(term_frequency_adjustments=True))
-    if phone_col:
-        comparisons.append(cl.ExactMatch(phone_col))
-    if city_col:
-        comparisons.append(cl.ExactMatch(city_col))
+    for field in selected_fields[:3]:
+        blocking_rules.append(block_on(field))
+    for field in fuzzy_fields:
+        comparisons.append(cl.LevenshteinAtThresholds(field, [2, 4]))
+    for field in exact_fields:
+        comparisons.append(
+            cl.ExactMatch(field).configure(term_frequency_adjustments=True)
+            if field in ("tax_id", "tax", "uscc", "credit_code")
+            else cl.ExactMatch(field)
+        )
 
     settings = SettingsCreator(
         link_type="link_and_dedupe" if len(prepared) >= 2 else "dedupe_only",
@@ -539,6 +608,7 @@ def execute_l2(
         "evaluated_pairs": len(pred_pdf),
         "reduction_pct": round((1 - len(pred_pdf) / max(naive_pairs, 1)) * 100, 4),
         "unique_clusters": int(df_clusters["cluster_id"].nunique()),
+        "match_fields": selected_fields,
         "token_cost_saved_pct": token_saved,
         "weights_artifact_id": w_art.id,
         "waterfall_artifacts": waterfall_arts,
@@ -687,6 +757,73 @@ def validate_with_schema_text(schema_text: str, entity_name: str, payload: Dict[
 
 # ==================== L4 执行引擎（YAML 指标语义层 + 版本化 DRAFT 指标） ====================
 
+
+L4_TABLE_COLUMNS = {
+    "SalesOrder": ("order_id", "order_channel", "total_amount"),
+    "ShipmentOrder": ("shipment_id", "order_id", "delivery_status"),
+    "SettlementBill": ("bill_id", "shipment_id", "settled_amount", "settlement_status"),
+}
+L4_WIDE_COLUMNS = ("order_id", "order_channel", "total_amount", "delivery_status", "settled_amount")
+
+
+def _wide_l4_tables(df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+    order_id = df["order_id"].astype(str)
+    shipment_id = df["shipment_id"].astype(str) if "shipment_id" in df.columns else order_id
+    carrier = df["carrier_code"].astype(str) if "carrier_code" in df.columns else pd.Series([""] * len(df), index=df.index)
+    bill_id = df["bill_id"].astype(str) if "bill_id" in df.columns else order_id
+    settlement_status = (
+        df["settlement_status"].astype(str) if "settlement_status" in df.columns
+        else pd.Series(["SETTLED"] * len(df), index=df.index)
+    )
+    return {
+        "SalesOrder": pd.DataFrame({
+            "order_id": order_id,
+            "order_channel": df["order_channel"].astype(str),
+            "total_amount": pd.to_numeric(df["total_amount"], errors="coerce"),
+        }),
+        "ShipmentOrder": pd.DataFrame({
+            "shipment_id": shipment_id,
+            "order_id": order_id,
+            "carrier_code": carrier,
+            "delivery_status": df["delivery_status"].astype(str),
+        }),
+        "SettlementBill": pd.DataFrame({
+            "bill_id": bill_id,
+            "shipment_id": shipment_id,
+            "settled_amount": pd.to_numeric(df["settled_amount"], errors="coerce"),
+            "settlement_status": settlement_status,
+        }),
+    }
+
+
+def build_l4_tables(dfs: List[pd.DataFrame]) -> Dict[str, pd.DataFrame]:
+    """Map selected tables onto the metric model, or explain exactly what is missing."""
+    for df in dfs:
+        if set(L4_WIDE_COLUMNS) <= set(df.columns):
+            return _wide_l4_tables(df)
+    tables: Dict[str, pd.DataFrame] = {}
+    for df in dfs:
+        for role, required in L4_TABLE_COLUMNS.items():
+            if role not in tables and set(required) <= set(df.columns):
+                frame = df.copy()
+                if role == "SalesOrder":
+                    frame["total_amount"] = pd.to_numeric(frame["total_amount"], errors="coerce")
+                elif role == "SettlementBill":
+                    frame["settled_amount"] = pd.to_numeric(frame["settled_amount"], errors="coerce")
+                tables[role] = frame
+                break
+    missing = [role for role in L4_TABLE_COLUMNS if role not in tables]
+    if missing:
+        raise ValueError(
+            "所选数据源不包含 L4 指标所需的订单/物流/结算字段，缺少表："
+            + "、".join(missing)
+            + "。请选择三张标准表，或一张同时包含 "
+            + "、".join(L4_WIDE_COLUMNS)
+            + " 的宽表；也可以加载 L4 示例。"
+        )
+    return tables
+
+
 def compile_and_query_metric_yaml(yaml_text: str, db_path: str, metric_name: str, group_by: Optional[str] = None) -> Tuple[str, List[Dict[str, Any]], Dict[str, Any]]:
     spec = yaml.safe_load(yaml_text)
     metrics = spec.get("metrics", {})
@@ -713,6 +850,8 @@ def execute_l4(
     metric_name: str = "net_gmv",
     group_by: Optional[str] = "order_channel",
     progress_cb: Optional[Callable[[int, str], None]] = None,
+    tables: Optional[Dict[str, pd.DataFrame]] = None,
+    data_kind: str = "demo",
 ) -> Dict[str, Any]:
     if progress_cb:
         progress_cb(30, "正在准备标准业务库并编译 YAML 指标语义层...")
@@ -721,12 +860,19 @@ def execute_l4(
     duck_key = f"projects/{project_id}/duckdb/unified.duckdb"
     with tempfile.TemporaryDirectory() as tmp:
         duck_path = os.path.join(tmp, "unified.duckdb")
-        try:
-            storage.materialize_to_local(duck_key, duck_path)
-        except Exception:
-            # 尚未跑过 L3 时自动初始化示范库
-            execute_l3(db, project_id, job_id)
-            storage.materialize_to_local(duck_key, duck_path)
+        if tables is not None:
+            con = duckdb.connect(duck_path)
+            for role, frame in tables.items():
+                con.register(f"{role}_source", frame)
+                con.execute(f"CREATE TABLE {role} AS SELECT * FROM {role}_source")
+            con.close()
+        else:
+            try:
+                storage.materialize_to_local(duck_key, duck_path)
+            except Exception:
+                # 尚未跑过 L3 时自动初始化示范库
+                execute_l3(db, project_id, job_id)
+                storage.materialize_to_local(duck_key, duck_path)
 
         con = duckdb.connect(duck_path, read_only=True)
         op_val = con.execute("SELECT SUM(total_amount) FROM SalesOrder WHERE order_channel='CROSS_BORDER_DTC'").fetchone()[0]
@@ -743,6 +889,7 @@ def execute_l4(
         "metrics_version": art.version_no,
         "selected_metric": metric_name,
         "metric_meta": meta,
+        "data_source_kind": data_kind,
         "compiled_sql": sql,
         "result_rows": rows,
         "conflict_rows": [

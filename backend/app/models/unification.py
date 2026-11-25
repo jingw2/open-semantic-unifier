@@ -1,7 +1,7 @@
 """Persistent source identity and entity records for unification."""
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, ForeignKeyConstraint, Integer, JSON, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, ForeignKeyConstraint, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -79,6 +79,7 @@ class UnificationRun(Base):
     trace_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     idempotency_key: Mapped[str] = mapped_column(String(200), nullable=False)
     payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    input_source_system: Mapped[str | None] = mapped_column(String(160), nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING")
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     result_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -86,6 +87,35 @@ class UnificationRun(Base):
     last_interruption: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now, nullable=False)
+
+
+class DecisionModelCall(Base):
+    """One typed decision-model outcome for a candidate pair, committed with its run."""
+    __tablename__ = "decision_model_calls"
+    __table_args__ = (
+        UniqueConstraint("run_id", "left_source_revision_id", "right_source_revision_id", name="uq_decision_model_call_pair"),
+    )
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(String(32), ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=False)
+    run_id: Mapped[str] = mapped_column(String(32), ForeignKey("unification_runs.id", ondelete="CASCADE"), index=True, nullable=False)
+    left_source_revision_id: Mapped[str] = mapped_column(String(32), ForeignKey("unified_source_revisions.id", ondelete="CASCADE"), nullable=False)
+    right_source_revision_id: Mapped[str] = mapped_column(String(32), ForeignKey("unified_source_revisions.id", ondelete="CASCADE"), nullable=False)
+    provider_kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    provider_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    model_version: Mapped[str] = mapped_column(String(140), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    verdict: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    distribution_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    latency_ms: Mapped[float] = mapped_column(Float, nullable=False)
+    usage_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    retryable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    trace_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, nullable=False)
 
 
 class UnificationSnapshot(Base):

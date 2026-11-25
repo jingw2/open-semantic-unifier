@@ -14,7 +14,9 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_user, require_resource_access, require_role
 from app.core.db import get_db
-from app.models.unification import IdentityChangeRecord, IdentityConflictRecord, IdentityDecisionRecord, ProjectSnapshotState, SourceRecord, SourceRevision, UnifiedEntity, UnificationRun, UnificationSchemeVersion, UnificationSnapshot
+from app.demo.entity_demo import DEMO_INPUT_VERSION, DEMO_MATCH_FIELDS, DEMO_RECORDS, DEMO_SCHEME_KEY, DEMO_SOURCE_SYSTEM, demo_scheme
+from app.models.entities import Project
+from app.models.unification import DecisionModelCall, IdentityChangeRecord, IdentityConflictRecord, IdentityDecisionRecord, ProjectSnapshotState, SourceRecord, SourceRevision, UnifiedEntity, UnificationRun, UnificationSchemeVersion, UnificationSnapshot
 from app.services.unification.identity import DecisionInput, IdentityConflict, apply_decision, find_current_member_conflicts, record_identity_conflict, resolve_entity_id, set_attribute_override, split_entity, undo_identity_change
 from app.services.unification.schemes import (
     CatalogEntity,
@@ -31,8 +33,18 @@ from app.services.unification.schemes import (
     save_catalog_entity,
     save_scheme,
 )
+from app.services.provider_selection import select_decision_provider
 from app.services.unification.contracts import IngestMode, SourceRecordInput
 from app.services.unification.ingest import ingest_batch
+from app.services.unification.reviews import (
+    AUTO_SEPARATED_CODES,
+    CONSEQUENCE,
+    auto_separated_items,
+    compare_attributes,
+    explain_review,
+    record_payload,
+    suggest_action,
+)
 from app.services.unification.matching import CannotLink, MatchAction, match_records
 from app.services.unification.locking import lock_project_identity_state
 from app.services.unification.releases import RunConflict, diff_snapshots, get_current_snapshot, publish_snapshot, rollback_snapshot, submit_run as submit_run_service
@@ -81,6 +93,10 @@ class SplitInput(BaseModel):
     source_record_ids: list[str] = Field(min_length=1)
     reason: str
     expected_revision: int = Field(ge=1)
+
+
+class DemoRunRequest(BaseModel):
+    match_fields: list[str] = Field(default_factory=list)
 
 
 class RunSubmissionRequest(BaseModel):
@@ -558,6 +574,83 @@ def scheme_revision(
     return scheme.model_dump(mode="json")
 
 
+@router.post("/projects/{project_id}/unification/demo", status_code=status.HTTP_202_ACCEPTED)
+def create_unification_demo(
+    project_id: str,
+    request: DemoRunRequest | None = None,
+    ctx: dict[str, str] = Depends(require_role("admin", "editor")),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    project = db.get(Project, project_id)
+    if project is None or project.workspace_id != ctx["workspace_id"]:
+        raise HTTPException(status_code=404, detail="项目不存在")
+    requested_fields = list(dict.fromkeys((request.match_fields if request else []) or []))
+    invalid_fields = [field for field in requested_fields if field not in DEMO_MATCH_FIELDS]
+    if invalid_fields:
+        raise HTTPException(status_code=422, detail=f"不支持的实体匹配字段: {', '.join(invalid_fields)}")
+    match_fields = requested_fields or list(DEMO_MATCH_FIELDS)
+    input_version = DEMO_INPUT_VERSION if match_fields == list(DEMO_MATCH_FIELDS) else f"{DEMO_INPUT_VERSION}:{'-'.join(match_fields)}"
+    provider = select_decision_provider(db, project.workspace_id)
+    scheme = MatchScheme.model_validate(demo_scheme(provider.id if provider else None, match_fields))
+    saved = save_scheme(db, project_id=project_id, scheme_key=DEMO_SCHEME_KEY, scheme=scheme)
+    version_row = db.scalar(select(UnificationSchemeVersion).where(
+        UnificationSchemeVersion.project_id == project_id,
+        UnificationSchemeVersion.scheme_key == DEMO_SCHEME_KEY,
+        UnificationSchemeVersion.revision == saved.revision,
+    ))
+    if version_row is None:
+        raise HTTPException(status_code=409, detail="demo scheme revision not found")
+    ingested = ingest_batch(
+        db,
+        project_id=project_id,
+        records=[
+            SourceRecordInput(
+                project_id=project_id,
+                source_system=record["source_system"],
+                dataset=record["dataset"],
+                source_record_id=record["source_record_id"],
+                attributes=record["attributes"],
+            )
+            for record in DEMO_RECORDS
+        ],
+        mode=IngestMode.SYNC,
+        input_version=input_version,
+    )
+    if not ingested.accepted:
+        raise HTTPException(status_code=422, detail=[asdict(issue) for issue in ingested.errors])
+    db.commit()
+    payload_hash = hashlib.sha256(json.dumps({
+        "project_id": project_id,
+        "input_version": input_version,
+        "scheme_revision": version_row.id,
+        "input_source_system": DEMO_SOURCE_SYSTEM,
+    }, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+    try:
+        run = submit_run_service(
+            db,
+            project_id=project_id,
+            input_version=input_version,
+            scheme_revision=version_row.id,
+            idempotency_key=input_version,
+            payload_hash=payload_hash,
+            input_source_system=DEMO_SOURCE_SYSTEM,
+        )
+    except RunConflict:
+        run = db.scalar(select(UnificationRun).where(
+            UnificationRun.project_id == project_id,
+            UnificationRun.idempotency_key == input_version,
+        ))
+        if run is None:
+            raise HTTPException(status_code=409, detail="demo run conflict")
+    dispatch_unification_run(run.id)
+    return {
+        "run_id": run.id,
+        "scheme_key": DEMO_SCHEME_KEY,
+        "revision": version_row.revision,
+        "match_fields": match_fields,
+    }
+
+
 @router.post("/projects/{project_id}/unification/runs", status_code=status.HTTP_202_ACCEPTED)
 def submit_unification_run(
     project_id: str,
@@ -740,6 +833,52 @@ def _run_payload(run: UnificationRun) -> dict[str, Any]:
     }
 
 
+@router.get("/projects/{project_id}/unification/model-calls")
+def list_decision_model_calls(
+    project_id: str,
+    run_id: str | None = Query(default=None, min_length=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    ctx: dict[str, str] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    statement = select(DecisionModelCall).where(DecisionModelCall.project_id == project_id)
+    if run_id:
+        statement = statement.where(DecisionModelCall.run_id == run_id)
+    total = db.scalar(select(func.count()).select_from(statement.subquery())) or 0
+    rows = db.scalars(statement.order_by(
+        DecisionModelCall.created_at.desc(), DecisionModelCall.id.desc(),
+    ).offset(offset).limit(limit)).all()
+    return {
+        "items": [{
+            "id": item.id,
+            "project_id": item.project_id,
+            "run_id": item.run_id,
+            "left_source_revision_id": item.left_source_revision_id,
+            "right_source_revision_id": item.right_source_revision_id,
+            "provider_kind": item.provider_kind,
+            "provider_key": item.provider_key,
+            "model_version": item.model_version,
+            "prompt_version": item.prompt_version,
+            "verdict": item.verdict,
+            "confidence": item.confidence,
+            "distribution": item.distribution_json,
+            "explanation": item.explanation,
+            "latency_ms": item.latency_ms,
+            "usage": item.usage_json,
+            "cost_usd": item.cost_usd,
+            "error_code": item.error_code,
+            "error_message": item.error_message,
+            "retryable": item.retryable,
+            "trace_id": item.trace_id,
+            "created_at": item.created_at.isoformat(),
+        } for item in rows],
+        "limit": limit,
+        "offset": offset,
+        "total": total,
+    }
+
+
 @router.get("/projects/{project_id}/unification/runs")
 def list_unification_runs(
     project_id: str,
@@ -784,9 +923,15 @@ def list_unification_reviews(
     ))
     if run is None or run.result_json is None:
         raise HTTPException(status_code=404, detail="completed run not found")
-    pairs = [item for item in run.result_json.get("pairs", []) if item.get("action") == "REVIEW"]
+    all_pairs = list(run.result_json.get("pairs", []))
+    pairs = [item for item in all_pairs if item.get("action") == "REVIEW"]
     pairs.sort(key=lambda item: (item.get("left_source_revision_id", ""), item.get("right_source_revision_id", "")))
-    revision_ids = {revision_id for pair in pairs for revision_id in (
+    auto_pairs = [
+        item for item in all_pairs
+        if item.get("action") == "DISTINCT"
+        and set(item.get("evidence_codes") or ()) & AUTO_SEPARATED_CODES
+    ]
+    revision_ids = {revision_id for pair in pairs + auto_pairs for revision_id in (
         pair.get("left_source_revision_id"), pair.get("right_source_revision_id"),
     ) if revision_id}
     revisions = db.scalars(select(SourceRevision).join(
@@ -803,6 +948,8 @@ def list_unification_reviews(
         tuple(sorted((resolve_entity_id(db, item.left_entity_id), resolve_entity_id(db, item.right_entity_id))))
         for item in active_decisions
     }
+    scheme_version = db.get(UnificationSchemeVersion, run.scheme_revision)
+    scheme = MatchScheme.model_validate(scheme_version.scheme_json) if scheme_version else None
     pending = []
     for pair in pairs:
         left = revisions_by_id.get(pair.get("left_source_revision_id"))
@@ -814,8 +961,29 @@ def list_unification_reviews(
         if left_entity == right_entity:
             continue
         if tuple(sorted((left_entity, right_entity))) not in decision_pairs:
-            pending.append(pair)
-    return {"items": pending[offset:offset + limit], "limit": limit, "offset": offset, "total": len(pending), "run_id": run.id}
+            left_payload = record_payload(left, scheme)
+            right_payload = record_payload(right, scheme)
+            codes = tuple(pair.get("evidence_codes") or ())
+            recommendation = pair.get("recommendation") or {}
+            pending.append({
+                **pair,
+                "left": left_payload,
+                "right": right_payload,
+                "comparison": compare_attributes(left_payload["attributes"], right_payload["attributes"], scheme),
+                "why": explain_review(codes),
+                "suggestion": suggest_action(recommendation.get("verdict"), codes),
+                "consequence": CONSEQUENCE,
+            })
+    auto_separated_all = auto_separated_items(run.result_json, revisions_by_id, scheme, cap=10 ** 9)
+    return {
+        "items": pending[offset:offset + limit],
+        "limit": limit,
+        "offset": offset,
+        "total": len(pending),
+        "run_id": run.id,
+        "auto_separated": auto_separated_all[:20],
+        "auto_separated_total": len(auto_separated_all),
+    }
 
 
 @router.post("/projects/{project_id}/unification/reviews", status_code=status.HTTP_201_CREATED)

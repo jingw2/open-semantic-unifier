@@ -1,0 +1,92 @@
+[
+  {
+    "case_id": "hld-vendor-01",
+    "left": "vendor:a01",
+    "right": "vendor:b01",
+    "truth": "SAME",
+    "expected_action": "AUTO_MATCH",
+    "required_candidate": true,
+    "reason": "Same trusted VAT identifier and compatible names."
+  },
+  {
+    "case_id": "hld-vendor-02",
+    "left": "vendor:a02",
+    "right": "vendor:b02",
+    "truth": "SAME",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "Similar names without a strong identifier."
+  },
+  {
+    "case_id": "hld-vendor-03",
+    "left": "vendor:a03",
+    "right": "vendor:b03",
+    "truth": "DIFFERENT",
+    "expected_action": "DISTINCT",
+    "required_candidate": true,
+    "reason": "Same name cannot override a VAT conflict."
+  },
+  {
+    "case_id": "hld-vendor-04",
+    "left": "vendor:a04",
+    "right": "vendor:b04",
+    "truth": "DIFFERENT",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "A shared switchboard number is not a legal identity."
+  },
+  {
+    "case_id": "hld-vendor-05",
+    "left": "vendor:a05",
+    "right": "vendor:b05",
+    "truth": "SAME",
+    "expected_action": "AUTO_MATCH",
+    "required_candidate": true,
+    "reason": "Same trusted VAT identifier, punctuation-only name difference."
+  },
+  {
+    "case_id": "hld-vendor-06",
+    "left": "vendor:a06",
+    "right": "vendor:b06",
+    "truth": "SAME",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "Exact name but the trusted identifier exists on one side only."
+  },
+  {
+    "case_id": "hld-vendor-07",
+    "left": "vendor:a07",
+    "right": "vendor:b07",
+    "truth": "SAME",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "Small spelling variant without a strong identifier."
+  },
+  {
+    "case_id": "hld-vendor-08",
+    "left": "vendor:a08",
+    "right": "vendor:b08",
+    "truth": "DIFFERENT",
+    "expected_action": "DISTINCT",
+    "required_candidate": true,
+    "reason": "Similar names with conflicting trusted identifiers."
+  },
+  {
+    "case_id": "hld-vendor-09",
+    "left": "vendor:a09",
+    "right": "vendor:b09",
+    "truth": "SAME",
+    "expected_action": "AUTO_MATCH",
+    "required_candidate": true,
+    "reason": "Same trusted VAT identifier; address is not a conflict field."
+  },
+  {
+    "case_id": "hld-vendor-10",
+    "left": "vendor:a10",
+    "right": "vendor:b10",
+    "truth": "SAME",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "Same company under an abbreviation; candidate rules are expected to miss it."
+  }
+]

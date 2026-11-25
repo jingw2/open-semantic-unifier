@@ -1,0 +1,47 @@
+{
+  "entity_type": "vendor",
+  "identity_granularity": "legal_entity",
+  "field_map": {
+    "name": "name",
+    "tax_id": "tax_id",
+    "phone": "phone",
+    "address": "address"
+  },
+  "normalizers": [
+    "unicode_nfkc",
+    "trim",
+    "casefold"
+  ],
+  "strong_identifiers": [
+    "tax_id"
+  ],
+  "conflict_constraints": [
+    {
+      "field": "tax_id",
+      "action": "veto_auto_merge"
+    }
+  ],
+  "candidate_rules": [
+    {
+      "kind": "exact",
+      "fields": [
+        "tax_id"
+      ]
+    },
+    {
+      "kind": "exact",
+      "fields": [
+        "phone"
+      ]
+    },
+    {
+      "kind": "name_similarity",
+      "field": "name",
+      "threshold": 0.82
+    }
+  ],
+  "revision": 1,
+  "identifier_authority": "explicitly_trusted_in_this_synthetic_holdout",
+  "nulls_never_equal": true,
+  "prompt_version": "entity-pair-choice-v1"
+}

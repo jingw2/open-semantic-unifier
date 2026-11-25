@@ -1,0 +1,242 @@
+[
+  {
+    "record_ref": "vendor:a01",
+    "source_system": "procurement",
+    "dataset": "vendor_hld",
+    "source_record_id": "HV-001",
+    "attributes": {
+      "name": "Harborline Logistics Ltd",
+      "tax_id": "HLD-VAT-1001",
+      "phone": "+1-555-0101",
+      "address": "18 Quay Street, Ficton"
+    }
+  },
+  {
+    "record_ref": "vendor:b01",
+    "source_system": "finance",
+    "dataset": "vendor_hld",
+    "source_record_id": "HV-002",
+    "attributes": {
+      "name": "Harborline Logistics Limited",
+      "tax_id": "HLD-VAT-1001",
+      "phone": "+1-555-0102",
+      "address": "18 Quay St, Ficton"
+    }
+  },
+  {
+    "record_ref": "vendor:a02",
+    "source_system": "procurement",
+    "dataset": "vendor_hld",
+    "source_record_id": "HV-003",
+    "attributes": {
+      "name": "Bluefin Marine Supply",
+      "tax_id": null,
+      "phone": null,
+      "address": "2 Dock Lane, Ficton"
+    }
+  },
+  {
+    "record_ref": "vendor:b02",
+    "source_system": "finance",
+    "dataset": "vendor_hld",
+    "source_record_id": "HV-004",
+    "attributes": {
+      "name": "Bluefin Marine Supplies",
+      "tax_id": null,
+      "phone": null,
+      "address": "2 Dock Ln, Ficton"
+    }
+  },
+  {
+    "record_ref": "vendor:a03",
+    "source_system": "procurement",
+    "dataset": "vendor_hld",
+    "source_record_id": "HV-005",
+    "attributes": {
+      "name": "Cedar and Pine Furniture",
+      "tax_id": "HLD-VAT-2003",
+      "phone": null,
+      "address": "7 Oak Road, Ficton"
+    }
+  },
+  {
+    "record_ref": "vendor:b03",
+    "source_system": "finance",
+    "dataset": "vendor_hld",
+    "source_record_id": "HV-006",
+    "attributes": {
+      "name": "Cedar & Pine Furniture",
+      "tax_id": "HLD-VAT-2004",
+      "phone": null,
+      "address": "7 Oak Rd, Ficton"
+    }
+  },
+  {
+    "record_ref": "vendor:a04",
+    "source_system": "procurement",
+    "dataset": "vendor_hld",
+    "source_record_id": "HV-007",
+    "attributes": {
+      "name": "Northgate Dental Clinic",
+      "tax_id": null,
+      "phone": "+1-555-0103",
+      "address": "3 North Way, Ficton"
+    }
+  },
+  {
+    "record_ref": "vendor:b04",
+    "source_system": "finance",
+    "dataset": "vendor_hld",
+    "source_record_id": "HV-008",
+    "attributes": {
+      "name": "Northgate Dental Group",
+      "tax_id": null,
+      "phone": "+1-555-0103",
+      "address": "55 North Street, Ficton"
+    }
+  },
+  {
+    "record_ref": "vendor:a05",
+    "source_system": "procurement",
+    "dataset": "vendor_hld",
+    "source_record_id": "HV-009",
+    "attributes": {
+      "name": "Zenith Analytics Inc.",
+      "tax_id": "HLD-VAT-3005",
+      "phone": null,
+      "address": "9 Summit Plaza, Ficton"
+    }
+  },
+  {
+    "record_ref": "vendor:b05",
+    "source_system": "finance",
+    "dataset": "vendor_hld",
+    "source_record_id": "HV-010",
+    "attributes": {
+      "name": "Zenith Analytics Inc",
+      "tax_id": "HLD-VAT-3005",
+      "phone": null,
+      "address": "9 Summit Plz, Ficton"
+    }
+  },
+  {
+    "record_ref": "vendor:a06",
+    "source_system": "procurement",
+    "dataset": "vendor_hld",
+    "source_record_id": "HV-011",
+    "attributes": {
+      "name": "Orion Textiles Pvt Ltd",
+      "tax_id": "HLD-VAT-3106",
+      "phone": null,
+      "address": "12 Loom Street, Ficton"
+    }
+  },
+  {
+    "record_ref": "vendor:b06",
+    "source_system": "finance",
+    "dataset": "vendor_hld",
+    "source_record_id": "HV-012",
+    "attributes": {
+      "name": "Orion Textiles Pvt Ltd",
+      "tax_id": null,
+      "phone": null,
+      "address": "12 Loom St, Ficton"
+    }
+  },
+  {
+    "record_ref": "vendor:a07",
+    "source_system": "procurement",
+    "dataset": "vendor_hld",
+    "source_record_id": "HV-013",
+    "attributes": {
+      "name": "Silverline Shipping",
+      "tax_id": null,
+      "phone": null,
+      "address": "4 Harbor Road, Ficton"
+    }
+  },
+  {
+    "record_ref": "vendor:b07",
+    "source_system": "finance",
+    "dataset": "vendor_hld",
+    "source_record_id": "HV-014",
+    "attributes": {
+      "name": "Silverline Shippng",
+      "tax_id": null,
+      "phone": null,
+      "address": "4 Harbour Rd, Ficton"
+    }
+  },
+  {
+    "record_ref": "vendor:a08",
+    "source_system": "procurement",
+    "dataset": "vendor_hld",
+    "source_record_id": "HV-015",
+    "attributes": {
+      "name": "Meridian Foods",
+      "tax_id": "HLD-VAT-4008",
+      "phone": null,
+      "address": "21 Market Square, Ficton"
+    }
+  },
+  {
+    "record_ref": "vendor:b08",
+    "source_system": "finance",
+    "dataset": "vendor_hld",
+    "source_record_id": "HV-016",
+    "attributes": {
+      "name": "Meridian Foodservice",
+      "tax_id": "HLD-VAT-4009",
+      "phone": null,
+      "address": "21 Market Sq, Ficton"
+    }
+  },
+  {
+    "record_ref": "vendor:a09",
+    "source_system": "procurement",
+    "dataset": "vendor_hld",
+    "source_record_id": "HV-017",
+    "attributes": {
+      "name": "Atlas Precision Tools",
+      "tax_id": "HLD-VAT-5009",
+      "phone": null,
+      "address": "6 Foundry Lane, Ficton"
+    }
+  },
+  {
+    "record_ref": "vendor:b09",
+    "source_system": "finance",
+    "dataset": "vendor_hld",
+    "source_record_id": "HV-018",
+    "attributes": {
+      "name": "Atlas Precision Tools",
+      "tax_id": "HLD-VAT-5009",
+      "phone": null,
+      "address": "88 Industrial Park, Ficton"
+    }
+  },
+  {
+    "record_ref": "vendor:a10",
+    "source_system": "procurement",
+    "dataset": "vendor_hld",
+    "source_record_id": "HV-019",
+    "attributes": {
+      "name": "Lumen Health Systems",
+      "tax_id": null,
+      "phone": null,
+      "address": "30 Care Avenue, Ficton"
+    }
+  },
+  {
+    "record_ref": "vendor:b10",
+    "source_system": "finance",
+    "dataset": "vendor_hld",
+    "source_record_id": "HV-020",
+    "attributes": {
+      "name": "LH Systems",
+      "tax_id": null,
+      "phone": null,
+      "address": null
+    }
+  }
+]

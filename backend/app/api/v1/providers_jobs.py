@@ -6,17 +6,24 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_resource_access, get_current_user, require_role
+from app.core.config import settings
 from app.core.db import SessionLocal, get_db
 from app.core.security import decrypt_secret, encrypt_secret, mask_secret
 from app.models.entities import DataSource, Job, LLMProvider
-from app.services.llm_client import BUILTIN_PROVIDERS, test_llm_connectivity
+from app.services.decision_models.contracts import DecisionError, DecisionRequest, DecisionSuggestion
+from app.services.decision_models.providers import DECISION_PROVIDER_KINDS, adapter_for_kind
+from app.services.etl import SUPPORTED_SINK_TYPES, validate_table_name
+from app.services.llm_client import BUILTIN_PROVIDERS, ProviderConfig, test_llm_connectivity
 from app.workers.tasks import dispatch_job
 
 router = APIRouter(prefix="/api/v1", dependencies=[Depends(require_resource_access)], tags=["LLM Providers & Async Jobs"])
+
+PROVIDER_KINDS = {"openai_compatible", "perplexity_decisions", "typesafe_jev"}
+DEFAULT_PROMPT_VERSION = "entity-pair-choice-v1"
 
 
 class SaveProviderRequest(BaseModel):
@@ -27,6 +34,56 @@ class SaveProviderRequest(BaseModel):
     api_key: str = ""
     is_custom: bool = True
     is_default: bool = False
+    provider_kind: str = "openai_compatible"
+    send_fields: List[str] = []
+    timeout_seconds: float | None = Field(default=None, gt=0)
+    max_retries: int = Field(default=0, ge=0)
+    prompt_version: str = DEFAULT_PROMPT_VERSION
+
+    @field_validator("provider_kind")
+    @classmethod
+    def validate_provider_kind(cls, value: str) -> str:
+        if value not in PROVIDER_KINDS:
+            raise ValueError("provider_kind must be one of openai_compatible, perplexity_decisions, typesafe_jev")
+        return value
+
+    @field_validator("send_fields")
+    @classmethod
+    def validate_send_fields(cls, fields: List[str]) -> List[str]:
+        if any(not isinstance(field, str) or not field.strip() for field in fields):
+            raise ValueError("send_fields entries must be non-empty strings")
+        return fields
+
+    @field_validator("prompt_version")
+    @classmethod
+    def validate_prompt_version(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("prompt_version must be non-empty")
+        return value
+
+    @model_validator(mode="after")
+    def validate_decision_send_fields(self):
+        if self.provider_kind in DECISION_PROVIDER_KINDS and not self.send_fields:
+            raise ValueError("decision providers require at least one send field")
+        return self
+
+
+def _provider_payload(p: LLMProvider) -> Dict[str, Any]:
+    return {
+        "id": p.id,
+        "provider_key": p.provider_key,
+        "name": p.name,
+        "base_url": p.base_url,
+        "default_model": p.default_model,
+        "api_key_masked": mask_secret(decrypt_secret(p.encrypted_api_key)) if p.encrypted_api_key else "",
+        "is_custom": p.is_custom,
+        "is_default": p.is_default,
+        "provider_kind": p.provider_kind,
+        "send_fields": p.send_fields_json,
+        "timeout_seconds": p.timeout_seconds,
+        "max_retries": p.max_retries,
+        "prompt_version": p.prompt_version,
+    }
 
 
 class SubmitJobRequest(BaseModel):
@@ -34,25 +91,24 @@ class SubmitJobRequest(BaseModel):
     datasource_ids: List[str] = []
     provider_id: Optional[str] = None
     params: Dict[str, Any] = {}
+    etl_target_datasource_id: Optional[str] = None
+    etl_target_table: Optional[str] = None
+    etl_write_mode: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_etl_options(self):
+        present = [f is not None for f in (self.etl_target_datasource_id, self.etl_target_table, self.etl_write_mode)]
+        if any(present) and not all(present):
+            raise ValueError("etl_target_datasource_id, etl_target_table and etl_write_mode must all be set together")
+        if self.etl_write_mode is not None and self.etl_write_mode not in ("replace", "append"):
+            raise ValueError("etl_write_mode must be replace or append")
+        return self
 
 
 @router.get("/providers")
 def list_providers(ctx: Dict[str, str] = Depends(get_current_user), db: Session = Depends(get_db)):
     saved = db.query(LLMProvider).filter(LLMProvider.workspace_id == ctx["workspace_id"]).all()
-    saved_out = [
-        {
-            "id": p.id,
-            "provider_key": p.provider_key,
-            "name": p.name,
-            "base_url": p.base_url,
-            "default_model": p.default_model,
-            "api_key_masked": mask_secret(decrypt_secret(p.encrypted_api_key)) if p.encrypted_api_key else "",
-            "is_custom": p.is_custom,
-            "is_default": p.is_default,
-        }
-        for p in saved
-    ]
-    return {"builtin_presets": BUILTIN_PROVIDERS, "configured": saved_out}
+    return {"builtin_presets": BUILTIN_PROVIDERS, "configured": [_provider_payload(p) for p in saved]}
 
 
 @router.post("/providers")
@@ -63,28 +119,72 @@ def create_provider(
 ):
     if req.is_default:
         db.query(LLMProvider).filter(LLMProvider.workspace_id == ctx["workspace_id"]).update({"is_default": False})
+    base_url = req.base_url.strip()
+    default_model = req.default_model.strip()
+    if req.provider_kind in DECISION_PROVIDER_KINDS:
+        preset = next((item for item in BUILTIN_PROVIDERS if item["provider_key"] == req.provider_key), None)
+        if preset and not base_url:
+            base_url = preset["base_url"]
+        if preset and not default_model:
+            default_model = preset["default_model"]
+    timeout_seconds = req.timeout_seconds if req.timeout_seconds is not None else settings.llm_timeout_seconds
     p = LLMProvider(
         workspace_id=ctx["workspace_id"],
         provider_key=req.provider_key.strip(),
         name=req.name.strip(),
-        base_url=req.base_url.strip(),
-        default_model=req.default_model.strip(),
+        base_url=base_url,
+        default_model=default_model,
         encrypted_api_key=encrypt_secret(req.api_key.strip()) if req.api_key.strip() else "",
         is_custom=req.is_custom,
         is_default=req.is_default,
+        provider_kind=req.provider_kind,
+        send_fields_json=list(req.send_fields),
+        timeout_seconds=timeout_seconds,
+        max_retries=req.max_retries,
+        prompt_version=req.prompt_version.strip(),
     )
     db.add(p)
     db.commit()
-    return {
-        "id": p.id,
-        "provider_key": p.provider_key,
-        "name": p.name,
-        "base_url": p.base_url,
-        "default_model": p.default_model,
-        "api_key_masked": mask_secret(req.api_key.strip()) if req.api_key.strip() else "",
-        "is_custom": p.is_custom,
-        "is_default": p.is_default,
-    }
+    return _provider_payload(p)
+
+
+@router.put("/providers/{provider_id}")
+def update_provider(
+    provider_id: str,
+    req: SaveProviderRequest,
+    ctx: Dict[str, str] = Depends(require_role("admin", "editor")),
+    db: Session = Depends(get_db),
+):
+    p = db.query(LLMProvider).filter(LLMProvider.id == provider_id, LLMProvider.workspace_id == ctx["workspace_id"]).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Provider 不存在")
+    if req.is_default:
+        db.query(LLMProvider).filter(
+            LLMProvider.workspace_id == ctx["workspace_id"], LLMProvider.id != p.id,
+        ).update({"is_default": False})
+    base_url = req.base_url.strip()
+    default_model = req.default_model.strip()
+    if req.provider_kind in DECISION_PROVIDER_KINDS:
+        preset = next((item for item in BUILTIN_PROVIDERS if item["provider_key"] == req.provider_key), None)
+        if preset and not base_url:
+            base_url = preset["base_url"]
+        if preset and not default_model:
+            default_model = preset["default_model"]
+    p.provider_key = req.provider_key.strip()
+    p.name = req.name.strip()
+    p.base_url = base_url
+    p.default_model = default_model
+    if req.api_key.strip():
+        p.encrypted_api_key = encrypt_secret(req.api_key.strip())
+    p.is_custom = req.is_custom
+    p.is_default = req.is_default
+    p.provider_kind = req.provider_kind
+    p.send_fields_json = list(req.send_fields)
+    p.timeout_seconds = req.timeout_seconds if req.timeout_seconds is not None else settings.llm_timeout_seconds
+    p.max_retries = req.max_retries
+    p.prompt_version = req.prompt_version.strip()
+    db.commit()
+    return _provider_payload(p)
 
 
 @router.delete("/providers/{provider_id}")
@@ -110,6 +210,8 @@ def test_saved_provider(
     p = db.query(LLMProvider).filter(LLMProvider.id == provider_id, LLMProvider.workspace_id == ctx["workspace_id"]).first()
     if not p:
         raise HTTPException(status_code=404, detail="Provider 不存在")
+    if p.provider_kind in DECISION_PROVIDER_KINDS:
+        return _test_decision_provider(p)
     try:
         return test_llm_connectivity(
             {
@@ -122,6 +224,50 @@ def test_saved_provider(
         )
     except Exception as e:
         return {"status": "error", "message": f"连接失败: {e}"}
+
+
+def _test_decision_provider(p: LLMProvider) -> dict[str, Any]:
+    """Run one controlled Acme/Acme sample pair through a configured decision provider."""
+    adapter = adapter_for_kind(p.provider_kind)
+    if adapter is None:
+        return {"status": "error", "message": f"unsupported provider kind {p.provider_kind}"}
+    try:
+        api_key = decrypt_secret(p.encrypted_api_key) if p.encrypted_api_key else ""
+    except Exception:
+        return {"status": "error", "message": "credential_unavailable: provider credentials cannot be decrypted"}
+    outcome = adapter.invoke(DecisionRequest(
+        project_id="provider-test",
+        run_id="provider-test",
+        input_version="provider-test",
+        scheme_revision="provider-test",
+        prompt_version=p.prompt_version or DEFAULT_PROMPT_VERSION,
+        entity_type="organization",
+        identity_granularity="legal_entity",
+        left={"name": "Acme"},
+        right={"name": "Acme"},
+        field_names=tuple(p.send_fields_json) if p.send_fields_json else ("name",),
+    ), ProviderConfig(
+        provider_key=p.provider_key,
+        model=p.default_model,
+        base_url=p.base_url,
+        api_key=api_key,
+        name=p.name,
+        timeout_seconds=p.timeout_seconds or settings.llm_timeout_seconds,
+        max_retries=p.max_retries,
+    ))
+    if isinstance(outcome, DecisionSuggestion):
+        return {
+            "status": "ok",
+            "message": f"{p.provider_kind} returned {outcome.verdict.value} with confidence {outcome.confidence}",
+            "verdict": outcome.verdict.value,
+            "confidence": outcome.confidence,
+            "model": outcome.model_version,
+            "provider_kind": outcome.provider_kind,
+            "prompt_version": outcome.prompt_version,
+        }
+    if isinstance(outcome, DecisionError):
+        return {"status": "error", "message": f"{outcome.code}: {outcome.message}", "code": outcome.code, "retryable": outcome.retryable}
+    return {"status": "error", "message": "decision provider returned no verdict and is disabled"}
 
 
 @router.post("/projects/{project_id}/jobs")
@@ -152,9 +298,26 @@ def submit_job(
     ).first():
         raise HTTPException(status_code=404, detail="Provider 不存在")
 
+    if req.etl_target_datasource_id is not None:
+        try:
+            validate_table_name(req.etl_target_table)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        target = db.query(DataSource).filter(
+            DataSource.id == req.etl_target_datasource_id, DataSource.project_id == project_id
+        ).first()
+        if not target:
+            raise HTTPException(status_code=404, detail="目标数据源不存在于当前项目")
+        if target.source_type not in SUPPORTED_SINK_TYPES:
+            raise HTTPException(status_code=400, detail=f"目标数据源不是可写入的数据库类型: {target.source_type}")
+
     full_params = dict(req.params)
     full_params["datasource_ids"] = req.datasource_ids
     full_params["provider_id"] = req.provider_id
+    if req.etl_target_datasource_id is not None:
+        full_params["etl_target_datasource_id"] = req.etl_target_datasource_id
+        full_params["etl_target_table"] = req.etl_target_table
+        full_params["etl_write_mode"] = req.etl_write_mode
 
     job = Job(project_id=project_id, stage=st, status="PENDING", progress=0, stage_message="任务已创建，等待执行...", params_json=full_params)
     db.add(job)

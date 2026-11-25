@@ -1,0 +1,202 @@
+{
+  "status": "COMPLETE",
+  "provider": {
+    "kind": "typesafe_jev",
+    "model": "jev-latest",
+    "base_url": "https://api.typesafe.ai",
+    "send_fields": [
+      "name",
+      "tax_id",
+      "email",
+      "gtin",
+      "brand",
+      "model",
+      "voltage",
+      "pack_count"
+    ],
+    "prompt_version": "entity-pair-choice-v1"
+  },
+  "domains": {
+    "vendor": {
+      "cases": 10,
+      "candidate_recall": 0.9,
+      "required_candidates": 10,
+      "candidates_recalled": 9,
+      "action_counts": {
+        "AUTO_MATCH": 3,
+        "DISTINCT": 2,
+        "NOT_EVALUATED": 1,
+        "REVIEW": 4
+      },
+      "review_volume": 5,
+      "false_merges": 0,
+      "labeled_pairs": 9,
+      "unresolved_pairs": 0,
+      "model_calls": 9,
+      "model_errors": 0,
+      "verdict_counts": {
+        "DIFFERENT": 2,
+        "SAME": 3,
+        "UNKNOWN": 4
+      },
+      "same_pairs": 6,
+      "same_correct": 3,
+      "same_recall": 0.5,
+      "different_pairs": 3,
+      "different_correct": 2,
+      "different_recall": 0.6667,
+      "false_same": 0,
+      "false_same_rate": 0.0,
+      "unknown": 4,
+      "unknown_rate": 0.4444,
+      "judged_pairs": 9,
+      "suggestion_accuracy": 0.5556,
+      "latency_ms_mean": 626.12,
+      "latency_ms_p95": 1034.65,
+      "cost_usd_total": null,
+      "cost_usd_mean": null
+    },
+    "contact": {
+      "cases": 10,
+      "candidate_recall": 1.0,
+      "required_candidates": 10,
+      "candidates_recalled": 10,
+      "action_counts": {
+        "AUTO_MATCH": 3,
+        "DISTINCT": 2,
+        "REVIEW": 5
+      },
+      "review_volume": 5,
+      "false_merges": 0,
+      "labeled_pairs": 9,
+      "unresolved_pairs": 1,
+      "model_calls": 10,
+      "model_errors": 0,
+      "verdict_counts": {
+        "DIFFERENT": 1,
+        "SAME": 3,
+        "UNKNOWN": 6
+      },
+      "same_pairs": 6,
+      "same_correct": 3,
+      "same_recall": 0.5,
+      "different_pairs": 3,
+      "different_correct": 1,
+      "different_recall": 0.3333,
+      "false_same": 0,
+      "false_same_rate": 0.0,
+      "unknown": 5,
+      "unknown_rate": 0.5556,
+      "judged_pairs": 9,
+      "suggestion_accuracy": 0.4444,
+      "latency_ms_mean": 532.43,
+      "latency_ms_p95": 847.21,
+      "cost_usd_total": null,
+      "cost_usd_mean": null
+    },
+    "catalog_item": {
+      "cases": 10,
+      "candidate_recall": 1.0,
+      "required_candidates": 10,
+      "candidates_recalled": 10,
+      "action_counts": {
+        "AUTO_MATCH": 4,
+        "DISTINCT": 3,
+        "REVIEW": 3
+      },
+      "review_volume": 3,
+      "false_merges": 0,
+      "labeled_pairs": 9,
+      "unresolved_pairs": 1,
+      "model_calls": 10,
+      "model_errors": 0,
+      "verdict_counts": {
+        "DIFFERENT": 3,
+        "SAME": 6,
+        "UNKNOWN": 1
+      },
+      "same_pairs": 6,
+      "same_correct": 6,
+      "same_recall": 1.0,
+      "different_pairs": 3,
+      "different_correct": 3,
+      "different_recall": 1.0,
+      "false_same": 0,
+      "false_same_rate": 0.0,
+      "unknown": 0,
+      "unknown_rate": 0.0,
+      "judged_pairs": 9,
+      "suggestion_accuracy": 1.0,
+      "latency_ms_mean": 640.43,
+      "latency_ms_p95": 1852.19,
+      "cost_usd_total": null,
+      "cost_usd_mean": null
+    }
+  },
+  "aggregate": {
+    "cases": 30,
+    "required_candidates": 30,
+    "candidates_recalled": 29,
+    "review_volume": 13,
+    "false_merges": 0,
+    "labeled_pairs": 27,
+    "unresolved_pairs": 2,
+    "model_calls": 29,
+    "model_errors": 0,
+    "same_pairs": 18,
+    "same_correct": 12,
+    "different_pairs": 9,
+    "different_correct": 6,
+    "false_same": 0,
+    "unknown": 9,
+    "judged_pairs": 27,
+    "candidate_recall": 0.9667,
+    "same_recall": 0.6667,
+    "different_recall": 0.6667,
+    "false_same_rate": 0.0,
+    "unknown_rate": 0.3333,
+    "suggestion_accuracy": 0.6667,
+    "action_counts": {
+      "AUTO_MATCH": 10,
+      "DISTINCT": 7,
+      "NOT_EVALUATED": 1,
+      "REVIEW": 12
+    },
+    "verdict_counts": {
+      "DIFFERENT": 6,
+      "SAME": 12,
+      "UNKNOWN": 11
+    },
+    "latency_ms_mean": 598.75,
+    "cost_usd_total": null
+  },
+  "holdout": {
+    "version": "1.0.0",
+    "manifest_sha256": "df8fa2a0e542923aaeb5f356d5aef839c59472c4bd44c666a1c66673d7b2c57c",
+    "record_count": 60,
+    "pair_case_count": 30,
+    "frozen_at": "2026-11-25"
+  },
+  "as_of": "2026-11-25",
+  "leakage_controls": {
+    "truth_in_input": false,
+    "golden_overlap": "checked, none",
+    "holdout_used_for_tuning": false,
+    "send_fields": [
+      "name",
+      "tax_id",
+      "email",
+      "gtin",
+      "brand",
+      "model",
+      "voltage",
+      "pack_count"
+    ]
+  },
+  "limitations": [
+    "The holdout is synthetic. It checks behavior on authored scenarios, not customer data.",
+    "The provider is a hosted model. Verdicts can vary between runs; repeat the run before treating small differences as signal.",
+    "Confidence is not a calibrated probability and is not used as an automatic merge threshold.",
+    "This report does not change the V0.1 or L3 product status."
+  ]
+}

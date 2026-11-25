@@ -80,6 +80,11 @@ class LLMProvider(Base):
     encrypted_api_key: Mapped[str] = mapped_column(Text, default="")
     is_custom: Mapped[bool] = mapped_column(Boolean, default=True)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    provider_kind: Mapped[str] = mapped_column(String(32), nullable=False, default="openai_compatible")
+    send_fields_json: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    timeout_seconds: Mapped[float] = mapped_column(Float, nullable=False, default=30.0)
+    max_retries: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    prompt_version: Mapped[str] = mapped_column(String(80), nullable=False, default="entity-pair-choice-v1")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 

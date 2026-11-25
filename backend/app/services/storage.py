@@ -80,6 +80,22 @@ class StorageService:
         except OSError as exc:
             raise StorageError("local storage read failed") from exc
 
+    def get_size(self, object_key: str) -> int:
+        clean_key = object_key.lstrip("/")
+        if self.backend == "s3":
+            from botocore.exceptions import BotoCoreError, ClientError
+
+            s3 = self._get_s3()
+            try:
+                return int(s3.head_object(Bucket=settings.s3_bucket, Key=clean_key)["ContentLength"])
+            except (BotoCoreError, ClientError) as exc:
+                raise StorageError("object storage read failed") from exc
+        src = os.path.join(self.local_root, clean_key)
+        try:
+            return os.path.getsize(src)
+        except OSError as exc:
+            raise StorageError("local storage read failed") from exc
+
     def materialize_to_local(self, object_key: str, target_path: str) -> str:
         os.makedirs(os.path.dirname(target_path), exist_ok=True)
         data = self.get_bytes(object_key)

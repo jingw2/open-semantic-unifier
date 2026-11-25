@@ -18,3 +18,9 @@ if settings.celery_enabled:
         accept_content=["json"],
         task_track_started=True,
     )
+    celery_app.conf.beat_schedule = {
+        "run-due-etl-schedules-every-60s": {
+            "task": "semantic_unifier.run_due_etl_schedules",
+            "schedule": 60.0,
+        },
+    }

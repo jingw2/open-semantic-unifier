@@ -1,0 +1,24 @@
+{
+  "version": "1.0.0",
+  "provenance": "Authored synthetic holdout. Every name, address, phone, email, tax identifier, and product identifier is fictional.",
+  "purpose": "Frozen independent evaluation set for decision models. Do not use it to tune prompts, rules, or thresholds.",
+  "frozen_at": "2026-11-25",
+  "record_count": 60,
+  "pair_case_count": 30,
+  "domains": [
+    "vendor",
+    "contact",
+    "catalog_item"
+  ],
+  "files": {
+    "vendor/records.json": "25fa6e6b068f4ac603a2094599cdbf457d5e9f8d31aa9dfea61967994b097205",
+    "vendor/scheme.json": "3c667634e43768c1b1b5abbab465adbd921d0902c510a22bfeec55568e05a37f",
+    "vendor/expected.json": "1e4bf3e745891698679e6b84ccd4db3431851b30ec8e5614eda14b82f8debab8",
+    "contact/records.json": "ea2e0cc9df0050f612b5297e0d785413988bd82a5329c03cc367b337fae8edde",
+    "contact/scheme.json": "e83096a5f81acb63928b5fcd4bc17251cd7bbd1b11567d1438b29c75cd951cd9",
+    "contact/expected.json": "fbe50b319e2863f0e82682455b657f60d1e9abbc24fa1830a59e52f0cd18243e",
+    "catalog_item/records.json": "846ceeb8450a22236dbceb7901adbe604e71dab4a92af2c6ecc057d40f52f7d3",
+    "catalog_item/scheme.json": "b9b3c781caf9ccac10db3b0b95567469c3352f825835a188ebbd66e619df6067",
+    "catalog_item/expected.json": "2c0557c6b5e1d7a1e97ddbf969e0414428945059d9ef5e8068cb4da6b4df956a"
+  }
+}

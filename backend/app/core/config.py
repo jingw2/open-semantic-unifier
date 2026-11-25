@@ -28,6 +28,9 @@ class Settings:
     otel_export_timeout_seconds: float = float(os.getenv("OTEL_EXPORT_TIMEOUT_SECONDS", "1.0"))
     llm_timeout_seconds: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "30.0"))
     unification_max_attempts: int = int(os.getenv("UNIFICATION_MAX_ATTEMPTS", "3"))
+    openrefine_enabled: bool = os.getenv("OPENREFINE_ENABLED", "false").lower() == "true"
+    openrefine_url: str = os.getenv("OPENREFINE_URL", "http://openrefine:3333")
+    openrefine_timeout_seconds: float = float(os.getenv("OPENREFINE_TIMEOUT_SECONDS", "60"))
 
     storage_backend: str = os.getenv("STORAGE_BACKEND", "local")  # local | s3
     local_storage_dir: str = os.getenv("LOCAL_STORAGE_DIR", "./local_storage")

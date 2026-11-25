@@ -13,6 +13,8 @@ import uvicorn
 
 BACKEND = Path(__file__).resolve().parents[2] / "backend"
 sys.path.insert(0, str(BACKEND))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ui_helpers import open_route
 
 from app.api.deps import get_current_user, require_resource_access
 from app.core.db import Base, get_db
@@ -100,7 +102,7 @@ def test_contracts_workbench_real_browser_flow_selects_compiles_publishes_and_ex
             """)
             page.goto("http://127.0.0.1:5173")
             page.wait_for_load_state("networkidle")
-            page.get_by_role("button", name="契约统一").click()
+            open_route(page, "#/tasks/new/contract")
             expect(page.get_by_role("heading", name="契约统一工作台")).to_be_visible()
             expect(page.get_by_role("alert")).to_have_count(0)
 
@@ -172,7 +174,6 @@ def test_contracts_acceptance_with_supplier_contract():
             id="snapshot-supplier", project_id="project-acceptance", version=1,
             snapshot_json={"entities": {
                 "e1": {"entity_type": "Supplier"},
-                "e2": {"entity_type": "Country"},
             }},
             actor_id="acceptance",
         ))
@@ -215,7 +216,7 @@ def test_contracts_acceptance_with_supplier_contract():
             """)
             page.goto("http://127.0.0.1:5173")
             page.wait_for_load_state("networkidle")
-            page.get_by_role("button", name="契约统一").click()
+            open_route(page, "#/tasks/new/contract")
             expect(page.get_by_role("heading", name="契约统一工作台")).to_be_visible()
 
             page.get_by_label("文件数据源").select_option("ds-supplier")
@@ -226,6 +227,9 @@ def test_contracts_acceptance_with_supplier_contract():
             page.get_by_label("契约源").select_option(index=1)
             page.get_by_label("实体快照").select_option(index=1)
             page.get_by_role("button", name="编译并校验").click()
+            expect(page.get_by_text("UNKNOWN_ENTITY_TYPE", exact=False)).to_be_visible(timeout=30000)
+            expect(page.get_by_role("button", name="允许 Country 并重新校验", exact=True)).to_be_visible()
+            page.get_by_role("button", name="允许 Country 并重新校验", exact=True).click()
             expect(page.get_by_role("status")).to_contain_text("模型版本 v1 已创建", timeout=30000)
             expect(page.get_by_role("cell", name="类 2 · 属性 8 · 枚举 1 · 关系 2")).to_be_visible()
 

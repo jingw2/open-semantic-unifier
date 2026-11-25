@@ -131,6 +131,31 @@ def _build_safe_query(db_type: str, table_name: str, custom_sql: Optional[str], 
     return f"{q} LIMIT {int(limit)}" if limit else q
 
 
+def _sqlalchemy_engine(db_type: str, cfg: Dict[str, Any]):
+    from sqlalchemy import create_engine
+    from sqlalchemy.engine import URL
+
+    if db_type == "postgresql":
+        url = URL.create(
+            "postgresql+psycopg2",
+            username=cfg.get("user", "postgres"),
+            password=cfg.get("password", ""),
+            host=cfg.get("host", "127.0.0.1"),
+            port=int(cfg.get("port") or 5432),
+            database=cfg.get("database", "postgres"),
+        )
+    else:
+        url = URL.create(
+            "mysql+pymysql",
+            username=cfg.get("user", "root"),
+            password=cfg.get("password", ""),
+            host=cfg.get("host", "127.0.0.1"),
+            port=int(cfg.get("port") or 3306),
+            database=cfg.get("database", ""),
+        )
+    return create_engine(url)
+
+
 def read_db_dataframe(
     cfg: Dict[str, Any],
     table_name: str,
@@ -152,31 +177,19 @@ def read_db_dataframe(
         return df
 
     if db_type == "mysql":
-        pymysql = _import_driver("mysql")
-        con = pymysql.connect(
-            host=cfg.get("host", "127.0.0.1"),
-            port=int(cfg.get("port") or 3306),
-            user=cfg.get("user", "root"),
-            password=cfg.get("password", ""),
-            database=cfg.get("database", ""),
-            connect_timeout=5,
-        )
-        df = pd.read_sql(_build_safe_query(db_type, table_name, custom_sql, limit), con)
-        con.close()
+        engine = _sqlalchemy_engine("mysql", cfg)
+        try:
+            df = pd.read_sql(_build_safe_query(db_type, table_name, custom_sql, limit), engine)
+        finally:
+            engine.dispose()
         return df
 
     if db_type == "postgresql":
-        psycopg2 = _import_driver("postgresql")
-        con = psycopg2.connect(
-            host=cfg.get("host", "127.0.0.1"),
-            port=int(cfg.get("port") or 5432),
-            user=cfg.get("user", "postgres"),
-            password=cfg.get("password", ""),
-            dbname=cfg.get("database", "postgres"),
-            connect_timeout=5,
-        )
-        df = pd.read_sql(_build_safe_query(db_type, table_name, custom_sql, limit), con)
-        con.close()
+        engine = _sqlalchemy_engine("postgresql", cfg)
+        try:
+            df = pd.read_sql(_build_safe_query(db_type, table_name, custom_sql, limit), engine)
+        finally:
+            engine.dispose()
         return df
 
     pymongo = _import_driver("mongodb")

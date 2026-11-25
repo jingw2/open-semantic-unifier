@@ -1,0 +1,92 @@
+[
+  {
+    "case_id": "hld-catalog_item-01",
+    "left": "catalog_item:a01",
+    "right": "catalog_item:b01",
+    "truth": "SAME",
+    "expected_action": "AUTO_MATCH",
+    "required_candidate": true,
+    "reason": "Same trusted GTIN and compatible specs."
+  },
+  {
+    "case_id": "hld-catalog_item-02",
+    "left": "catalog_item:a02",
+    "right": "catalog_item:b02",
+    "truth": "SAME",
+    "expected_action": "AUTO_MATCH",
+    "required_candidate": true,
+    "reason": "Same trusted GTIN and compatible specs."
+  },
+  {
+    "case_id": "hld-catalog_item-03",
+    "left": "catalog_item:a03",
+    "right": "catalog_item:b03",
+    "truth": "DIFFERENT",
+    "expected_action": "DISTINCT",
+    "required_candidate": true,
+    "reason": "Same name and model with conflicting GTINs."
+  },
+  {
+    "case_id": "hld-catalog_item-04",
+    "left": "catalog_item:a04",
+    "right": "catalog_item:b04",
+    "truth": "DIFFERENT",
+    "expected_action": "DISTINCT",
+    "required_candidate": true,
+    "reason": "Same GTIN cannot override a voltage and model conflict."
+  },
+  {
+    "case_id": "hld-catalog_item-05",
+    "left": "catalog_item:a05",
+    "right": "catalog_item:b05",
+    "truth": "SAME",
+    "expected_action": "AUTO_MATCH",
+    "required_candidate": true,
+    "reason": "Same trusted GTIN and pack count."
+  },
+  {
+    "case_id": "hld-catalog_item-06",
+    "left": "catalog_item:a06",
+    "right": "catalog_item:b06",
+    "truth": "SAME",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "Same model and brand without a trusted GTIN."
+  },
+  {
+    "case_id": "hld-catalog_item-07",
+    "left": "catalog_item:a07",
+    "right": "catalog_item:b07",
+    "truth": "DIFFERENT",
+    "expected_action": "DISTINCT",
+    "required_candidate": true,
+    "reason": "Different model variants with similar names."
+  },
+  {
+    "case_id": "hld-catalog_item-08",
+    "left": "catalog_item:a08",
+    "right": "catalog_item:b08",
+    "truth": "SAME",
+    "expected_action": "AUTO_MATCH",
+    "required_candidate": true,
+    "reason": "Same trusted GTIN and specs."
+  },
+  {
+    "case_id": "hld-catalog_item-09",
+    "left": "catalog_item:a09",
+    "right": "catalog_item:b09",
+    "truth": "UNRESOLVED",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "Sparse records; the fixture has no truth."
+  },
+  {
+    "case_id": "hld-catalog_item-10",
+    "left": "catalog_item:a10",
+    "right": "catalog_item:b10",
+    "truth": "SAME",
+    "expected_action": "REVIEW",
+    "required_candidate": true,
+    "reason": "Same model without a trusted GTIN."
+  }
+]

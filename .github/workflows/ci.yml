@@ -20,7 +20,25 @@ jobs:
       - run: python -m pip install -r backend/requirements-lock.txt
       - run: python3 scripts/golden.py validate
       - run: python3 -m unittest discover -s tests -p 'test_golden_contract.py' -v
+      - run: python3 scripts/evaluate_decision_models.py --validate-only
+      - run: python3 -m pytest tests/test_decision_model_holdout.py -q
+      - run: python3 tests/formal/check_decision_dispatch_boundary.py
+      - run: python3 tests/formal/check_openrefine_preview_lifecycle.py
+      - run: python3 tests/formal/check_etl_sink_contract.py
       - run: python -m pytest backend/tests -q
+
+  database-connectors:
+    runs-on: ubuntu-latest
+    needs: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+      - run: python -m pip install -r backend/requirements-lock.txt
+      - run: RUN_DB_CONNECTOR_TESTS=true python -m pytest backend/tests/integration/test_database_connectors.py -q
 
   frontend:
     runs-on: ubuntu-latest
@@ -49,6 +67,19 @@ jobs:
           for i in {1..30}; do curl -fsS http://127.0.0.1:5173/ > /dev/null && break; sleep 1; done
           python frontend/tests/unification_workbench.spec.py
           python frontend/tests/contracts_workbench.spec.py
+          python frontend/tests/decision_models_workbench.spec.py
+          python frontend/tests/menu_shell.spec.py
+          python frontend/tests/deep_link.spec.py
+          python frontend/tests/guided_assistant.spec.py
+          python frontend/tests/review_readability.spec.py
+          python frontend/tests/result_viewer.spec.py
+          python frontend/tests/method_recommendation.spec.py
+          python frontend/tests/openrefine_diff.spec.py
+          python frontend/tests/roster.spec.py
+          python frontend/tests/jsonld_viewer.spec.py
+          python frontend/tests/etl.spec.py
+          python frontend/tests/match_fields.spec.py
+          python frontend/tests/pipeline.spec.py
 
   compose-config:
     runs-on: ubuntu-latest
@@ -61,4 +92,4 @@ jobs:
       - run: python3 scripts/init_env.py
       - run: docker compose config --quiet
       - run: python -m pip install -r backend/requirements-lock.txt
-      - run: RUN_COMPOSE_RELEASE_TESTS=true python -m pytest backend/tests/integration/test_compose_release.py -q
+      - run: RUN_COMPOSE_RELEASE_TESTS=true python -m pytest backend/tests/integration/test_compose_release.py backend/tests/integration/test_compose_openrefine.py -q

@@ -1,0 +1,125 @@
+{
+  "scope": "Decision model adapters (T-DM-1 through T-DM-9)",
+  "branch": "codex/decision-models-l3",
+  "head": "0b06b69cad39bb48e049e729206ad5c4e0d1f83a",
+  "as_of": "2026-11-25",
+  "environment": "Controlled checks use an isolated SQLite database, inline FastAPI on 127.0.0.1:8765, Vite on 127.0.0.1:5173, and a controlled ThreadingHTTPServer. Real runs use the local dev stack at 127.0.0.1:8000 and 127.0.0.1:5173 with the configured DeepSeek and TypeSafe Jev providers.",
+  "note": "DM-01 through DM-07 PASS for TypeSafe Jev. Perplexity real smoke remains unrun because no key exists. The frozen holdout, evaluator, formal dispatch check, and real L1-L4 runs are complete. This record does not change the V0.1 or L3 product status.",
+  "checks": {
+    "dm_01_contracts": {
+      "status": "PASS",
+      "command": "python -m pytest backend/tests/test_decision_models_contracts.py -q",
+      "evidence": "Suggestion, error, and disabled outcomes are distinct; UNKNOWN is distinct from SAME and DIFFERENT; missing distribution and explanation stay unknown; confidence range, distribution keys and sums, model version, prompt version, latency, and request field names are validated."
+    },
+    "dm_02_precedence": {
+      "status": "PASS",
+      "command": "python -m pytest backend/tests/test_decision_models_precedence.py -q",
+      "evidence": "A SAME suggestion cannot override a configured conflict constraint, a human cannot-link, or a transitive conflict; weak-evidence SAME stays REVIEW; a DIFFERENT suggestion does not create a persistent rejection; rules, conflicts, and human decisions remain authoritative."
+    },
+    "dm_03_failure_fallback": {
+      "status": "PASS",
+      "command": "python -m pytest backend/tests/test_decision_models_adapters.py backend/tests/test_decision_models_providers.py backend/tests/test_decision_models_run_integration.py -q",
+      "evidence": "Timeout, invalid JSON, missing credentials, 401/403/422/429/5xx, and adapter exceptions map to typed DecisionError outcomes; retries are bounded; missing provider, credential-decrypt failure, and unknown kind follow the configured REVIEW or FAIL policy."
+    },
+    "dm_04_security": {
+      "status": "PASS",
+      "command": "python -m pytest backend/tests/test_decision_models_provider_config.py backend/tests/test_decision_models_persistence.py backend/tests/test_decision_models_providers.py backend/tests/test_decision_models_run_integration.py -q",
+      "evidence": "Credentials are Fernet-encrypted at rest, masked on list, and excluded from logs, exports, audit rows, spans, and error messages; provider test redacts credentials. A decision provider requires at least one send field at save. Dispatch sends only the configured send fields, and it removes value, left, and right from evidence entries for fields outside them. A legacy decision provider with no send fields returns a typed missing_send_fields error and never calls the provider. The run test sends tax_id TAX-SECRET-9 in the scheme and asserts that it appears nowhere in the outbound body while a configured name value does. Editing a provider keeps the stored key when the key field is blank, replaces it when a new key is sent, and revalidates the send fields."
+    },
+    "dm_05_observability_audit": {
+      "status": "PASS",
+      "command": "python -m pytest backend/tests/test_decision_models_persistence.py -q",
+      "evidence": "Each typed call persists provider kind/key, model version, prompt version, verdict or error, latency, usage, and trace reference; model-call rows survive trace shutdown and are project-scoped, viewer-readable, and redacted; spans carry provider metadata without records or credentials."
+    },
+    "dm_06_evaluation": {
+      "status": "PASS",
+      "command": "python3 scripts/evaluate_decision_models.py --provider-id <saved-provider-id> --send-fields name,tax_id,email,gtin,brand,model,voltage,pack_count --output docs/reference/decision-model-evaluation-report.json",
+      "report": "docs/reference/decision-model-evaluation-report.json",
+      "evidence": "The frozen holdout tests/holdout/v1 has 60 records, 30 labeled pairs, and 3 domains. The manifest records a SHA-256 for every file. The validator rejects any shared record ref, source key, case id, or attribute value with the Golden set, and rejects a label key in records or scheme input. The real TypeSafe Jev run made 29 calls with 0 errors. Candidate recall was 96.7%, SAME recall 66.7%, DIFFERENT recall 66.7%, false SAME 0, UNKNOWN 33.3%, suggestion accuracy 66.7%, review volume 13, false merges 0, and mean latency 598.75 ms. Per-domain accuracy and latency remain visible in the report. Scores are not treated as calibrated probabilities and no automatic merge threshold is set."
+    },
+    "dm_07_real_service_smoke": {
+      "status": "PASS",
+      "evidence": "The configured TypeSafe Jev provider called the real service and returned UNKNOWN with confidence 0.98 from model jev-1.14.0. The real holdout run made 29 calls with 0 errors. DeepSeek connectivity returned ok, and the L2 run made 6 LIVE DeepSeek calls. Perplexity remains unrun because no key exists."
+    }
+  },
+  "ui_browser_flow": {
+    "status": "PASS",
+    "command": "python frontend/tests/decision_models_workbench.spec.py",
+    "evidence": "Chromium created a perplexity_decisions provider against the controlled server, the test button showed verdict SAME with provider kind perplexity_decisions and model controlled-flash, and the review panel showed the SAME badge, 90% confidence, 80/15/5 distribution, provider kind/key, model version, and no alert banner. The same run put a tax_id value in the scheme evidence and asserts that the whole outbound body carries only name in left and right, removes tax_id value from evidence, and contains no TAX-SECRET-9, SECRET-1, or SECRET-2 value. The same spec edits the provider, raises its retry limit, saves it, and asserts the stored key remains masked and the send fields are unchanged.",
+    "regression_specs": [
+      "python frontend/tests/unification_workbench.spec.py",
+      "python frontend/tests/contracts_workbench.spec.py"
+    ],
+    "regression_result": "Both pass on the same build."
+  },
+  "backend_suite": {
+    "command": "python -m pytest backend/tests/test_decision_models_contracts.py backend/tests/test_decision_models_adapters.py backend/tests/test_decision_models_providers.py backend/tests/test_decision_models_precedence.py backend/tests/test_decision_models_persistence.py backend/tests/test_decision_models_provider_config.py backend/tests/test_decision_models_run_integration.py backend/tests/test_decision_models_migrations.py -q",
+    "result": "205 passed, 2 warnings in 58.35s"
+  },
+  "full_backend_suite": {
+    "command": "python -m pytest backend/tests -q",
+    "result": "426 passed, 6 skipped, 2 warnings in 109.45s"
+  },
+  "frontend_build": {
+    "command": "npm run build (frontend)",
+    "result": "tsc and vite build passed; 1585 modules transformed."
+  },
+  "holdout": {
+    "version": "1.0.0",
+    "manifest_sha256": "df8fa2a0e542923aaeb5f356d5aef839c59472c4bd44c666a1c66673d7b2c57c",
+    "record_count": 60,
+    "pair_case_count": 30,
+    "domains": ["vendor", "contact", "catalog_item"],
+    "frozen_at": "2026-11-25",
+    "golden_overlap": "checked, none",
+    "truth_in_input": false
+  },
+  "formal_verification": {
+    "property": "The serialized choice-provider body carries no value of a record field outside field_names, and every listed value survives in left, right, and evidence.",
+    "command": "python3 tests/formal/check_decision_dispatch_boundary.py",
+    "result": "PASS: 1536 exhaustive cases across 6 fields and every send-field subset.",
+    "skill": ".claude/skills/verify-decision-dispatch-boundary/SKILL.md",
+    "sync_commit": "1284db2"
+  },
+  "holdout_evaluation": {
+    "status": "PASS",
+    "report": "docs/reference/decision-model-evaluation-report.json",
+    "provider": "typesafe_jev / jev-latest",
+    "model_version": "jev-1.14.0",
+    "calls": 29,
+    "errors": 0,
+    "metrics": {
+      "candidate_recall": 0.9667,
+      "same_recall": 0.6667,
+      "different_recall": 0.6667,
+      "false_same_rate": 0.0,
+      "unknown_rate": 0.3333,
+      "suggestion_accuracy": 0.6667,
+      "review_volume": 13,
+      "false_merges": 0,
+      "latency_ms_mean": 598.75
+    },
+    "domains": {
+      "vendor": {"suggestion_accuracy": 0.5556, "unknown_rate": 0.4444, "candidate_recall": 0.9},
+      "contact": {"suggestion_accuracy": 0.4444, "unknown_rate": 0.5556, "candidate_recall": 1.0},
+      "catalog_item": {"suggestion_accuracy": 1.0, "unknown_rate": 0.0, "candidate_recall": 1.0}
+    }
+  },
+  "real_runs": {
+    "environment": "Local dev backend at 127.0.0.1:8000 with SQLite backend/local_dev.db, Vite at 127.0.0.1:5173.",
+    "l1": {"status": "SUCCESS", "rows": 250, "unique_before": 102, "unique_after": 15, "review_queued": 0},
+    "l2": {"status": "SUCCESS", "rows": 35000, "evaluated_pairs": 56791, "unique_clusters": 11506, "review_queued": 6, "llm_calls": 6, "llm_mode": "LIVE (DeepSeek / deepseek-chat)", "elapsed_sec": 7.4},
+    "l3": {"status": "PUBLISHED", "contract": "supplier_contract.yaml", "version": 1, "classes": 2, "attributes": 8, "enums": 1, "relations": 2},
+    "l4": {"status": "SUCCESS", "metric": "net_gmv", "result_rows": 3, "group_by": "order_channel"},
+    "entity_unification": {"status": "SUCCEEDED", "pairs": 5, "verdicts": {"SAME": 3, "UNKNOWN": 1, "DIFFERENT": 1}, "model": "jev-1.14.0", "snapshot_version": 1},
+    "provider_smoke": {"deepseek": "ok", "typesafe_jev": "UNKNOWN, confidence 0.98, model jev-1.14.0"}
+  },
+  "limitations": [
+    "Direct fetches of the official provider documentation remain blocked by the fetch proxy; the adapter shape is derived from the user-provided TypeSafe models URL, the official typesafe-sdk 0.7.5 schema, and the Perplexity Decisions documentation.",
+    "Confidence is not a calibrated probability and is never used as an automatic merge threshold.",
+    "A missing distribution or explanation is displayed as unknown rather than fabricated.",
+    "Perplexity real smoke remains unrun because no key exists. TypeSafe Jev passed.",
+    "A hosted model can return different verdicts between runs; repeat a run before treating small differences as signal.",
+    "The holdout is synthetic and does not replace a customer-data evaluation."
+  ]
+}

@@ -12,9 +12,10 @@ from sqlalchemy.orm import Session, joinedload
 from app.models.entities import LLMProvider, Project
 from app.core.config import settings
 from app.core.security import decrypt_secret
-from app.services.llm_client import JudgeRequest, JudgeResult, ModelError, ProviderConfig, judge_pair
+from app.services.llm_client import ProviderConfig
 
 from app.models.unification import (
+    DecisionModelCall,
     IdentityChangeRecord,
     IdentityDecisionRecord,
     ProjectSnapshotState,
@@ -25,6 +26,13 @@ from app.models.unification import (
     UnificationRun,
     UnificationSnapshot,
 )
+from app.services.decision_models.contracts import (
+    DecisionError,
+    DecisionOutcome,
+    DecisionRequest,
+    DecisionSuggestion,
+)
+from app.services.decision_models.providers import DECISION_PROVIDER_KINDS, adapter_for_kind
 from app.services.unification.identity import (
     DecisionInput,
     IdentityConflict as IdentityOperationConflict,
@@ -66,18 +74,49 @@ def _model_judge_for_run(db: Session, project_id: str, run: UnificationRun, sche
             LLMProvider.workspace_id == project.workspace_id,
         ))
     if provider is None:
-        def missing_provider(_left, _right, _scheme):
-            return JudgeResult(
-                status="ERROR", error=ModelError("provider_missing", "model provider is unavailable in this workspace", False),
+        def missing_provider(_left, _right, _active_scheme, _evidence_codes, _evidence):
+            return DecisionError(
+                code="provider_missing",
+                message="model provider is unavailable in this workspace",
+                retryable=False,
+                provider_kind="openai_compatible",
+                provider_key=scheme.model_provider_id or "unconfigured",
+                model_version="",
+                prompt_version=scheme.prompt_version,
+                latency_ms=0.0,
+                trace_id=current_trace_id(),
             )
         return missing_provider
+    provider_kind = provider.provider_kind or "openai_compatible"
+    adapter = adapter_for_kind(provider_kind)
+    if adapter is None:
+        def invalid_provider(_left, _right, _active_scheme, _evidence_codes, _evidence):
+            return DecisionError(
+                code="invalid_provider",
+                message=f"provider kind {provider_kind!r} is not supported",
+                retryable=False,
+                provider_kind=provider_kind,
+                provider_key=provider.provider_key or provider_kind,
+                model_version=provider.default_model or "",
+                prompt_version=provider.prompt_version or scheme.prompt_version,
+                latency_ms=0.0,
+                trace_id=current_trace_id(),
+            )
+        return invalid_provider
     try:
         api_key = decrypt_secret(provider.encrypted_api_key) if provider.encrypted_api_key else ""
     except Exception:
-        def unavailable_credential(_left, _right, _scheme):
-            return JudgeResult(
-                status="ERROR", error=ModelError("credential_unavailable", "provider credentials cannot be decrypted", False),
-                model=provider.default_model,
+        def unavailable_credential(_left, _right, _active_scheme, _evidence_codes, _evidence):
+            return DecisionError(
+                code="credential_unavailable",
+                message="provider credentials cannot be decrypted",
+                retryable=False,
+                provider_kind=provider_kind,
+                provider_key=provider.provider_key or provider_kind,
+                model_version=provider.default_model or "",
+                prompt_version=provider.prompt_version or scheme.prompt_version,
+                latency_ms=0.0,
+                trace_id=current_trace_id(),
             )
         return unavailable_credential
     config = ProviderConfig(
@@ -86,23 +125,77 @@ def _model_judge_for_run(db: Session, project_id: str, run: UnificationRun, sche
         base_url=provider.base_url,
         api_key=api_key,
         name=provider.name,
-        timeout_seconds=settings.llm_timeout_seconds,
+        timeout_seconds=provider.timeout_seconds or settings.llm_timeout_seconds,
+        max_retries=provider.max_retries,
     )
 
-    def judge(left: SourceRevision, right: SourceRevision, active_scheme: MatchScheme) -> JudgeResult:
-        def canonical_attributes(revision: SourceRevision) -> dict[str, Any]:
-            return {canonical: revision.attributes.get(source) for canonical, source in active_scheme.field_map.items()}
-        return judge_pair(JudgeRequest(
+    def judge(left: SourceRevision, right: SourceRevision, active_scheme: MatchScheme,
+              evidence_codes: tuple[str, ...], evidence: tuple[dict[str, Any], ...]) -> DecisionOutcome:
+        if provider_kind in DECISION_PROVIDER_KINDS:
+            if not provider.send_fields_json:
+                return DecisionError(
+                    code="missing_send_fields",
+                    message="decision provider has no configured send fields",
+                    retryable=False,
+                    provider_kind=provider_kind,
+                    provider_key=provider.provider_key or provider_kind,
+                    model_version=provider.default_model or "",
+                    prompt_version=provider.prompt_version or active_scheme.prompt_version,
+                    latency_ms=0.0,
+                    trace_id=current_trace_id(),
+                )
+            field_names = tuple(provider.send_fields_json)
+        else:
+            field_names = tuple(provider.send_fields_json) if provider.send_fields_json else tuple(active_scheme.field_map.values())
+        return adapter.invoke(DecisionRequest(
             project_id=project_id,
             run_id=run.id,
             input_version=run.input_version,
             scheme_revision=run.scheme_revision,
-            prompt_version=active_scheme.prompt_version,
+            prompt_version=provider.prompt_version or active_scheme.prompt_version,
             entity_type=active_scheme.entity_type,
-            left=canonical_attributes(left),
-            right=canonical_attributes(right),
+            identity_granularity=active_scheme.identity_granularity,
+            left=dict(left.attributes),
+            right=dict(right.attributes),
+            field_names=field_names,
+            evidence=tuple(evidence),
         ), config)
     return judge
+
+
+def _persist_decision_model_calls(db: Session, run: UnificationRun, pairs) -> None:
+    """Stage one audit row per pair with a typed decision; the rows commit with the run."""
+    for pair in pairs:
+        decision = pair.decision
+        if decision is None:
+            continue
+        common = dict(
+            project_id=run.project_id,
+            run_id=run.id,
+            left_source_revision_id=pair.left_source_revision_id,
+            right_source_revision_id=pair.right_source_revision_id,
+            provider_kind=decision.provider_kind,
+            provider_key=decision.provider_key,
+            model_version=decision.model_version,
+            prompt_version=decision.prompt_version,
+            latency_ms=decision.latency_ms,
+            trace_id=decision.trace_id,
+        )
+        if isinstance(decision, DecisionSuggestion):
+            db.add(DecisionModelCall(**common,
+                verdict=decision.verdict.value,
+                confidence=decision.confidence,
+                distribution_json={str(key): value for key, value in decision.distribution.items()} if decision.distribution else None,
+                explanation=decision.explanation,
+                usage_json=dict(decision.usage) if decision.usage else None,
+                cost_usd=decision.cost_usd,
+            ))
+        else:
+            db.add(DecisionModelCall(**common,
+                error_code=decision.code,
+                error_message=decision.message[:2000],
+                retryable=decision.retryable,
+            ))
 
 
 def _stable_hash(value: dict) -> str:
@@ -110,19 +203,24 @@ def _stable_hash(value: dict) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _current_input_manifest(db: Session, project_id: str) -> list[dict[str, str | None]]:
-    rows = db.execute(select(
+def _current_input_manifest(
+    db: Session, project_id: str, input_source_system: str | None = None,
+) -> list[dict[str, str | None]]:
+    statement = select(
         SourceRecord.id, SourceRecord.current_revision_id, SourceRecord.current_entity_id,
     ).where(
         SourceRecord.project_id == project_id,
         SourceRecord.current_revision_id.is_not(None),
-    ).order_by(SourceRecord.id)).all()
+    )
+    if input_source_system:
+        statement = statement.where(SourceRecord.source_system == input_source_system)
+    rows = db.execute(statement.order_by(SourceRecord.id)).all()
     return [{"source_record_id": row.id, "source_revision_id": row.current_revision_id, "entity_id": row.current_entity_id} for row in rows]
 
 
 def submit_run(
     db: Session, *, project_id: str, input_version: str, scheme_revision: str,
-    idempotency_key: str, payload_hash: str,
+    idempotency_key: str, payload_hash: str, input_source_system: str | None = None,
 ) -> UnificationRun:
     if not all(isinstance(value, str) and value.strip() for value in (project_id, input_version, scheme_revision, idempotency_key, payload_hash)):
         raise ValueError("project, input, scheme, idempotency key, and payload hash are required")
@@ -134,7 +232,7 @@ def submit_run(
         if existing.payload_hash != payload_hash:
             raise RunConflict("idempotency key was already used with a different payload")
         return existing
-    input_manifest = _current_input_manifest(db, project_id)
+    input_manifest = _current_input_manifest(db, project_id, input_source_system)
     identity_revision = db.scalar(select(func.max(IdentityChangeRecord.revision)).where(
         IdentityChangeRecord.project_id == project_id,
     )) or 1
@@ -142,6 +240,7 @@ def submit_run(
         project_id=project_id, input_version=input_version, scheme_revision=scheme_revision,
         input_manifest_json=input_manifest, identity_revision=identity_revision,
         idempotency_key=idempotency_key, payload_hash=payload_hash, status="PENDING", attempt_count=0,
+        input_source_system=input_source_system,
     )
     db.add(run)
     try:
@@ -261,7 +360,7 @@ def _execute_unification_run(db: Session, run_id: str, *, max_attempts: int = 3)
             current_identity_revision = db.scalar(select(func.max(IdentityChangeRecord.revision)).where(
                 IdentityChangeRecord.project_id == run.project_id,
             )) or 1
-            current_manifest = _current_input_manifest(db, run.project_id)
+            current_manifest = _current_input_manifest(db, run.project_id, run.input_source_system)
             if current_manifest != run.input_manifest_json or current_identity_revision != run.identity_revision:
                 raise RunConflict("run input or identity revision changed after submission; submit a new run")
             scheme_version = db.get(UnificationSchemeVersion, run.scheme_revision)
@@ -301,6 +400,7 @@ def _execute_unification_run(db: Session, run_id: str, *, max_attempts: int = 3)
             result = match_records(revisions, scheme, explicit_constraints, judge=judge)
             match_span.set_attribute("unification.input_record_count", len(revisions))
             match_span.set_attribute("unification.pair_count", len(result.pairs))
+        _persist_decision_model_calls(db, run, result.pairs)
         model_errors = [pair.model_error for pair in result.pairs if pair.model_error]
         if model_errors and scheme.model_failure_policy == "FAIL":
             raise ModelFailure(f"configured model judgment failed: {model_errors[0]}")
@@ -413,7 +513,7 @@ def _execute_unification_run(db: Session, run_id: str, *, max_attempts: int = 3)
         )) or 1
         if current_identity_revision != run.identity_revision + own_changes:
             raise RunConflict("identity state changed during run; staged changes were rolled back")
-        final_manifest = _current_input_manifest(db, run.project_id)
+        final_manifest = _current_input_manifest(db, run.project_id, run.input_source_system)
         frozen_revisions = [(item["source_record_id"], item["source_revision_id"]) for item in run.input_manifest_json]
         current_revisions = [(item["source_record_id"], item["source_revision_id"]) for item in final_manifest]
         if current_revisions != frozen_revisions:
@@ -502,7 +602,7 @@ def _snapshot_result_at_publication(db: Session, run: UnificationRun) -> dict[st
     result = deepcopy(run.result_json or {})
     manifest = run.input_manifest_json or []
     if manifest:
-        current_manifest = _current_input_manifest(db, run.project_id)
+        current_manifest = _current_input_manifest(db, run.project_id, run.input_source_system)
         frozen_revisions = sorted((item["source_record_id"], item["source_revision_id"]) for item in manifest)
         current_revisions = sorted((item["source_record_id"], item["source_revision_id"]) for item in current_manifest)
         if frozen_revisions != current_revisions:

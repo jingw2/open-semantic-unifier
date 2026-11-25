@@ -1,0 +1,47 @@
+{
+  "entity_type": "contact",
+  "identity_granularity": "person",
+  "field_map": {
+    "name": "name",
+    "email": "email",
+    "phone": "phone",
+    "address": "address"
+  },
+  "normalizers": [
+    "unicode_nfkc",
+    "trim",
+    "casefold"
+  ],
+  "strong_identifiers": [
+    "email"
+  ],
+  "conflict_constraints": [
+    {
+      "field": "email",
+      "action": "veto_auto_merge"
+    }
+  ],
+  "candidate_rules": [
+    {
+      "kind": "exact",
+      "fields": [
+        "email"
+      ]
+    },
+    {
+      "kind": "exact",
+      "fields": [
+        "phone"
+      ]
+    },
+    {
+      "kind": "name_similarity",
+      "field": "name",
+      "threshold": 0.82
+    }
+  ],
+  "revision": 1,
+  "identifier_authority": "explicitly_trusted_in_this_synthetic_holdout",
+  "nulls_never_equal": true,
+  "prompt_version": "entity-pair-choice-v1"
+}

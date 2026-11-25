@@ -133,6 +133,18 @@ export function clearAuth() {
   localStorage.removeItem(USER_KEY)
 }
 
+export class ApiError extends Error {
+  status: number
+  detail: any
+
+  constructor(message: string, status: number, detail: any) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.detail = detail
+  }
+}
+
 export async function apiFetch<T = any>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers || {})
   const token = getToken()
@@ -148,7 +160,9 @@ export async function apiFetch<T = any>(path: string, options: RequestInit = {})
   }
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
-    throw new Error(data.detail || `请求失败 (${res.status})`)
+    const detail = data.detail
+    const message = typeof detail === 'string' ? detail : (detail?.message || `请求失败 (${res.status})`)
+    throw new ApiError(message, res.status, detail)
   }
   return data as T
 }

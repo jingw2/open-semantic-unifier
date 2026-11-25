@@ -23,6 +23,21 @@ services:
       timeout: 3s
       retries: 10
 
+  openrefine:
+    build:
+      context: ./openrefine
+    restart: unless-stopped
+    environment:
+      OPENREFINE_MEMORY: 1024M
+    volumes:
+      - openrefine_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3333/command/core/get-version"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
+
   phoenix:
     image: arizephoenix/phoenix:version-22.0.1@sha256:cc8c5e545389a6aae9523beaf92eb067fdaeae59d2166093d60856f89bf7ee34
     profiles: ["observability"]
@@ -69,6 +84,9 @@ services:
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-open-semantic-unifier}
       OTEL_EXPORT_TIMEOUT_SECONDS: ${OTEL_EXPORT_TIMEOUT_SECONDS:-1.0}
       LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-30.0}
+      OPENREFINE_ENABLED: "true"
+      OPENREFINE_URL: http://openrefine:3333
+      OPENREFINE_TIMEOUT_SECONDS: ${OPENREFINE_TIMEOUT_SECONDS:-60}
       STORAGE_BACKEND: s3
       S3_ENDPOINT_URL: http://minio:9000
       S3_ACCESS_KEY: ${MINIO_ACCESS_KEY:-semantic-unifier}
@@ -83,6 +101,8 @@ services:
       redis:
         condition: service_healthy
       minio:
+        condition: service_healthy
+      openrefine:
         condition: service_healthy
     ports:
       - "${API_PORT:-8000}:8000"
@@ -104,6 +124,9 @@ services:
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-open-semantic-unifier}
       OTEL_EXPORT_TIMEOUT_SECONDS: ${OTEL_EXPORT_TIMEOUT_SECONDS:-1.0}
       LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-30.0}
+      OPENREFINE_ENABLED: "true"
+      OPENREFINE_URL: http://openrefine:3333
+      OPENREFINE_TIMEOUT_SECONDS: ${OPENREFINE_TIMEOUT_SECONDS:-60}
       STORAGE_BACKEND: s3
       S3_ENDPOINT_URL: http://minio:9000
       S3_ACCESS_KEY: ${MINIO_ACCESS_KEY:-semantic-unifier}
@@ -118,6 +141,46 @@ services:
       redis:
         condition: service_healthy
       minio:
+        condition: service_healthy
+      openrefine:
+        condition: service_healthy
+
+  beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: celery -A app.workers.celery_app:celery_app beat --loglevel=info
+    env_file:
+      - ${APP_ENV_FILE:-.env}
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-su_admin}:${POSTGRES_PASSWORD:?Generate secrets with python3 scripts/init_env.py}@postgres:5432/${POSTGRES_DB:-semantic_unifier}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_ENABLED: "true"
+      PHOENIX_ENABLED: ${PHOENIX_ENABLED:-false}
+      PHOENIX_COLLECTOR_ENDPOINT: ${PHOENIX_COLLECTOR_ENDPOINT:-http://phoenix:6006/v1/traces}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-open-semantic-unifier}
+      OTEL_EXPORT_TIMEOUT_SECONDS: ${OTEL_EXPORT_TIMEOUT_SECONDS:-1.0}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-30.0}
+      OPENREFINE_ENABLED: "true"
+      OPENREFINE_URL: http://openrefine:3333
+      OPENREFINE_TIMEOUT_SECONDS: ${OPENREFINE_TIMEOUT_SECONDS:-60}
+      STORAGE_BACKEND: s3
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_ACCESS_KEY:-semantic-unifier}
+      S3_SECRET_KEY: ${MINIO_SECRET_KEY:?Generate secrets with python3 scripts/init_env.py}
+      S3_BUCKET: ${S3_BUCKET:-semantic-unifier}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Generate secrets with python3 scripts/init_env.py}
+      INIT_ADMIN_PASSWORD: ${INIT_ADMIN_PASSWORD:?Generate secrets with python3 scripts/init_env.py}
+      APP_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      openrefine:
         condition: service_healthy
 
   frontend:
@@ -134,3 +197,4 @@ volumes:
   pg_data:
   minio_data:
   phoenix_data:
+  openrefine_data:

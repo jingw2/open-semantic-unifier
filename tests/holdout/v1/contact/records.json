@@ -1,0 +1,242 @@
+[
+  {
+    "record_ref": "contact:a01",
+    "source_system": "hr",
+    "dataset": "contact_hld",
+    "source_record_id": "HC-001",
+    "attributes": {
+      "name": "Maya Chen",
+      "email": "maya.chen@hld.example",
+      "phone": "+1-555-0110",
+      "address": "1 Bay Street, Ficton"
+    }
+  },
+  {
+    "record_ref": "contact:b01",
+    "source_system": "support",
+    "dataset": "contact_hld",
+    "source_record_id": "HC-002",
+    "attributes": {
+      "name": "Maya Chen",
+      "email": "maya.chen@hld.example",
+      "phone": "+1-555-0111",
+      "address": "1 Bay St, Ficton"
+    }
+  },
+  {
+    "record_ref": "contact:a02",
+    "source_system": "hr",
+    "dataset": "contact_hld",
+    "source_record_id": "HC-003",
+    "attributes": {
+      "name": "Jonas Weber",
+      "email": null,
+      "phone": null,
+      "address": "5 River Walk, Ficton"
+    }
+  },
+  {
+    "record_ref": "contact:b02",
+    "source_system": "support",
+    "dataset": "contact_hld",
+    "source_record_id": "HC-004",
+    "attributes": {
+      "name": "Jonas Webber",
+      "email": null,
+      "phone": null,
+      "address": "5 River Wk, Ficton"
+    }
+  },
+  {
+    "record_ref": "contact:a03",
+    "source_system": "hr",
+    "dataset": "contact_hld",
+    "source_record_id": "HC-005",
+    "attributes": {
+      "name": "Priya Nair",
+      "email": "priya.nair@alpha.hld.example",
+      "phone": null,
+      "address": "8 Lotus Road, Ficton"
+    }
+  },
+  {
+    "record_ref": "contact:b03",
+    "source_system": "support",
+    "dataset": "contact_hld",
+    "source_record_id": "HC-006",
+    "attributes": {
+      "name": "Priya Nair",
+      "email": "p.nair@beta.hld.example",
+      "phone": null,
+      "address": "8 Lotus Rd, Ficton"
+    }
+  },
+  {
+    "record_ref": "contact:a04",
+    "source_system": "hr",
+    "dataset": "contact_hld",
+    "source_record_id": "HC-007",
+    "attributes": {
+      "name": "Liam O'Connor",
+      "email": null,
+      "phone": "+1-555-0112",
+      "address": "14 Green Hill, Ficton"
+    }
+  },
+  {
+    "record_ref": "contact:b04",
+    "source_system": "support",
+    "dataset": "contact_hld",
+    "source_record_id": "HC-008",
+    "attributes": {
+      "name": "Liam OConnor",
+      "email": null,
+      "phone": "+1-555-0112",
+      "address": "14 Green Hl, Ficton"
+    }
+  },
+  {
+    "record_ref": "contact:a05",
+    "source_system": "hr",
+    "dataset": "contact_hld",
+    "source_record_id": "HC-009",
+    "attributes": {
+      "name": "Sofia Rossi",
+      "email": "sofia.rossi@hld.example",
+      "phone": null,
+      "address": "3 Vine Court, Ficton"
+    }
+  },
+  {
+    "record_ref": "contact:b05",
+    "source_system": "support",
+    "dataset": "contact_hld",
+    "source_record_id": "HC-010",
+    "attributes": {
+      "name": "Sofia Rossi",
+      "email": "sofia.rossi@hld.example",
+      "phone": null,
+      "address": "77 Vine Street, Ficton"
+    }
+  },
+  {
+    "record_ref": "contact:a06",
+    "source_system": "hr",
+    "dataset": "contact_hld",
+    "source_record_id": "HC-011",
+    "attributes": {
+      "name": "Ahmed Al-Farsi",
+      "email": null,
+      "phone": null,
+      "address": "10 Palm Avenue, Ficton"
+    }
+  },
+  {
+    "record_ref": "contact:b06",
+    "source_system": "support",
+    "dataset": "contact_hld",
+    "source_record_id": "HC-012",
+    "attributes": {
+      "name": "Ahmad Al Farsi",
+      "email": null,
+      "phone": null,
+      "address": "10 Palm Ave, Ficton"
+    }
+  },
+  {
+    "record_ref": "contact:a07",
+    "source_system": "hr",
+    "dataset": "contact_hld",
+    "source_record_id": "HC-013",
+    "attributes": {
+      "name": "Elena Petrova",
+      "email": null,
+      "phone": null,
+      "address": null
+    }
+  },
+  {
+    "record_ref": "contact:b07",
+    "source_system": "support",
+    "dataset": "contact_hld",
+    "source_record_id": "HC-014",
+    "attributes": {
+      "name": "Elena Petrova",
+      "email": null,
+      "phone": null,
+      "address": null
+    }
+  },
+  {
+    "record_ref": "contact:a08",
+    "source_system": "hr",
+    "dataset": "contact_hld",
+    "source_record_id": "HC-015",
+    "attributes": {
+      "name": "Marcus Johnson",
+      "email": "marcus.johnson@alpha.hld.example",
+      "phone": "+1-555-0113",
+      "address": "2 Cedar Lane, Ficton"
+    }
+  },
+  {
+    "record_ref": "contact:b08",
+    "source_system": "support",
+    "dataset": "contact_hld",
+    "source_record_id": "HC-016",
+    "attributes": {
+      "name": "Mark Johnson",
+      "email": "mark.johnson@beta.hld.example",
+      "phone": "+1-555-0114",
+      "address": "22 Cedar Ln, Ficton"
+    }
+  },
+  {
+    "record_ref": "contact:a09",
+    "source_system": "hr",
+    "dataset": "contact_hld",
+    "source_record_id": "HC-017",
+    "attributes": {
+      "name": "Yuki Tanaka",
+      "email": "yuki.tanaka@hld.example",
+      "phone": "+1-555-0115",
+      "address": "6 Sakura Street, Ficton"
+    }
+  },
+  {
+    "record_ref": "contact:b09",
+    "source_system": "support",
+    "dataset": "contact_hld",
+    "source_record_id": "HC-018",
+    "attributes": {
+      "name": "Yuki Tanaka",
+      "email": "yuki.tanaka@hld.example",
+      "phone": "+1-555-0116",
+      "address": "6 Sakura St, Ficton"
+    }
+  },
+  {
+    "record_ref": "contact:a10",
+    "source_system": "hr",
+    "dataset": "contact_hld",
+    "source_record_id": "HC-019",
+    "attributes": {
+      "name": "Grace Kim",
+      "email": null,
+      "phone": "+1-555-0117",
+      "address": "9 Pine Road, Ficton"
+    }
+  },
+  {
+    "record_ref": "contact:b10",
+    "source_system": "support",
+    "dataset": "contact_hld",
+    "source_record_id": "HC-020",
+    "attributes": {
+      "name": "Grace Park",
+      "email": null,
+      "phone": "+1-555-0117",
+      "address": "90 Pine Rd, Ficton"
+    }
+  }
+]

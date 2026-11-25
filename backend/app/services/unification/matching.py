@@ -9,6 +9,7 @@ import unicodedata
 from typing import Any, Callable, Protocol
 
 from app.models.unification import SourceRevision
+from app.services.decision_models.contracts import DecisionError, DecisionOutcome, DecisionSuggestion, DecisionVerdict
 from app.services.llm_client import JudgeResult
 from app.services.unification.telemetry import start_span
 from .schemes import MatchScheme
@@ -28,7 +29,14 @@ class CannotLink:
 
 
 class ModelJudge(Protocol):
-    def __call__(self, left: SourceRevision, right: SourceRevision, scheme: MatchScheme) -> dict[str, Any] | JudgeResult: ...
+    def __call__(
+        self,
+        left: SourceRevision,
+        right: SourceRevision,
+        scheme: MatchScheme,
+        evidence_codes: tuple[str, ...],
+        evidence: tuple[dict[str, Any], ...],
+    ) -> dict[str, Any] | JudgeResult | DecisionOutcome: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +50,7 @@ class PairMatch:
     evidence: tuple[dict[str, Any], ...]
     recommendation: dict[str, Any] | None = None
     model_error: str | None = None
+    decision: DecisionSuggestion | DecisionError | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,11 +187,36 @@ def _pair_match(
 
     recommendation = None
     model_error = None
+    decision: DecisionSuggestion | DecisionError | None = None
     if candidate and judge is not None:
         try:
             with start_span("unification.model_recommendation", {"left_source_revision_id": left.id, "right_source_revision_id": right.id}):
-                judged = judge(left, right, scheme)
-            if isinstance(judged, JudgeResult):
+                judged = judge(left, right, scheme, tuple(evidence_codes), tuple(evidence))
+            if isinstance(judged, DecisionSuggestion):
+                recommendation = {
+                    "verdict": judged.verdict.value,
+                    "is_same_entity": (
+                        True if judged.verdict == DecisionVerdict.SAME
+                        else False if judged.verdict == DecisionVerdict.DIFFERENT
+                        else None
+                    ),
+                    "confidence": judged.confidence,
+                    "distribution": {key.value: value for key, value in judged.distribution.items()} if judged.distribution else None,
+                    "reason": judged.explanation,
+                    "model": judged.model_version,
+                    "provider_kind": judged.provider_kind,
+                    "provider_key": judged.provider_key,
+                    "prompt_version": judged.prompt_version,
+                    "latency_ms": judged.latency_ms,
+                    "usage": dict(judged.usage) if judged.usage else None,
+                    "cost_usd": judged.cost_usd,
+                    "trace_id": judged.trace_id,
+                }
+                decision = judged
+            elif isinstance(judged, DecisionError):
+                model_error = f"{judged.code}: {judged.message}"
+                decision = judged
+            elif isinstance(judged, JudgeResult):
                 if judged.status == "SUGGESTION":
                     recommendation = {
                         "is_same_entity": judged.suggestion,
@@ -201,7 +235,7 @@ def _pair_match(
             model_error = f"{type(exc).__name__}: {exc}"
 
     score = 1.0 if action in {MatchAction.AUTO_MATCH, MatchAction.DISTINCT} else (splink_score if splink_score is not None else (0.75 if candidate else 0.0))
-    return PairMatch(left.id, right.id, candidate, action, score, tuple(evidence_codes), tuple(evidence), recommendation, model_error)
+    return PairMatch(left.id, right.id, candidate, action, score, tuple(evidence_codes), tuple(evidence), recommendation, model_error, decision)
 
 
 def _splink_candidates(records: list[SourceRevision], scheme: MatchScheme) -> dict[frozenset[str], float]:
