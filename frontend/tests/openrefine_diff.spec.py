@@ -132,6 +132,7 @@ def test_openrefine_preview_adopt_cancel_and_fallback():
 
             open_route(page, "#/tasks/new/clean")
             expect(page.get_by_role("heading", name="处理方法", exact=True)).to_be_visible(timeout=15000)
+            expect(page.get_by_text("ETL 写入与定时", exact=True)).to_have_count(0)
             expect(page.get_by_role("button", name="OpenRefine 预览", exact=True)).to_be_visible()
             expect(page.get_by_text("字段设置", exact=True)).to_be_visible(timeout=15000)
             page.get_by_label("名称字段").select_option("city")

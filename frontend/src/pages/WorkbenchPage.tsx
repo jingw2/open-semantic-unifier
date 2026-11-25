@@ -87,7 +87,8 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
   const [metricName, setMetricName] = useState('net_gmv')
   const [enableHybrid, setEnableHybrid] = useState(true)
   const [matchFields, setMatchFields] = useState<string[]>([])
-  const [cleanTargetCol, setCleanTargetCol] = useState('')
+  const [cleanFields, setCleanFields] = useState<string[]>([])
+  const [useRoster, setUseRoster] = useState(false)
   const [localDsIds, setLocalDsIds] = useState<string[]>(activeDsIds)
   const [localProfile, setLocalProfile] = useState<any>(activeProfile)
   const [effectiveRouting, setEffectiveRouting] = useState<any>(activeRouting)
@@ -129,6 +130,11 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
   const targetOptions = datasources.filter((ds) => ETL_SINK_TYPES.includes(ds.source_type))
   const canSaveSchedule = Boolean(etlTargetId && etlTable.trim() && scheduleInterval)
   const needTargetTable = Boolean(etlTargetId && !etlTable.trim())
+  const hasRoster = datasources.some((source) => source.routing?.role === 'standard_roster')
+  const hasDatabaseSource = datasources.some(
+    (source) => dsIds.includes(source.id) && ETL_SINK_TYPES.includes(source.source_type),
+  )
+  const needsCleanFields = stage === 'L1' && cleanFields.length === 0
 
   const applyRecipe = (recipe: any) => {
     if (!recipe) return
@@ -174,7 +180,10 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
     const preferred = typeof sp.name_col === 'string' && matchFieldOptions.includes(sp.name_col)
       ? sp.name_col
       : (matchFieldOptions[0] || '')
-    setCleanTargetCol((current) => (current && matchFieldOptions.includes(current) ? current : preferred))
+    setCleanFields((current) => {
+      const valid = current.filter((field) => matchFieldOptions.includes(field))
+      return valid.length ? valid : (preferred ? [preferred] : [])
+    })
   }, [stage, dsIds.join(','), routing, profileColumns.join(',')])
 
   useEffect(() => {
@@ -261,7 +270,10 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
 
   const stageParams = (): Record<string, any> => {
     const sp = routing?.suggested_params || {}
-    if (stage === 'L1') return { target_col: cleanTargetCol || sp.name_col, amount_col: sp.amount_col }
+    if (stage === 'L1') {
+      if (useRoster) return { target_col: cleanFields[0] || sp.name_col, amount_col: sp.amount_col }
+      return { clean_fields: cleanFields }
+    }
     if (stage === 'L2')
       return { match_fields: matchFields, enable_hybrid_llm: enableHybrid }
     if (stage === 'L4') return { metric_name: metricName, group_by: 'order_channel' }
@@ -482,7 +494,7 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
               </button>
             )}
             <button
-              disabled={running || needsDataSource || needTargetTable || needsMatchFields}
+              disabled={running || needsDataSource || needTargetTable || needsMatchFields || needsCleanFields}
               onClick={submitJob}
               className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-white font-medium text-sm rounded-lg flex items-center gap-2 disabled:opacity-40"
             >
@@ -677,17 +689,44 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
           </span>
         )}
         {stage === 'L1' && matchFieldOptions.length > 0 && (
-          <label className="flex flex-col gap-1 text-xs">
-            <span className="font-semibold text-neutral-700">清洗目标字段</span>
-            <select
-              aria-label="清洗目标字段"
-              value={cleanTargetCol}
-              onChange={(event) => setCleanTargetCol(event.target.value)}
-              className="border border-neutral-300 rounded-md px-2.5 py-1.5 bg-white"
-            >
-              {matchFieldOptions.map((column) => <option key={column} value={column}>{column}</option>)}
-            </select>
-          </label>
+          <div className="w-full">
+            <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+              <span className="font-semibold text-neutral-700">清洗字段（可多选）</span>
+              {hasRoster && (
+                <label className="flex items-center gap-1.5 text-xs text-neutral-600">
+                  <input type="checkbox" aria-label="使用标准花名册对齐" checked={useRoster} onChange={(event) => setUseRoster(event.target.checked)} />
+                  使用标准花名册对齐
+                </label>
+              )}
+            </div>
+            {useRoster ? (
+              <select
+                aria-label="清洗目标字段"
+                value={cleanFields[0] || ''}
+                onChange={(event) => setCleanFields([event.target.value])}
+                className="border border-neutral-300 rounded-md px-2.5 py-1.5 bg-white text-xs"
+              >
+                {matchFieldOptions.map((column) => <option key={column} value={column}>{column}</option>)}
+              </select>
+            ) : (
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                {matchFieldOptions.map((column) => (
+                  <label key={column} className="flex items-center gap-1.5 text-neutral-700">
+                    <input
+                      type="checkbox"
+                      aria-label={`清洗字段 ${column}`}
+                      checked={cleanFields.includes(column)}
+                      onChange={(event) => setCleanFields(event.target.checked
+                        ? [...cleanFields, column]
+                        : cleanFields.filter((field) => field !== column))}
+                    />
+                    {column}
+                  </label>
+                ))}
+              </div>
+            )}
+            {needsCleanFields && <p className="mt-1 text-[11px] text-red-600">至少选择一个清洗字段。</p>}
+          </div>
         )}
         {stage === 'L2' && (
           <>
@@ -732,8 +771,8 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
       </div>
       )}
 
-      {/* ETL 写入与定时 */}
-      <div className="bg-white border border-neutral-200 rounded-xl p-5 space-y-4">
+      {/* ETL 写入与定时：仅数据库源需要 */}
+      {hasDatabaseSource && <div className="bg-white border border-neutral-200 rounded-xl p-5 space-y-4">
         <div className="flex items-start gap-2">
           <Clock className="w-4 h-4 text-neutral-400 mt-0.5" />
           <div>
@@ -850,7 +889,7 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
             </table>
           </div>
         )}
-      </div>
+      </div>}
 
       {/* 实时任务进度条与结果看板 */}
       {job && (
@@ -893,10 +932,23 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
             <div className="space-y-3">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-200"><div className="text-2xl font-semibold text-brand-600">{job.result.total_rows}</div><div className="text-xs text-neutral-500">总行数</div></div>
-                <div className="p-4 bg-red-50 rounded-xl border border-red-200"><div className="text-2xl font-semibold text-red-600">{job.result.before_unique} 种</div><div className="text-xs text-red-700">清洗前马甲裂变</div></div>
-                <div className="p-4 bg-green-50 rounded-xl border border-green-200"><div className="text-2xl font-semibold text-green-600">{job.result.after_unique} 家</div><div className="text-xs text-green-700">对齐后标准实体</div></div>
-                <div className="p-4 bg-brand-50 rounded-xl border border-brand-200"><div className="text-2xl font-semibold text-brand-600">{job.result.review_queued} 条</div><div className="text-xs text-brand-700">已推入复核队列</div></div>
+                {Array.isArray(job.result.clean_fields) ? (
+                  <>
+                    <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-200"><div className="text-2xl font-semibold text-neutral-900">{job.result.clean_fields.length}</div><div className="text-xs text-neutral-500">清洗字段</div></div>
+                    <div className="p-4 bg-amber-50 rounded-xl border border-amber-200"><div className="text-2xl font-semibold text-amber-700">{job.result.changed_rows}</div><div className="text-xs text-amber-700">变更行</div></div>
+                    <div className="p-4 bg-brand-50 rounded-xl border border-brand-200"><div className="text-2xl font-semibold text-brand-600">{job.result.changed_cells}</div><div className="text-xs text-brand-700">变更单元格</div></div>
+                  </>
+                ) : (
+                  <>
+                    <div className="p-4 bg-red-50 rounded-xl border border-red-200"><div className="text-2xl font-semibold text-red-600">{job.result.before_unique} 种</div><div className="text-xs text-red-700">清洗前马甲裂变</div></div>
+                    <div className="p-4 bg-green-50 rounded-xl border border-green-200"><div className="text-2xl font-semibold text-green-600">{job.result.after_unique} 家</div><div className="text-xs text-green-700">对齐后标准实体</div></div>
+                    <div className="p-4 bg-brand-50 rounded-xl border border-brand-200"><div className="text-2xl font-semibold text-brand-600">{job.result.review_queued} 条</div><div className="text-xs text-brand-700">已推入复核队列</div></div>
+                  </>
+                )}
               </div>
+              {Array.isArray(job.result.clean_fields) && (
+                <p className="text-xs text-neutral-500">清洗字段：{job.result.clean_fields.join('、')}</p>
+              )}
               {(job.result?.reference_catalog?.kind === 'roster' || job.result?.reference_catalog?.kind === 'demo') && (
                 <p className="text-xs text-neutral-500">
                   对齐来源：{job.result.reference_catalog.kind === 'roster'

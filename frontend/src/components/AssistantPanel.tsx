@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { ArrowRight, Bot, CheckCircle2, ChevronRight, LoaderCircle, Send } from 'lucide-react'
-import { apiFetch, DataSourceItem, JobItem } from '../lib/api'
+import { ApiError, apiFetch, DataSourceItem, JobItem } from '../lib/api'
 import { explainPage } from '../lib/pageHelp'
 
 type AssistantTaskKey = 'clean' | 'match' | 'entity' | 'metrics' | 'contract' | 'review'
@@ -82,7 +82,7 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
   const [entitySummary, setEntitySummary] = useState<EntitySummary | null>(null)
   const [matchFields, setMatchFields] = useState<string[]>([])
   const [entityFields, setEntityFields] = useState<string[]>(['name', 'tax_id'])
-  const [cleanTargetCol, setCleanTargetCol] = useState('')
+  const [cleanFields, setCleanFields] = useState<string[]>([])
   const idRef = useRef(0)
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -119,7 +119,10 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
   }, [selectedId, matchFieldOptions.join(',')])
 
   useEffect(() => {
-    setCleanTargetCol((current) => (current && cleanFieldOptions.includes(current) ? current : (cleanFieldOptions[0] || '')))
+    setCleanFields((current) => {
+      const valid = current.filter((field) => cleanFieldOptions.includes(field))
+      return valid.length ? valid : (cleanFieldOptions[0] ? [cleanFieldOptions[0]] : [])
+    })
   }, [selectedId, cleanFieldOptions.join(',')])
 
   const pushUser = (content: string) => {
@@ -165,8 +168,11 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
         setMatchFields(planned.length ? planned : matchFieldOptions)
       }
       if (plan.intent === 'clean') {
-        const planned = typeof plan.params?.target_col === 'string' ? plan.params.target_col : ''
-        setCleanTargetCol(planned && cleanFieldOptions.includes(planned) ? planned : (cleanFieldOptions[0] || ''))
+        const planned = Array.isArray(plan.params?.clean_fields)
+          ? plan.params.clean_fields as string[]
+          : (typeof plan.params?.target_col === 'string' ? [plan.params.target_col] : [])
+        const valid = planned.filter((field) => cleanFieldOptions.includes(field))
+        setCleanFields(valid.length ? valid : (cleanFieldOptions[0] ? [cleanFieldOptions[0]] : []))
       }
       pushAssistant(plan.explanation || '', plan)
     } catch (caught) {
@@ -214,7 +220,7 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
     setEntitySummary(null)
     if (next.key === 'match' && !matchFields.length) setMatchFields(matchFieldOptions)
     if (next.key === 'entity' && !entityFields.length) setEntityFields(['name', 'tax_id'])
-    if (next.key === 'clean' && !cleanTargetCol) setCleanTargetCol(cleanFieldOptions[0] || '')
+    if (next.key === 'clean' && !cleanFields.length) setCleanFields(cleanFieldOptions[0] ? [cleanFieldOptions[0]] : [])
     pushAssistant(plan.explanation, plan)
   }
 
@@ -297,14 +303,21 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
           apiFetch<{ items: any[] }>(`/api/v1/projects/${projectId}/unification/snapshots?limit=1&offset=0`),
         ])
         if (!sources.length || !snapshots.items?.length) {
-          throw new Error('还没有契约源或实体快照，请先去契约统一工作台准备。')
+          throw new Error('数据契约需要先在契约工作台登记 LinkML/Sheets 契约文件，并发布一个实体快照。')
         }
-        const version = await apiFetch<{ id: string }>(`/api/v1/projects/${projectId}/contracts/versions`, {
-          method: 'POST',
-          body: JSON.stringify({ source_id: sources[0].id, snapshot_id: snapshots.items[0].snapshot_id, allowed_new_entity_types: [] }),
-        })
-        setResultRoute(`#/tasks/contract/${version.id}`)
-        setStage('done')
+        try {
+          const version = await apiFetch<{ id: string }>(`/api/v1/projects/${projectId}/contracts/versions`, {
+            method: 'POST',
+            body: JSON.stringify({ source_id: sources[0].id, snapshot_id: snapshots.items[0].snapshot_id, allowed_new_entity_types: [] }),
+          })
+          setResultRoute(`#/tasks/contract/${version.id}`)
+          setStage('done')
+        } catch (caught) {
+          if (caught instanceof ApiError && caught.status === 422) {
+            throw new Error('契约校验未通过：请去契约工作台查看具体字段或实体类型问题，修正后重新生成。')
+          }
+          throw caught
+        }
         return
       }
 
@@ -325,7 +338,7 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
         : plan.params && Object.keys(plan.params).length > 0
           ? plan.params
           : task.stage === 'L1'
-            ? { target_col: cleanTargetCol || sp.name_col, amount_col: sp.amount_col }
+            ? { clean_fields: cleanFields }
             : { metric_name: 'net_gmv', group_by: 'order_channel' }
       const created = await apiFetch<JobItem>(`/api/v1/projects/${projectId}/jobs`, {
         method: 'POST',
@@ -431,7 +444,14 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
                           </button>
                         )}
                       </div>
-                      {isLastPlan && datasources.length > 0 ? (
+                      {planTask.key === 'contract' ? (
+                        <div className="mt-2 rounded-md border border-neutral-200 bg-neutral-50 p-2.5 text-[11px] leading-5 text-neutral-600">
+                          数据契约使用契约工作台已登记的 LinkML/Sheets 契约文件和实体快照，普通数据源不会作为契约源。
+                          <button onClick={() => onRoute('#/tasks/new/contract')} className="mt-1.5 block font-medium text-neutral-900 underline">
+                            去契约工作台准备
+                          </button>
+                        </div>
+                      ) : planTask.key === 'entity' ? null : isLastPlan && datasources.length > 0 ? (
                         <div className="mt-2">
                           <div className="text-[11px] text-neutral-500">数据源：{datasources.find((item) => item.id === selectedId)?.name || '未选择'}</div>
                         <label className="mt-1 block text-[11px] text-neutral-500">
@@ -459,17 +479,24 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
                         return source ? <div className="mt-1 text-[11px] text-neutral-500">数据源：{source.name}</div> : null
                       })()}
                       {isLastPlan && planTask.key === 'clean' && (
-                        <label className="mt-2 block text-[11px] font-medium text-neutral-800">清洗目标字段
-                          <select
-                            aria-label="清洗目标字段"
-                            value={cleanTargetCol}
-                            onChange={(event) => setCleanTargetCol(event.target.value)}
-                            className="mt-1 w-full rounded-md border border-neutral-300 bg-white px-2 py-1.5 text-xs font-normal"
-                          >
-                            {cleanFieldOptions.map((field) => <option key={field} value={field}>{field}</option>)}
-                          </select>
-                          <span className="mt-1 block font-normal text-neutral-500">规则清洗按一个字段；多字段请在处理方法使用 OpenRefine 字段设置。</span>
-                        </label>
+                        <div className="mt-2 rounded-md border border-neutral-200 p-2.5">
+                          <div className="text-[11px] font-medium text-neutral-800">清洗字段（可多选）</div>
+                          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+                            {cleanFieldOptions.map((field) => (
+                              <label key={field} className="inline-flex items-center gap-1 text-[11px] text-neutral-600">
+                                <input
+                                  type="checkbox"
+                                  checked={cleanFields.includes(field)}
+                                  onChange={(event) => setCleanFields(event.target.checked
+                                    ? [...cleanFields, field]
+                                    : cleanFields.filter((item) => item !== field))}
+                                />
+                                {field}
+                              </label>
+                            ))}
+                          </div>
+                          {!cleanFields.length && <p className="mt-1 text-[11px] text-red-600">至少选择一个字段。</p>}
+                        </div>
                       )}
                       {isLastPlan && planTask.key === 'match' && (
                         <div className="mt-2 rounded-md border border-neutral-200 p-2.5">
@@ -522,6 +549,7 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
                         {['① 选数据', '② 运行', '③ 看结果'].map((step) => <li key={step}>{step}</li>)}
                       </ol>
                       {isLastPlan && stage === 'idle' && !plan.needs_clarification
+                        && !(planTask.key === 'clean' && !cleanFields.length)
                         && !(planTask.key === 'match' && !matchFields.length)
                         && !(planTask.key === 'entity' && !entityFields.length) && (
                         <button onClick={() => void run(plan)} className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-neutral-900 px-3 py-2 text-xs font-medium text-white">

@@ -118,7 +118,7 @@ def test_l2_match_field_selection_sends_selected_fields():
             assert captured and captured[-1]["params"]["match_fields"] == ["tax_id"]
 
             open_route(page, "#/tasks/new/clean")
-            expect(page.get_by_label("清洗目标字段")).to_be_visible(timeout=15000)
+            expect(page.get_by_text("清洗字段（可多选）", exact=True)).to_be_visible(timeout=15000)
             browser.close()
     finally:
         server.should_exit = True

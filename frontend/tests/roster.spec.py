@@ -130,6 +130,8 @@ def test_roster_badge_editor_and_l1_alignment():
 
             page.get_by_role("button", name="进入处理方法 →", exact=True).nth(0).click()
             expect(page.get_by_role("button", name="运行规则清洗", exact=True)).to_be_visible(timeout=15000)
+            expect(page.get_by_label("使用标准花名册对齐")).to_be_visible(timeout=15000)
+            page.get_by_label("使用标准花名册对齐").check()
             page.get_by_role("button", name="运行规则清洗", exact=True).click()
             expect(page.get_by_text("对齐来源：标准花名册", exact=False)).to_be_visible(timeout=30000)
             browser.close()

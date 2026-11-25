@@ -166,7 +166,7 @@ def test_guided_assistant_runs_l1_and_entity_demo():
 
                 page.get_by_role("button", name="清洗字段", exact=True).click()
                 expect(page.get_by_text("规则清洗 + W3C 契约", exact=False).first).to_be_visible()
-                expect(page.get_by_label("清洗目标字段")).to_be_visible()
+                expect(page.get_by_text("清洗字段（可多选）", exact=False)).to_be_visible()
 
                 route_pattern = "**/api/v1/projects/*/datasources/demo/L1"
                 page.route(route_pattern, lambda route: route.abort())
@@ -254,6 +254,12 @@ def test_guided_assistant_model_plan_and_answer():
                 page.get_by_label("选择数据源").select_option(label="demo_metrics.yaml")
                 page.get_by_role("button", name="开始", exact=True).click()
                 expect(page.get_by_text("已完成", exact=False).first).to_be_visible(timeout=60000)
+
+                page.get_by_role("button", name="生成数据契约", exact=True).click()
+                expect(page.get_by_text("数据契约使用契约工作台", exact=False)).to_be_visible(timeout=15000)
+                page.get_by_role("button", name="开始", exact=True).click()
+                expect(page.get_by_text("数据契约需要先在契约工作台登记", exact=False)).to_be_visible(timeout=15000)
+                expect(page.get_by_text("请求失败 (422)", exact=False)).to_have_count(0)
                 browser.close()
     finally:
         provider_server.shutdown()

@@ -38,6 +38,7 @@ import app.workers.tasks as worker_tasks
 
 def test_etl_sink_and_schedule():
     database_path = Path("/tmp") / f"open-semantic-unifier-etl-{uuid.uuid4().hex}.db"
+    source_path = Path("/tmp") / f"open-semantic-unifier-etl-source-{uuid.uuid4().hex}.db"
     target_path = Path("/tmp") / f"open-semantic-unifier-etl-target-{uuid.uuid4().hex}.db"
     engine = create_engine(f"sqlite:///{database_path}", connect_args={"check_same_thread": False, "timeout": 30})
     Base.metadata.drop_all(engine)
@@ -52,11 +53,12 @@ def test_etl_sink_and_schedule():
         db.flush()
         db.add(Project(id="project-etl", workspace_id="workspace-etl", name="ETL project", slug="etl-project", description=""))
         db.add(DataSource(
-            id="ds-dirty", project_id="project-etl", name="dirty_suppliers.csv", source_type="file",
-            object_key="projects/project-etl/uploads/dirty_suppliers.csv",
+            id="ds-dirty", project_id="project-etl", name="source_sqlite.db", source_type="sqlite",
+            table_name="dirty_suppliers",
+            encrypted_config=encrypt_secret(json.dumps({"db_type": "sqlite", "database": str(source_path)})),
             profile_json={
                 "total_rows": 60, "table_count": 1,
-                "tables": [{"name": "dirty_suppliers.csv", "rows": 60, "cols": 5,
+                "tables": [{"name": "dirty_suppliers", "rows": 60, "cols": 5,
                             "columns": ["row_id", "supplier_raw_name", "source_system", "order_amount_cny", "ground_truth_id"], "preview": []}],
             },
             routing_json={
@@ -74,10 +76,11 @@ def test_etl_sink_and_schedule():
         ))
         db.commit()
 
-    storage.put_bytes(
-        "projects/project-etl/uploads/dirty_suppliers.csv",
-        build_demo_dirty_suppliers(60).to_csv(index=False).encode("utf-8-sig"),
-    )
+    source_con = sqlite3.connect(str(source_path))
+    try:
+        build_demo_dirty_suppliers(60).to_sql("dirty_suppliers", source_con, index=False)
+    finally:
+        source_con.close()
 
     def test_db():
         with maker() as db:
@@ -138,7 +141,7 @@ def test_etl_sink_and_schedule():
             try:
                 assert con.execute("SELECT COUNT(*) FROM clean_out").fetchone()[0] >= 1
                 columns = [row[1] for row in con.execute("PRAGMA table_info(clean_out)").fetchall()]
-                assert "canonical_id" in columns
+                assert "supplier_raw_name" in columns
             finally:
                 con.close()
 
@@ -159,6 +162,7 @@ def test_etl_sink_and_schedule():
         engine.dispose()
         database_path.unlink(missing_ok=True)
         target_path.unlink(missing_ok=True)
+        source_path.unlink(missing_ok=True)
         shutil.rmtree(storage_root, ignore_errors=True)
 
 
