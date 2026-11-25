@@ -255,6 +255,13 @@ def test_guided_assistant_model_plan_and_answer():
                 page.get_by_role("button", name="开始", exact=True).click()
                 expect(page.get_by_text("已完成", exact=False).first).to_be_visible(timeout=60000)
 
+                page.get_by_role("button", name="清洗字段", exact=True).click()
+                page.get_by_label("选择数据源").select_option(label="suppliers.csv")
+                expect(page.get_by_text("清洗字段（可多选）", exact=False)).to_be_visible()
+                page.get_by_label("清洗字段 supplier_raw_name").check()
+                page.get_by_label("清洗字段 source_system").check()
+                expect(page.get_by_label("清洗字段 source_system")).to_be_checked()
+
                 page.get_by_role("button", name="生成数据契约", exact=True).click()
                 expect(page.get_by_text("数据契约使用契约工作台", exact=False)).to_be_visible(timeout=15000)
                 page.get_by_role("button", name="开始", exact=True).click()

@@ -486,6 +486,7 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
                               <label key={field} className="inline-flex items-center gap-1 text-[11px] text-neutral-600">
                                 <input
                                   type="checkbox"
+                                  aria-label={`清洗字段 ${field}`}
                                   checked={cleanFields.includes(field)}
                                   onChange={(event) => setCleanFields(event.target.checked
                                     ? [...cleanFields, field]
