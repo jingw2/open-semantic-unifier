@@ -24,11 +24,20 @@ class AssistantHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0"))
         payload = json.loads(self.rfile.read(length))
         type(self).requests.append(payload)
-        content = "not json" if self.behavior == "invalid" else json.dumps({
-            "intent": "match",
-            "confidence": 0.92,
-            "explanation": "客户名单去重属于跨库匹配。",
-        })
+        if self.behavior == "invalid":
+            content = "not json"
+        elif self.behavior == "clean":
+            content = json.dumps({
+                "intent": "clean",
+                "confidence": 0.9,
+                "explanation": "客户名单去重属于字段清洗。",
+            })
+        else:
+            content = json.dumps({
+                "intent": "match",
+                "confidence": 0.92,
+                "explanation": "客户名单去重属于跨库匹配。",
+            })
         body = json.dumps({"choices": [{"message": {"content": content}}]}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -101,6 +110,25 @@ def test_assistant_uses_chat_provider_by_kind_and_hides_preview_values(public_ap
     prompt = AssistantHandler.requests[0]["messages"][0]["content"]
     assert "company_name" in prompt
     assert "SECRET-RECORD-VALUE" not in prompt
+
+
+def test_assistant_corrects_entity_dedup_classified_as_clean(public_api, assistant_server):
+    client, _maker, _identity = public_api
+    _seed_providers(public_api, assistant_server.server_port)
+    AssistantHandler.behavior = "clean"
+    response = client.post(
+        "/api/v1/projects/project-one/assistant/plan",
+        json={"message": "帮我把客户名单去重", "page": "data"},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["source"] == "model"
+    assert payload["intent"] == "match"
+    assert payload["suggested_task"] == "match"
+    assert "实体匹配" in payload["explanation"]
+    prompt = AssistantHandler.requests[0]["messages"][0]["content"]
+    assert "去重" in prompt
+    assert "match, never clean" in prompt
 
 
 def test_assistant_falls_back_to_rules_without_a_usable_provider(public_api):

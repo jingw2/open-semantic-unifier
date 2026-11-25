@@ -18,6 +18,8 @@ KEYWORDS = {
     "contract": ("契约", "标准", "linkml", "w3c"),
     "review": ("复核", "审核", "裁决"),
 }
+ENTITY_NOUNS = ("客户", "供应商", "公司", "企业", "联系人")
+DEDUP_TERMS = ("去重", "重复", "重名")
 
 
 def data_summary(db: Session, project_id: str) -> dict[str, Any]:
@@ -49,6 +51,11 @@ def deterministic_intent(message: str) -> tuple[str, float, str]:
     return "unknown", 0.4, "没听懂。请从下面的任务里选一个。"
 
 
+def is_entity_dedup(message: str) -> bool:
+    text = (message or "").casefold()
+    return any(term in text for term in DEDUP_TERMS) and any(noun in text for noun in ENTITY_NOUNS)
+
+
 def _provider_config(provider) -> dict[str, Any]:
     return {
         "provider_key": provider.provider_key,
@@ -70,6 +77,13 @@ def classify_assistant_message(db: Session, project_id: str, message: str, page:
             "Classify the user's goal for a semantic unification product. Return one JSON object with "
             "intent in [clean, match, metrics, contract, review, unknown], confidence from 0 to 1, "
             "and explanation in Chinese. Do not decide or execute any data action.\n"
+            "Intent definitions:\n"
+            "- clean: normalize or reformat fields in one table (trim, casing, punctuation, split or merge columns).\n"
+            "- match: find or deduplicate the same real-world entity, including requests to 去重 an entity list "
+            "such as 客户名单 or 供应商名单. Entity deduplication is match, never clean.\n"
+            "- metrics: unify metric definitions or report numbers.\n"
+            "- contract: create, compile, or validate a data contract.\n"
+            "- review: inspect or decide review items.\n"
             f"Page: {page}\nData summary: {json.dumps(summary, ensure_ascii=False, sort_keys=True)}\n"
             f"User: {message}"
         )
@@ -84,6 +98,14 @@ def classify_assistant_message(db: Session, project_id: str, message: str, page:
                 and 0.55 <= float(confidence) <= 1
                 and isinstance(explanation, str) and explanation.strip()
             ):
+                if intent == "clean" and is_entity_dedup(message):
+                    return {
+                        "intent": "match",
+                        "confidence": float(confidence),
+                        "explanation": "客户或供应商名单去重是实体匹配，不是字段清洗。已按实体匹配处理。",
+                        "suggested_task": "match",
+                        "source": "model",
+                    }
                 return {
                     "intent": intent,
                     "confidence": float(confidence),
