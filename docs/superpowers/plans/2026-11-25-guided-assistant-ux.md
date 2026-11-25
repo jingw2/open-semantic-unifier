@@ -211,9 +211,9 @@ Use the scheme's `field_map` and `normalizers`. `compare_attributes` compares no
 
 - [ ] **Step 4: Wire the endpoint and add the endpoint test**
 
-In `list_unification_reviews`, load the scheme from `UnificationSchemeVersion` and build `items` with `left`, `right`, `comparison`, `why`, `suggestion`, and `consequence`. Build `auto_separated` from the full run result. The revision query must include every revision referenced by both the REVIEW pairs and the DISTINCT pairs that can enter `auto_separated`; do not build `revisions_by_id` from REVIEW pairs only. Keep the existing pending-decision filtering for `items`.
+In `list_unification_reviews`, load the scheme from `UnificationSchemeVersion` and build `items` by keeping every existing pair field (`left_source_revision_id`, `right_source_revision_id`, `candidate`, `action`, `score`, `evidence_codes`, `evidence`, `recommendation`, `model_error`) and adding `left`, `right`, `comparison`, `why`, `suggestion`, and `consequence`. Do not replace the pair dict; the existing unification spec reads the raw revision ids from this response. Build `auto_separated` from the full run result. The revision query must include every revision referenced by both the REVIEW pairs and the DISTINCT pairs that can enter `auto_separated`; do not build `revisions_by_id` from REVIEW pairs only. Keep the existing pending-decision filtering for `items`.
 
-Add `from test_unification_public_api import public_api  # noqa: F401` at the top of the test module. Seed a project, scheme version, four source records/revisions, and a `UnificationRun` whose `result_json` contains one REVIEW pair with `STRONG_IDENTIFIER_MISSING` using revisions `rev-review-left/right`, and one DISTINCT pair with `CANNOT_LINK` using different revisions `rev-distinct-left/right`. Assert `items[0]["why"]` mentions the missing strong identifier, `items[0]["comparison"]` has the expected fields, and `auto_separated[0]["left"]["attributes"]` is non-empty, proving the DISTINCT revisions were loaded.
+Add `from test_unification_public_api import public_api  # noqa: F401` at the top of the test module. Seed a project, scheme version, four source records/revisions, and a `UnificationRun` whose `result_json` contains one REVIEW pair with `STRONG_IDENTIFIER_MISSING` using revisions `rev-review-left/right`, and one DISTINCT pair with `CANNOT_LINK` using different revisions `rev-distinct-left/right`. Assert `items[0]["left_source_revision_id"] == "rev-review-left"` and `items[0]["right_source_revision_id"] == "rev-review-right"` (raw fields are preserved), `items[0]["why"]` mentions the missing strong identifier, `items[0]["comparison"]` has the expected fields, and `auto_separated[0]["left"]["attributes"]` is non-empty, proving the DISTINCT revisions were loaded.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
@@ -254,6 +254,8 @@ Then delete the provider and call again; assert `source == "rules"` and `intent 
 
 Add a fourth case: make a `typesafe_jev` provider `is_default=True` and leave the controlled `openai_compatible` provider `is_default=False`. Call the endpoint and assert it still uses the openai provider (`source == "model"`). This proves the two provider roles are selected independently by kind.
 
+Add a fifth case: insert an `offline` provider (`provider_key="offline"`, `provider_kind="openai_compatible"`, empty base URL and API key) with an earlier `created_at` than the controlled provider, and make it `is_default=False`. Call the endpoint and assert it still uses the controlled provider, not `offline`.
+
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `python3 -m pytest backend/tests/test_assistant.py -q`
@@ -261,7 +263,7 @@ Expected: FAIL with 404 or import errors.
 
 - [ ] **Step 3: Implement the service and route**
 
-`data_summary(db, project_id)` returns `{"source_count", "total_rows", "table_count", "field_names": [...]}` from `profile_json`, never `preview`. `provider_selection.py` defines `select_openai_provider(db, workspace_id)` and `select_decision_provider(db, workspace_id)`. Each filters its kind (`openai_compatible` or `perplexity_decisions/typesafe_jev`), orders `is_default` first then `created_at`, and returns the first row; a decision provider being default must not hide the openai provider. `classify_assistant_message` uses `select_openai_provider`, decrypts the key, and calls `call_llm_json` with a prompt that lists the allowed intents and asks for `{"intent","confidence","explanation"}`. Validate the result; on any error or confidence below `0.55`, call `deterministic_intent(message)`. `deterministic_intent` matches the keyword lists: clean, match, metrics, contract, review; unknown otherwise. Register the router in `main.py`.
+`data_summary(db, project_id)` returns `{"source_count", "total_rows", "table_count", "field_names": [...]}` from `profile_json`, never `preview`. `provider_selection.py` defines `select_openai_provider(db, workspace_id)` and `select_decision_provider(db, workspace_id)`. Each filters its kind (`openai_compatible` or `perplexity_decisions/typesafe_jev`), orders `is_default` first then `created_at`, and returns the first usable row. `select_openai_provider` skips `provider_key == "offline"` and rows with an empty base URL and an empty encrypted key; a decision provider being default must not hide the openai provider. `classify_assistant_message` uses `select_openai_provider`, decrypts the key, and calls `call_llm_json` with a prompt that lists the allowed intents and asks for `{"intent","confidence","explanation"}`. Validate the result; on any error or confidence below `0.55`, call `deterministic_intent(message)`. `deterministic_intent` matches the keyword lists: clean, match, metrics, contract, review; unknown otherwise. Register the router in `main.py`.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -282,15 +284,17 @@ git commit -m "feat(assistant): classify goals with the default provider and a d
 **Files:**
 - Create: `backend/app/demo/entity_demo.py`
 - Modify: `backend/app/api/v1/unification.py`
+- Modify: `backend/app/services/unification/releases.py` (`submit_run`, `_current_input_manifest`)
 - Create: `backend/tests/test_unification_demo.py`
 
 **Interfaces:**
 - Produces: `POST /api/v1/projects/{project_id}/unification/demo`, response `{"run_id": str, "scheme_key": "assistant_entity_demo", "revision": int}`; `select_decision_provider(db, workspace_id) -> LLMProvider | None`.
+- Changes: `submit_run(..., input_source_system: str | None = None)`; `_current_input_manifest(db, project_id, input_source_system=None)` filters `SourceRecord.source_system` when the argument is set. Existing callers keep passing `None`.
 - Consumes: `save_scheme`, `ingest_batch`, `submit_run_service`, `dispatch_unification_run`, `select_decision_provider` from `app.services.provider_selection`.
 
 - [ ] **Step 1: Write the failing endpoint test**
 
-Add `from test_unification_public_api import public_api  # noqa: F401` and use the fixture. Patch `app.api.v1.unification.dispatch_unification_run` to a function that opens the fixture maker and calls `execute_unification_run`, so the run does not use the global `SessionLocal`. Call the endpoint. Poll `GET /projects/{id}/unification/runs/{run_id}` until terminal. Assert the run is `SUCCEEDED`, the result has 3 pairs, at least one pair has `action == "REVIEW"` and at least one has `action == "DISTINCT"`, no pair has `action == "AUTO_MATCH"`, no `IdentityDecisionRecord` with action `MERGE` exists for the project, and no snapshot exists. Call the endpoint again and assert it returns the same `run_id`.
+Add `from test_unification_public_api import public_api  # noqa: F401` and use the fixture. Seed a pre-existing `SourceRecord` with `source_system="erp"` whose tax id matches one of the demo records. Patch `app.api.v1.unification.dispatch_unification_run` to a function that opens the fixture maker and calls `execute_unification_run`, so the run does not use the global `SessionLocal`. Call the endpoint. Poll `GET /projects/{id}/unification/runs/{run_id}` until terminal. Assert the run is `SUCCEEDED`, the result has 3 pairs, the input manifest contains only the six `assistant_demo` records and not the `erp` record, at least one pair has `action == "REVIEW"` and at least one has `action == "DISTINCT"`, no pair has `action == "AUTO_MATCH"`, no `IdentityDecisionRecord` with action `MERGE` exists for the project, and no snapshot exists. Call the endpoint again and assert it returns the same `run_id`.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -299,13 +303,15 @@ Expected: FAIL with 404.
 
 - [ ] **Step 3: Implement the demo records and endpoint**
 
-`entity_demo.py` defines six records. None may form an `AUTO_MATCH` pair:
+`entity_demo.py` defines six records, all with `source_system="assistant_demo"`. None may form an `AUTO_MATCH` pair:
 
 - `acme-erp` / `acme-crm`: similar names, no tax id -> REVIEW.
 - `bluefin-a` / `bluefin-b`: similar names, no tax id -> REVIEW.
 - `cedar-a` / `cedar-b`: same name, different tax ids -> DISTINCT.
 
-The endpoint saves the scheme `assistant_entity_demo` with `entity_type="Supplier"`, `identity_granularity="legal_entity"`, field_map `{"name":"name","tax_id":"tax_id","phone":"phone"}`, strong identifier `tax_id`, conflict constraint on `tax_id`, candidate rules `exact tax_id` and `name_similarity name 0.82`, and failure policy `REVIEW`. It calls `select_decision_provider(db, workspace_id)`; when a provider exists, set `model_judgment_enabled=True` and `model_provider_id=provider.id`; otherwise disable model judgment. It ingests with `input_version="assistant-entity-demo-v1"`, submits with idempotency key `assistant-entity-demo-v1`, and returns the run. On `RunConflict`, query the existing run by `input_version` and return it. Do not publish a snapshot.
+The endpoint saves the scheme `assistant_entity_demo` with `entity_type="Supplier"`, `identity_granularity="legal_entity"`, `normalizers=["unicode_nfkc","trim","casefold","strip_punctuation"]`, field_map `{"name":"name","tax_id":"tax_id","phone":"phone"}`, strong identifier `tax_id`, conflict constraint on `tax_id`, candidate rules `exact tax_id` and `name_similarity name 0.82`, and failure policy `REVIEW`. It calls `select_decision_provider(db, workspace_id)`; when a provider exists, set `model_judgment_enabled=True` and `model_provider_id=provider.id`; otherwise disable model judgment. It ingests with `input_version="assistant-entity-demo-v1"`, submits with idempotency key `assistant-entity-demo-v1` and `input_source_system="assistant_demo"`, and returns the run. On `RunConflict`, query the existing run by `input_version` and return it. Do not publish a snapshot.
+
+In `releases.py`, `_current_input_manifest` adds `.where(SourceRecord.source_system == input_source_system)` when the filter is set, and `submit_run` forwards the optional argument. Include the filter in the demo endpoint's payload hash so an idempotency key cannot collide with an unfiltered run.
 
 - [ ] **Step 4: Run the test to verify it passes**
 
@@ -315,7 +321,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/app/demo/entity_demo.py backend/app/api/v1/unification.py backend/tests/test_unification_demo.py
+git add backend/app/demo/entity_demo.py backend/app/api/v1/unification.py backend/app/services/unification/releases.py backend/tests/test_unification_demo.py
 git commit -m "feat(unification): add an idempotent entity demo run for the assistant"
 ```
 
@@ -334,6 +340,7 @@ git commit -m "feat(unification): add an idempotent entity demo run for the assi
 - Modify: `frontend/src/App.tsx`
 - Modify: `frontend/src/pages/WorkbenchPage.tsx`
 - Modify: `frontend/src/pages/UnificationPage.tsx`
+- Modify: `frontend/src/pages/ContractsPage.tsx`
 - Modify: `frontend/src/pages/ServingReleasePage.tsx`
 - Create: `frontend/tests/ui_helpers.py`
 - Create: `frontend/tests/menu_shell.spec.py`
@@ -353,6 +360,7 @@ export type Route =
   | { view: 'tasks-job'; jobId: string }
   | { view: 'tasks-run'; runId: string }
   | { view: 'tasks-contract'; versionId: string }
+  | { view: 'tasks-publish' }
   | { view: 'reviews' }
   | { view: 'settings'; tab: 'providers' | 'team' | 'api-keys' }
 
@@ -371,13 +379,14 @@ export type TaskItem = {
 
 - `WorkbenchPage` props add `initialJobId?: string`, `initialStage?: 'L1' | 'L2' | 'L4'`; when `activeRouting` is null it fetches `/datasources` and uses the latest source routing locally.
 - `UnificationPage` props add `initialRunId?: string`; it keeps `canEdit`.
-- `TaskDetailPage` props: `{projectId: string, canEdit: boolean, task?: TaskItem, newKind?: TaskType}`.
+- `TaskDetailPage` props: `{project: ProjectItem, canEdit: boolean, activeDsIds: string[], activeProfile: any, activeRouting: any, task?: TaskItem, newKind?: TaskType}`; use `project.id` for the embedded pages.
+- `ContractsPage` props add `initialVersionId?: string`; when set, open the `versions` tab and highlight that row.
 - `SettingsPage` props `{projectId: string, currentUser: UserInfo, canEdit: boolean}` with tabs `providers`, `team`, `api-keys`.
 - `ReviewHomePage` props `{projectId: string}`.
 
 - [ ] **Step 1: Write the failing menu shell spec**
 
-Create `frontend/tests/menu_shell.spec.py` using the isolated backend pattern from `unification_workbench.spec.py`. Seed one workspace and project. After login, assert exactly four menu buttons: 数据, 任务, 复核, 设置. Click 任务 and assert a heading `任务`. Click 复核 and assert `人工复核` and `实体配对` text. Click 设置 and assert tabs `模型 Provider`, `团队`, `API Key`. Visit `http://127.0.0.1:5173/#/tasks/new/entity` and assert the `实体统一工作台` heading. Visit `http://127.0.0.1:5173/#/tasks/job/missing-job` and assert `任务不存在` and a `返回任务` link.
+Create `frontend/tests/menu_shell.spec.py` using the isolated backend pattern from `unification_workbench.spec.py`. Seed one workspace and project. After login, assert exactly four menu buttons: 数据, 任务, 复核, 设置. Click 任务 and assert a heading `任务`. Click 复核 and assert `人工复核` and `实体配对` text. Click 设置 and assert tabs `模型 Provider`, `团队`, `API Key`. Visit `http://127.0.0.1:5173/#/tasks/publish` and assert the `发布中心` heading and a publish button. Visit `http://127.0.0.1:5173/#/tasks/new/entity` and assert the `实体统一工作台` heading. Visit `http://127.0.0.1:5173/#/tasks/job/missing-job` and assert `任务不存在` and a `返回任务` link.
 
 - [ ] **Step 2: Run the spec to verify it fails**
 
@@ -388,9 +397,9 @@ Expected: FAIL because the menu buttons and hash routes do not exist.
 
 `router.ts` parses and serializes the routes `#/data`, `#/tasks`, `#/tasks/new/{clean|match|metrics|contract|entity}`, `#/tasks/job/{jobId}`, `#/tasks/run/{runId}`, `#/tasks/contract/{versionId}`, `#/reviews`, and `#/settings/{providers|team|api-keys}`. `App.tsx` listens to `hashchange`, falls back to `#/data`, and renders the four menus. `loadTasks` fetches jobs, unification runs, and contract versions, then normalizes them into `TaskItem[]`.
 
-`TasksPage` renders the task list and five "新建任务" buttons that set the hash. `TaskDetailPage` renders `WorkbenchPage` for jobs, `UnificationPage` for runs, or `ContractsPage` for contract versions; pass `projectId` and `canEdit` to those components. It shows a not-found state with a back link when the referenced record is missing. `SettingsPage` renders `ProvidersPage`, `TeamAdminPage currentUser={currentUser}`, and the extracted `ApiKeysPanel`. `ReviewHomePage` renders the existing `ReviewQueuePage` plus a card linking to `#/tasks/new/entity`.
+`TasksPage` renders the task list, five "新建任务" buttons that set the hash, and a `产物与发布` button that routes to `#/tasks/publish`. `App.tsx` renders `ServingReleasePage project={activeProject}` for `tasks-publish`, so artifact publishing and rollback remain reachable after the old `serving` menu is removed. `TaskDetailPage` renders `WorkbenchPage` for jobs, `UnificationPage` for runs, or `ContractsPage` for contract versions; pass `project.id`, `canEdit`, and the active data-source context. For a job, pass `activeDsIds`, `activeProfile`, `activeRouting`, and `initialJobId`; for a contract, pass `initialVersionId={task.detail.versionId}`. Its not-found state uses the fixed `任务不存在` copy and a `返回任务` link, not the API's `资源不存在` text. `SettingsPage` renders `ProvidersPage`, `TeamAdminPage currentUser={currentUser}`, and the extracted `ApiKeysPanel`. `ReviewHomePage` renders the existing `ReviewQueuePage` plus a card linking to `#/tasks/new/entity`.
 
-Move the API key state and handlers from `ServingReleasePage` into `ApiKeysPanel`; render the panel from both `SettingsPage` and `ServingReleasePage`.
+Move the API key state and handlers from `ServingReleasePage` into `ApiKeysPanel`; render the panel from `SettingsPage` and remove the duplicate section from `ServingReleasePage`, which then only handles artifact publishing and rollback.
 
 Add `initialJobId` and `initialStage` to `WorkbenchPage`; when `initialJobId` is set, fetch `/api/v1/jobs/{id}` on mount and set the job and stage. When `activeRouting` is null, fetch `/api/v1/projects/{id}/datasources`, pick the most recent item with a routing object, and use it for the stage, method card, reasons, and suggested params locally. Add `initialRunId` to `UnificationPage`; after loading runs, select it and set the run tab.
 
@@ -572,7 +581,7 @@ name,note
 "Acme, Ltd.","line1, line2"
 ```
 
-Write the CSV bytes and the contract YAML to storage with `storage.put_bytes` under the artifact and source object keys. Put `artifacts: [{id, filename, version}]` in the job's `result_json` so the workbench renders the artifact button. Open the task detail, click `查看`, and assert the table shows two columns and the value `Acme, Ltd.`. Then open the seeded contract version and click `查看模型`; assert class names `Supplier` and `Country` are visible.
+Write the CSV bytes and the contract YAML to storage with `storage.put_bytes` under the artifact and source object keys. Put `artifacts: [{id, filename, version}]` in the job's `result_json` so the workbench renders the artifact button. Open the task detail, click `查看`, and assert the table shows two columns and the value `Acme, Ltd.`. Then open `#/tasks/contract/{versionId}`; assert the `versions` tab is active and the seeded version row is visible, then click `查看模型` and assert class names `Supplier` and `Country` are visible.
 
 - [ ] **Step 2: Run the spec to verify it fails**
 
@@ -604,6 +613,7 @@ git commit -m "feat(results): view CSV, JSON, and contract models online"
 - Modify: `frontend/src/pages/WorkbenchPage.tsx`
 - Modify: `frontend/src/pages/UnificationPage.tsx`
 - Modify: `frontend/src/App.tsx` (rename `路由工作台` to `处理方法`)
+- Modify: `.github/workflows/ci.yml` (add the five new Playwright specs to the frontend job)
 - Create: `frontend/tests/method_recommendation.spec.py`
 - Modify: `README.md` (one line pointing to the design and plan)
 
@@ -632,6 +642,16 @@ python3 tests/formal/check_decision_dispatch_boundary.py
 cd frontend && npm run build
 ```
 
+In `.github/workflows/ci.yml`, add the five new specs to the frontend job after the existing three:
+
+```yaml
+          python frontend/tests/menu_shell.spec.py
+          python frontend/tests/guided_assistant.spec.py
+          python frontend/tests/review_readability.spec.py
+          python frontend/tests/result_viewer.spec.py
+          python frontend/tests/method_recommendation.spec.py
+```
+
 Then start Vite and run every Playwright spec:
 
 ```bash
@@ -650,7 +670,7 @@ Expected: backend suite passes; build passes; every spec exits 0.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add frontend/src frontend/tests README.md
+git add frontend/src frontend/tests .github/workflows/ci.yml README.md
 git commit -m "feat(ui): show the recommended method and explain the processing page"
 ```
 

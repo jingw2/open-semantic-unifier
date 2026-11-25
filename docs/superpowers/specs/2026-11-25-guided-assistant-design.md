@@ -129,7 +129,7 @@ done
 ### 6.2 意图与模型边界
 
 - 按钮任务不用模型。
-- 自由文本先用确定性关键词匹配；未命中时调用后端助手接口，用工作区里 `is_default` 的 `openai_compatible` Provider 做意图分类和解释；没有默认项时取第一个 `openai_compatible`；一个都没有才回退规则。
+- 自由文本先用确定性关键词匹配；未命中时调用后端助手接口，取工作区里 `is_default` 且可用的 `openai_compatible` Provider（跳过 `offline` 和没有 base URL/API Key 的行）；没有默认项时取第一个可用同类；一个可用的都没有才回退规则。
 - 不能把唯一的 `is_default` 同时当作“助手聊天 Provider”和“实体复核决策 Provider”。两个角色分别按 kind 选择：`openai_compatible` 和 `perplexity_decisions/typesafe_jev` 各取默认项，没有默认项取第一个同类。
 - 模型只返回 `intent`、`confidence`、`explanation`、`suggested_task`，没有工具调用权，不能执行动作。
 - 模型看到的是用户消息、当前页面、数据摘要（数量、字段名、方法标签），不包含记录字段值。
@@ -145,6 +145,7 @@ done
 - 提交并轮询 L1/L2/L4 任务，或实体统一运行。L1 的任务参数必须像 `WorkbenchPage` 一样把 `suggested_params.name_col` 映射为 `target_col`、`amount_col` 映射为 `amount_col`，不能直接透传 routing。
 - 为 L3 编译 DRAFT 版本，前提是已有契约源和实体快照。
 - 助手触发的实体 demo 只允许产生 REVIEW / DISTINCT 配对。demo 方案和记录不得包含会触发 `AUTO_MATCH` 的强标识匹配；运行后必须断言没有 `MERGE` 决策。真实业务里用户自己配置的 AUTO_MATCH 规则不属于助手行为，但 demo 不能替用户合并。
+- demo 运行必须只使用 demo 记录。`submit_run` / `_current_input_manifest` 增加可选的 `input_source_system` 过滤；demo 记录统一用 `source_system="assistant_demo"`，运行只带这 6 条。项目里已有的其他来源记录不得进入 demo 的 input manifest。
 
 助手不可以：
 
@@ -300,7 +301,10 @@ type TaskItem = {
   status: string
   createdAt: string
   reviewCount?: number
-  detail: 'workbench' | 'contracts' | 'unification'
+  detail:
+    | { kind: 'job'; jobId: string; stage: 'L1' | 'L2' | 'L4' }
+    | { kind: 'run'; runId: string }
+    | { kind: 'contract'; versionId: string }
 }
 ```
 
@@ -309,9 +313,10 @@ type TaskItem = {
 - L1/L2/L4 -> 路由工作台（改名为“处理方法”）。
 - L3 -> 契约统一。
 - ENTITY -> 实体统一工作台。
-- 发布、导出、回滚留在详情页。
+- 产物与发布 -> `ServingReleasePage`，保留 `POST /artifacts/{id}/publish`、回滚和导出。这是一个显式视图或 tab，不能只修改组件而不渲染。
+- API Key 在设置里；发布动作在任务详情里。
 
-`TaskDetailPage` 必须把现有组件需要的 props 传下去：`ContractsPage` 需要 `projectId` 和 `canEdit`；`UnificationPage` 需要 `projectId` 和 `canEdit`；`WorkbenchPage` 需要 `projectId`、`activeDsIds`、`activeProfile`、`activeRouting` 和 `initialJobId`。直接打开任务详情时，若 `activeRouting` 为空，`WorkbenchPage` 自己拉 `GET /datasources` 并使用最新一条带 routing 的数据源，方法卡不能依赖用户先点数据源。
+`TaskDetailPage` props 是 `{projectId, canEdit, activeDsIds, activeProfile, activeRouting, task?, newKind?}`。它必须把现有组件需要的 props 传下去：`ContractsPage` 需要 `projectId`、`canEdit` 和可选的 `initialVersionId`；`UnificationPage` 需要 `projectId`、`canEdit` 和可选的 `initialRunId`；`WorkbenchPage` 需要 `projectId`、`activeDsIds`、`activeProfile`、`activeRouting`、`initialJobId` 和 `onGoDataSources/onGoContracts`。直接打开任务详情时，若 `activeRouting` 为空，`WorkbenchPage` 自己拉 `GET /datasources` 并使用最新一条带 routing 的数据源，方法卡不能依赖用户先点数据源。
 
 ### 9.3 设置
 
@@ -328,7 +333,9 @@ type TaskItem = {
 - 旧一级入口移除后，现有 Playwright 验收改为从“任务”进入对应详情，或通过深链接进入。
 - 现有页面组件保留，避免重写业务逻辑。
 - 旧书签或外部链接通过路由参数落到对应任务详情。
+- 任务详情的 not-found 状态使用固定文案 `任务不存在` 和 `返回任务`，不直接渲染 API 的 `资源不存在` / `run not found`。
 - 测试 helper `open_route` 在应用已加载时必须只改 `window.location.hash`，不能整页 `goto`，否则会丢掉 spec 刚选中的项目。只有在还没有加载应用时才允许 `goto`。
+- 新增的 5 个 Playwright spec（menu_shell、guided_assistant、review_readability、result_viewer、method_recommendation）必须加入 `.github/workflows/ci.yml` 的 frontend job，与原有 3 个一起跑。
 - 历史数据源的 `routing_json` 没有 `method` 字段。读取数据源列表时用 `recommended_stage` 做一次只读 fallback，映射到 `METHOD_META` 的默认方法；不写数据库，不做迁移。前端也要对缺失 `method` 的 routing 做同样的兜底。
 
 ## 10. 方法推荐与路由
@@ -449,6 +456,7 @@ RDF/OWL 不在第一版范围；如果客户明确要求，单独评估。
 - `GET /unification/reviews` 返回 `items` 和 `auto_separated`，item 增加 `left`、`right`、`comparison`、`why`、`suggestion`、`consequence`；`auto_separated` 使用 `CANNOT_LINK` 证据码，并为 REVIEW 和 DISTINCT 配对都加载 revision。
 - 新增助手接口：`POST /projects/{id}/assistant/plan`。请求只含用户消息、当前页面和（后端自建的）数据摘要；响应只含意图、置信度、解释和建议任务；不执行动作。聊天 Provider 和决策 Provider 按 kind 分别选择，不共用 `is_default`。
 - 新增 `POST /projects/{id}/unification/demo`：幂等 demo 运行，只产生 REVIEW / DISTINCT 配对，不产生 AUTO_MATCH/MERGE，不发布快照。
+- `submit_run` / `_current_input_manifest` 增加可选 `input_source_system` 过滤，demo 运行只带 `source_system="assistant_demo"` 的记录。
 - 新增 OpenRefine 适配器和配方注册表；环境变量 `OPENREFINE_URL`、`OPENREFINE_ENABLED`。
 - 新增 JSON-LD 实例导出接口。
 - 第一交付无数据库迁移；第二交付只加必要的配方/映射记录，优先用文件存储，避免迁移。
