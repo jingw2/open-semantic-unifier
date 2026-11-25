@@ -9,6 +9,7 @@ import TaskDetailPage from './pages/TaskDetailPage'
 import SettingsPage from './pages/SettingsPage'
 import ReviewHomePage from './pages/ReviewHomePage'
 import ServingReleasePage from './pages/ServingReleasePage'
+import AssistantPanel from './components/AssistantPanel'
 
 type NavKey = 'data' | 'tasks' | 'reviews' | 'settings'
 
@@ -234,9 +235,13 @@ export default function App() {
         </div>
       </aside>
 
-      <main className="flex-1 bg-[#f7f7f8] p-6 md:p-8 overflow-y-auto">
+      <main className="flex-1 min-w-0 bg-[#f7f7f8] p-6 md:p-8 overflow-y-auto">
         <div className="max-w-5xl mx-auto">{renderContent()}</div>
       </main>
+
+      {activeProject && (
+        <AssistantPanel projectId={activeProject.id} currentPage={route.view} onRoute={navigate} />
+      )}
     </div>
   )
 }
