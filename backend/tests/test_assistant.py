@@ -178,6 +178,7 @@ def test_assistant_uses_chat_provider_by_kind_and_hides_preview_values(public_ap
     assert payload["suggested_task"] == "match"
     prompt = AssistantHandler.requests[0]["messages"][0]["content"]
     assert "company_name" in prompt
+    assert "数据源页面" in prompt
     assert "SECRET-RECORD-VALUE" not in prompt
 
 

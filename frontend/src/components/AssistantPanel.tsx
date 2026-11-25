@@ -403,12 +403,12 @@ export default function AssistantPanel({ projectId, currentPage, onRoute }: Prop
                       <ol className="mt-2 space-y-1 text-[11px] text-neutral-500">
                         {['① 选数据', '② 运行', '③ 看结果'].map((step) => <li key={step}>{step}</li>)}
                       </ol>
-                      {isLastPlan && stage === 'idle' && (
+                      {isLastPlan && stage === 'idle' && !plan.needs_clarification && (
                         <button onClick={() => void run(plan)} className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-neutral-900 px-3 py-2 text-xs font-medium text-white">
                           开始 <ArrowRight className="h-3.5 w-3.5" />
                         </button>
                       )}
-                      {isLastPlan && stage === 'running' && (
+                      {isLastPlan && stage === 'running' && !plan.needs_clarification && (
                         <p className="mt-2 flex items-center gap-1.5 text-[11px] text-neutral-500"><LoaderCircle className="h-3.5 w-3.5 animate-spin" /> 正在执行...</p>
                       )}
                     </div>

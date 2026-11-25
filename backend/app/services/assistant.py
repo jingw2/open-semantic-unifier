@@ -31,6 +31,18 @@ ALLOWED_PARAM_KEYS: dict[str, tuple[str, ...]] = {
     "metrics": ("metric_name", "group_by"),
 }
 
+PAGE_LABELS = {
+    "data": "数据源页面：上传文件、连接数据库，查看建议的处理方法。",
+    "tasks": "任务页面：已提交作业、实体运行和契约版本。",
+    "tasks-new": "新建任务页面：选择数据与处理方法。",
+    "tasks-job": "L1/L2/L4 作业详情页。",
+    "tasks-run": "实体统一运行详情页。",
+    "tasks-contract": "LinkML 契约版本详情页。",
+    "tasks-publish": "发布中心。",
+    "reviews": "复核页面：查看待复核实体对并做出人工决定。",
+    "settings": "设置页面：模型 Provider、团队和 API Key。",
+}
+
 CLARIFY_OPTIONS = (
     {"label": "清洗供应商名单", "message": "清洗供应商名单"},
     {"label": "跨系统匹配客户", "message": "跨系统匹配客户"},
@@ -175,6 +187,11 @@ def _build_prompt(page: str, summaries: list[dict[str, Any]], history: list[dict
         "intent in [clean, match, entity, metrics, contract, review, answer, unknown], "
         "confidence from 0 to 1, explanation in Chinese, needs_clarification (boolean), "
         "question (string or null), options (up to 3 objects with label and message), "
+        "For intent answer, explanation is the complete answer to the user, not a classification note. "
+        "For a task intent, explanation is one sentence on why it fits. "
+        "Set needs_clarification true only when a required choice is still missing; "
+        "when a usable task, source, and params are present, set it false. "
+        "Select datasource_id from the listed ids when one source fits; otherwise null. "
         "datasource_id (a data source id or null), params (object or null), and recipe_id "
         "(a built-in recipe id or null). Do not execute or decide any data action.\n"
         "Intent definitions:\n"
@@ -193,7 +210,7 @@ def _build_prompt(page: str, summaries: list[dict[str, Any]], history: list[dict
         "- metrics: metric_name, group_by\n"
         "- others: none\n"
         f"Built-in recipe ids: {', '.join(sorted(_builtin_recipe_ids()))}\n"
-        f"Page: {page}\n"
+        f"Page: {page} ({PAGE_LABELS.get(page, '当前页面')})\n"
         f"Data sources: {json.dumps(summaries, ensure_ascii=False, sort_keys=True)}\n"
         f"Conversation (last 6 turns): {json.dumps(turns, ensure_ascii=False, sort_keys=True)}\n"
         f"User: {message}"
