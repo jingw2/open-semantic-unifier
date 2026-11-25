@@ -82,6 +82,22 @@ def test_duckdb_sink_replace_and_append(tmp_path):
     assert len(out) == 4
 
 
+def test_concurrent_sqlite_sink_serializes(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    cfg = {"db_type": "sqlite", "database": str(tmp_path / "concurrent.db")}
+    left = pd.DataFrame([{"x": "a1"}, {"x": "a2"}])
+    right = pd.DataFrame([{"x": "b1"}, {"x": "b2"}])
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        assert list(executor.map(lambda frame: etl_service.write_dataframe(cfg, "append_t", frame, "append"), [left, right])) == [2, 2]
+    assert len(read_db_dataframe(cfg, "append_t", limit=None)) == 4
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        assert list(executor.map(lambda frame: etl_service.write_dataframe(cfg, "replace_t", frame, "replace"), [left, right])) == [2, 2]
+    final = read_db_dataframe(cfg, "replace_t", limit=None)
+    assert sorted(final["x"].tolist()) in (["a1", "a2"], ["b1", "b2"])
+
+
 # --------------------------- target job success ---------------------------
 
 def _sqlite_target(tmp_path, source_id="tgt"):
@@ -115,6 +131,35 @@ def test_l1_job_writes_target_sqlite(api):
     assert result["etl"]["rows_written"] == 2
     out = read_db_dataframe({"db_type": "sqlite", "database": str(tmp_path / "target.db")}, "supplier_clean", limit=None)
     assert len(out) == 2
+
+
+def test_l2_job_writes_target_sqlite(api):
+    _client, maker, tmp_path = api
+    storage.put_bytes(
+        "projects/proj/uploads/customers.csv",
+        b"company_name,tax_id,phone\nAcme Ltd,T1,138\nACME Ltd,T1,138\nBeta,T2,139\nGamma,T3,140\nDelta,T4,141\n",
+    )
+    with maker() as db:
+        src = DataSource(id="src", project_id="proj", name="customers.csv", source_type="file",
+                         object_key="projects/proj/uploads/customers.csv")
+        db.add_all([src, _sqlite_target(tmp_path)])
+        job = Job(project_id="proj", stage="L2", status="PENDING", params_json={
+            "datasource_ids": ["src"],
+            "match_fields": ["company_name", "tax_id", "phone"],
+            "etl_target_datasource_id": "tgt",
+            "etl_target_table": "match_sample",
+            "etl_write_mode": "replace",
+        })
+        db.add(job)
+        db.commit()
+        job_id = job.id
+
+    result = run_job_sync(job_id)
+
+    assert result["etl"]["status"] == "SUCCEEDED"
+    assert result["etl"]["rows_written"] > 0
+    out = read_db_dataframe({"db_type": "sqlite", "database": str(tmp_path / "target.db")}, "match_sample", limit=None)
+    assert len(out) > 0
 
 
 def test_l4_job_writes_target_duckdb(api):
@@ -183,6 +228,51 @@ def test_sink_failure_marks_job_failed_and_keeps_result(api, monkeypatch):
         assert "target unreachable" in failed.error_message
         assert failed.result_json["stage"] == "L1"
         assert failed.result_json["artifacts"]
+
+
+def test_datasource_api_does_not_expose_target_credentials(api, tmp_path):
+    client, maker, _tmp_path = api
+    with maker() as db:
+        db.add(DataSource(
+            id="secret-target", project_id="proj", name="secret", source_type="postgresql",
+            encrypted_config=encrypt_secret(json.dumps({
+                "db_type": "postgresql", "host": "127.0.0.1", "port": 1,
+                "user": "u", "password": "super-secret-password", "database": "d",
+            })),
+        ))
+        db.commit()
+    payload = client.get("/api/v1/projects/proj/datasources").json()
+    assert "super-secret-password" not in json.dumps(payload)
+    assert "encrypted_config" not in json.dumps(payload)
+
+    with pytest.raises(RuntimeError) as exc:
+        etl_service.write_dataframe(
+            {"db_type": "postgresql", "host": "127.0.0.1", "port": 1, "user": "u",
+             "password": "super-secret-password", "database": "d"},
+            "t", pd.DataFrame([{"a": 1}]), "replace",
+        )
+    assert "super-secret-password" not in str(exc.value)
+
+
+def test_celery_beat_configures_the_etl_tick():
+    import os
+    import subprocess
+
+    code = "from app.workers.celery_app import celery_app; print(celery_app.conf.beat_schedule)"
+    env = {**os.environ, "CELERY_ENABLED": "true", "REDIS_URL": "redis://127.0.0.1:1/0"}
+    result = subprocess.run([sys.executable, "-c", code], cwd=str(Path(__file__).resolve().parents[1]),
+                            env=env, text=True, capture_output=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    assert "semantic_unifier.run_due_etl_schedules" in result.stdout
+
+
+def test_compose_has_a_beat_service():
+    import yaml
+
+    compose = yaml.safe_load((Path(__file__).resolve().parents[2] / "docker-compose.yml").read_text())
+    beat = compose["services"]["beat"]
+    assert "beat" in beat["command"]
+    assert beat["depends_on"]
 
 
 # --------------------------- schedule validation and lifecycle ---------------------------

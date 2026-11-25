@@ -7,7 +7,10 @@ or embeds them in error messages; write failures surface as a generic per-db-typ
 import io
 import json
 import math
+import os
 import re
+import threading
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Any, Dict, Tuple
 
@@ -23,6 +26,44 @@ from app.services.storage import storage
 SUPPORTED_SINK_TYPES = {"sqlite", "duckdb", "postgresql", "mysql", "mongodb"}
 
 _TABLE_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_.]*\Z")
+_TARGET_LOCKS: dict[str, threading.Lock] = {}
+_TARGET_LOCKS_GUARD = threading.Lock()
+
+
+@contextmanager
+def _sink_lock(config: Dict[str, Any], table: str):
+    """Serialize writers for one target table. File databases also use a file lock."""
+    db_type = str(config.get("db_type", "")).lower().strip()
+    identity = "|".join([
+        db_type,
+        str(config.get("database") or config.get("path") or config.get("uri") or ""),
+        str(config.get("host") or ""),
+        str(config.get("port") or ""),
+        table,
+    ])
+    with _TARGET_LOCKS_GUARD:
+        lock = _TARGET_LOCKS.setdefault(identity, threading.Lock())
+    file_handle = None
+    with lock:
+        if db_type in ("sqlite", "duckdb"):
+            path = config.get("database") or config.get("path")
+            if path:
+                lock_path = f"{path}.{table}.etl.lock"
+                try:
+                    import fcntl
+                    file_handle = open(lock_path, "a+")
+                    fcntl.flock(file_handle, fcntl.LOCK_EX)
+                except (ImportError, OSError):
+                    file_handle = None
+        try:
+            yield
+        finally:
+            if file_handle is not None:
+                try:
+                    import fcntl
+                    fcntl.flock(file_handle, fcntl.LOCK_UN)
+                finally:
+                    file_handle.close()
 
 
 def validate_table_name(name: str) -> str:
@@ -50,15 +91,16 @@ def write_dataframe(config: Dict[str, Any], table: str, frame: pd.DataFrame, mod
     if mode not in ("replace", "append"):
         raise ValueError(f"invalid write mode: {mode}")
     try:
-        if db_type == "sqlite":
-            return _write_sqlite(config, table, frame, mode)
-        if db_type == "duckdb":
-            return _write_duckdb(config, table, frame, mode)
-        if db_type == "postgresql":
-            return _write_sqlalchemy("postgresql", config, table, frame, mode)
-        if db_type == "mysql":
-            return _write_sqlalchemy("mysql", config, table, frame, mode)
-        return _write_mongo(config, table, frame, mode)
+        with _sink_lock(config, table):
+            if db_type == "sqlite":
+                return _write_sqlite(config, table, frame, mode)
+            if db_type == "duckdb":
+                return _write_duckdb(config, table, frame, mode)
+            if db_type == "postgresql":
+                return _write_sqlalchemy("postgresql", config, table, frame, mode)
+            if db_type == "mysql":
+                return _write_sqlalchemy("mysql", config, table, frame, mode)
+            return _write_mongo(config, table, frame, mode)
     except ValueError:
         raise
     except Exception as exc:

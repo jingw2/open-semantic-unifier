@@ -167,6 +167,16 @@ def _exercise_connector(cfg, tmp_path):
     back = read_db_dataframe(cfg, "etl_target", limit=None)
     assert len(back) == 6
 
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(
+            lambda _: write_dataframe(cfg, "etl_concurrent", frame, "append"),
+            range(2),
+        ))
+    assert results == [3, 3]
+    assert len(read_db_dataframe(cfg, "etl_concurrent", limit=None)) == 6
+
 
 def test_live_postgresql_connector(live_dbs, tmp_path):
     _exercise_connector(live_dbs["postgresql"], tmp_path)
