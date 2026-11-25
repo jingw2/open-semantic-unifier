@@ -1,10 +1,10 @@
 {
   "scope": "Decision model adapters (T-DM-1 through T-DM-9)",
   "branch": "codex/decision-models-l3",
-  "head": "5356513c2ac61e2f31f2d06a0801864d481a876f",
+  "head": "0b06b69cad39bb48e049e729206ad5c4e0d1f83a",
   "as_of": "2026-11-25",
-  "environment": "Isolated SQLite database, inline FastAPI on 127.0.0.1:8765, Vite on 127.0.0.1:5173, and a controlled ThreadingHTTPServer for provider responses. No external network.",
-  "note": "DM-01 through DM-05 PASS. DM-06 and DM-07 BLOCKED: no real Perplexity or TypeSafe credential. The frozen holdout, evaluator, and formal dispatch check are ready. This record does not change the V0.1 or L3 product status.",
+  "environment": "Controlled checks use an isolated SQLite database, inline FastAPI on 127.0.0.1:8765, Vite on 127.0.0.1:5173, and a controlled ThreadingHTTPServer. Real runs use the local dev stack at 127.0.0.1:8000 and 127.0.0.1:5173 with the configured DeepSeek and TypeSafe Jev providers.",
+  "note": "DM-01 through DM-07 PASS for TypeSafe Jev. Perplexity real smoke remains unrun because no key exists. The frozen holdout, evaluator, formal dispatch check, and real L1-L4 runs are complete. This record does not change the V0.1 or L3 product status.",
   "checks": {
     "dm_01_contracts": {
       "status": "PASS",
@@ -32,14 +32,14 @@
       "evidence": "Each typed call persists provider kind/key, model version, prompt version, verdict or error, latency, usage, and trace reference; model-call rows survive trace shutdown and are project-scoped, viewer-readable, and redacted; spans carry provider metadata without records or credentials."
     },
     "dm_06_evaluation": {
-      "status": "BLOCKED",
-      "command": "python3 scripts/evaluate_decision_models.py --validate-only && python3 -m pytest tests/test_decision_model_holdout.py -q",
-      "evidence": "The frozen holdout tests/holdout/v1 has 60 records, 30 labeled pairs, and 3 domains. The manifest records a SHA-256 for every file. The validator rejects any shared record ref, source key, case id, or attribute value with the Golden set, and rejects a label key in records or scheme input. The evaluator scores a controlled adapter without network access, and it prints a BLOCKED report with exit 2 when no credential exists.",
-      "reason": "No real provider run exists yet. Set TYPESAFE_API_KEY or PERPLEXITY_API_KEY and run scripts/evaluate_decision_models.py to produce the report. Scores are not treated as calibrated probabilities and no automatic merge threshold is set."
+      "status": "PASS",
+      "command": "python3 scripts/evaluate_decision_models.py --provider-id <saved-provider-id> --send-fields name,tax_id,email,gtin,brand,model,voltage,pack_count --output docs/reference/decision-model-evaluation-report.json",
+      "report": "docs/reference/decision-model-evaluation-report.json",
+      "evidence": "The frozen holdout tests/holdout/v1 has 60 records, 30 labeled pairs, and 3 domains. The manifest records a SHA-256 for every file. The validator rejects any shared record ref, source key, case id, or attribute value with the Golden set, and rejects a label key in records or scheme input. The real TypeSafe Jev run made 29 calls with 0 errors. Candidate recall was 96.7%, SAME recall 66.7%, DIFFERENT recall 66.7%, false SAME 0, UNKNOWN 33.3%, suggestion accuracy 66.7%, review volume 13, false merges 0, and mean latency 598.75 ms. Per-domain accuracy and latency remain visible in the report. Scores are not treated as calibrated probabilities and no automatic merge threshold is set."
     },
     "dm_07_real_service_smoke": {
-      "status": "BLOCKED",
-      "reason": "No real Perplexity or TypeSafe API keys are available. A controlled ThreadingHTTPServer proves the adapter mapping; it cannot substitute for a real-service smoke."
+      "status": "PASS",
+      "evidence": "The configured TypeSafe Jev provider called the real service and returned UNKNOWN with confidence 0.98 from model jev-1.14.0. The real holdout run made 29 calls with 0 errors. DeepSeek connectivity returned ok, and the L2 run made 6 LIVE DeepSeek calls. Perplexity remains unrun because no key exists."
     }
   },
   "ui_browser_flow": {
@@ -58,7 +58,7 @@
   },
   "full_backend_suite": {
     "command": "python -m pytest backend/tests -q",
-    "result": "425 passed, 6 skipped, 2 warnings in 112.45s"
+    "result": "426 passed, 6 skipped, 2 warnings in 109.45s"
   },
   "frontend_build": {
     "command": "npm run build (frontend)",
@@ -81,10 +81,45 @@
     "skill": ".claude/skills/verify-decision-dispatch-boundary/SKILL.md",
     "sync_commit": "1284db2"
   },
+  "holdout_evaluation": {
+    "status": "PASS",
+    "report": "docs/reference/decision-model-evaluation-report.json",
+    "provider": "typesafe_jev / jev-latest",
+    "model_version": "jev-1.14.0",
+    "calls": 29,
+    "errors": 0,
+    "metrics": {
+      "candidate_recall": 0.9667,
+      "same_recall": 0.6667,
+      "different_recall": 0.6667,
+      "false_same_rate": 0.0,
+      "unknown_rate": 0.3333,
+      "suggestion_accuracy": 0.6667,
+      "review_volume": 13,
+      "false_merges": 0,
+      "latency_ms_mean": 598.75
+    },
+    "domains": {
+      "vendor": {"suggestion_accuracy": 0.5556, "unknown_rate": 0.4444, "candidate_recall": 0.9},
+      "contact": {"suggestion_accuracy": 0.4444, "unknown_rate": 0.5556, "candidate_recall": 1.0},
+      "catalog_item": {"suggestion_accuracy": 1.0, "unknown_rate": 0.0, "candidate_recall": 1.0}
+    }
+  },
+  "real_runs": {
+    "environment": "Local dev backend at 127.0.0.1:8000 with SQLite backend/local_dev.db, Vite at 127.0.0.1:5173.",
+    "l1": {"status": "SUCCESS", "rows": 250, "unique_before": 102, "unique_after": 15, "review_queued": 0},
+    "l2": {"status": "SUCCESS", "rows": 35000, "evaluated_pairs": 56791, "unique_clusters": 11506, "review_queued": 6, "llm_calls": 6, "llm_mode": "LIVE (DeepSeek / deepseek-chat)", "elapsed_sec": 7.4},
+    "l3": {"status": "PUBLISHED", "contract": "supplier_contract.yaml", "version": 1, "classes": 2, "attributes": 8, "enums": 1, "relations": 2},
+    "l4": {"status": "SUCCESS", "metric": "net_gmv", "result_rows": 3, "group_by": "order_channel"},
+    "entity_unification": {"status": "SUCCEEDED", "pairs": 5, "verdicts": {"SAME": 3, "UNKNOWN": 1, "DIFFERENT": 1}, "model": "jev-1.14.0", "snapshot_version": 1},
+    "provider_smoke": {"deepseek": "ok", "typesafe_jev": "UNKNOWN, confidence 0.98, model jev-1.14.0"}
+  },
   "limitations": [
     "Direct fetches of the official provider documentation remain blocked by the fetch proxy; the adapter shape is derived from the user-provided TypeSafe models URL, the official typesafe-sdk 0.7.5 schema, and the Perplexity Decisions documentation.",
     "Confidence is not a calibrated probability and is never used as an automatic merge threshold.",
     "A missing distribution or explanation is displayed as unknown rather than fabricated.",
-    "Perplexity flash (pplx-decider-flash-latest) is the intended first provider; the real-service smoke and evaluation stay BLOCKED until a real credential exists. The frozen holdout and evaluator are ready."
+    "Perplexity real smoke remains unrun because no key exists. TypeSafe Jev passed.",
+    "A hosted model can return different verdicts between runs; repeat a run before treating small differences as signal.",
+    "The holdout is synthetic and does not replace a customer-data evaluation."
   ]
 }

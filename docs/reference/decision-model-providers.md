@@ -1,6 +1,6 @@
 # Decision model provider verification
 
-Status: **implemented** for the two decision-model adapters; **real-service smoke remains BLOCKED** until API keys are available.
+Status: **implemented** for the two decision-model adapters. **TypeSafe Jev real-service smoke passed on 2026-11-25.** Perplexity real-service smoke remains BLOCKED until a key is available.
 
 Date: 2026-11-24. Scope: T-DM-1 and T-DM-4 of [the decision-model adapter plan](../superpowers/plans/2026-11-23-decision-model-adapters.md).
 
@@ -18,11 +18,11 @@ Both providers expose the same choice protocol: one `POST` to a versioned endpoi
 
 | Provider | Adapter readiness | Endpoint | Default model | Real smoke |
 | --- | --- | --- | --- | --- |
-| TypeSafe Jev | Implemented (`typesafe_jev`). | `POST /v1/systemone` on the configured base URL. | `jev-latest`. | BLOCKED. No `TYPESAFE_API_KEY`. |
+| TypeSafe Jev | Implemented (`typesafe_jev`). | `POST /v1/systemone` on the configured base URL. | `jev-latest`. | PASS. Returned `UNKNOWN` with confidence 0.98 from `jev-1.14.0`; the holdout run made 29 calls with 0 errors. |
 | Perplexity Decisions | Implemented (`perplexity_decisions`). | `POST /v1/decisions` on the configured base URL. | `pplx-decider-flash-latest`. | BLOCKED. No `PERPLEXITY_API_KEY`. |
 | Local or private OpenAI-compatible provider | Available through the generic typed adapter boundary. | OpenAI-compatible chat completions. | User-configured. | Available for a local or private endpoint smoke. |
 
-A missing or invalid API key fails the provider test and the run with a typed `missing_credentials` or `invalid_credentials` error; a real-service smoke cannot be substituted with a canned response, so DM-07 stays BLOCKED until credentials exist.
+A missing or invalid API key fails the provider test and the run with a typed `missing_credentials` or `invalid_credentials` error. DM-07 passed with TypeSafe Jev and remains unrun for Perplexity until that key exists.
 
 ## Blocked paths
 
@@ -37,11 +37,11 @@ The following domains were unreachable from this environment when the documentat
 
 This is a network or enterprise policy block, not a missing page or a transient timeout.
 
-## Required before unblocking the real-service smoke
+## Required before unblocking the Perplexity smoke
 
-1. API keys for Perplexity Decisions and TypeSafe Jev, or access to a privately hosted compatible endpoint.
+1. A Perplexity Decisions API key, or access to a privately hosted compatible endpoint.
 2. Confirmation of the current model names, rate limits, pricing, and data-processing terms from the official documentation, when reachable.
-3. A decision on which provider is first for the DM-07 smoke and which configured fields may be sent to it.
+3. A decision on which configured fields may be sent to Perplexity.
 
 ## Sources
 

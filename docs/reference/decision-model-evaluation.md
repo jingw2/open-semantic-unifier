@@ -1,6 +1,6 @@
 # Decision model evaluation
 
-Status: harness and holdout frozen. A real evaluation run remains **BLOCKED** until a Perplexity or TypeSafe credential exists. No model quality score is reported yet.
+Status: the holdout and evaluator are frozen, and a real TypeSafe Jev run exists. The latest report is [decision-model-evaluation-report.json](decision-model-evaluation-report.json).
 
 ## Why this holdout
 
@@ -41,16 +41,16 @@ Validate the frozen fixture first. This needs no credential.
 python3 scripts/evaluate_decision_models.py --validate-only
 ```
 
-Fill the key in the workbench under **模型 Provider**: choose the **TypeSafe Jev** preset, enter the API key, set the send fields, and save. For the CLI, export the same key instead.
+Fill the key in the workbench under **模型 Provider**: choose the **TypeSafe Jev** preset, enter the API key, set the send fields, and save. The evaluator can read that saved provider by id. It decrypts the key in process and never writes it to the report.
 
 ```bash
-export TYPESAFE_API_KEY=...
 python3 scripts/evaluate_decision_models.py \
-  --provider-kind typesafe_jev \
-  --model jev-latest \
+  --provider-id <saved-provider-id> \
   --send-fields name,tax_id,email,gtin,brand,model,voltage,pack_count \
   --output docs/reference/decision-model-evaluation-report.json
 ```
+
+For a provider that is not saved in the workbench, pass `--provider-kind`, `--model`, `--base-url`, and export `TYPESAFE_API_KEY` or `PERPLEXITY_API_KEY`.
 
 The command prints a `BLOCKED` report and exits 2 when no key exists. It exits 0 when the run completes and 1 when the provider fails enough calls that no usable report exists.
 
@@ -72,11 +72,28 @@ Each domain reports its own figures. The aggregate repeats them, and a failure i
 
 ## Current result
 
-No real provider run exists. DM-06 stays **BLOCKED**. The frozen fixture, the overlap check, and the scoring path are ready, and the controlled-adapter test fixes the expected metric shape. A real report lands in `docs/reference/decision-model-evaluation-report.json` after a run with a real credential.
+The latest TypeSafe Jev run made 29 real calls with 0 errors. It used the frozen holdout 1.0.0 and the send fields listed in the report.
+
+| Metric | Result |
+| --- | --- |
+| Candidate recall | 96.7% (29 of 30) |
+| SAME recall | 66.7% (12 of 18) |
+| DIFFERENT recall | 66.7% (6 of 9) |
+| False SAME | 0 |
+| UNKNOWN rate | 33.3% (9 of 27 judged pairs) |
+| Suggestion accuracy | 66.7% (18 of 27) |
+| Review volume | 13 pairs |
+| False merges | 0 |
+| Mean latency | 598.75 ms |
+
+Per-domain accuracy was 55.6% for vendor, 44.4% for contact, and 100% for catalog item. The domain table stays in the report so the weak domains are visible. The full report, including every domain's counts and latency percentiles, is [decision-model-evaluation-report.json](decision-model-evaluation-report.json).
+
+The model is conservative. It never suggested SAME on a DIFFERENT pair, and it answered UNKNOWN on about a third of judged pairs. Do not read the accuracy as a calibrated probability. A hosted model can vary between runs, so repeat the run before treating small differences as signal.
 
 ## Limits
 
 - The holdout is synthetic. It shows behavior on authored cases, not customer data.
+- A hosted model can return different verdicts between runs. Repeat a run before treating small differences as signal.
 - A hosted model's training data cannot be audited. The frozen set prevents our own tuning leakage, not all possible training contamination.
 - Confidence is not a calibrated probability, and no automatic merge threshold uses it.
 - A passing report does not change the V0.1 or L3 product status.

@@ -48,4 +48,4 @@ A decision model only produces a review suggestion. It never merges or separates
 - Confidence is not a calibrated probability and is not used as an automatic merge threshold.
 - Distribution and explanation may be absent from a provider; they are displayed as unknown rather than fabricated.
 - Real Perplexity and TypeSafe smoke tests are BLOCKED until API keys are available; see [decision-model-providers](../reference/decision-model-providers.md) and [decision-model-acceptance](../reference/decision-model-acceptance.json).
-- The independent holdout at `tests/holdout/v1` and the evaluator are frozen and validated, but a real provider run is still BLOCKED without a credential. See [decision-model-evaluation](../reference/decision-model-evaluation.md).
+- The independent holdout and evaluator are frozen. A real TypeSafe Jev run made 29 calls with 0 errors. See [decision-model-evaluation](../reference/decision-model-evaluation.md). A Perplexity real smoke remains BLOCKED without a key.
