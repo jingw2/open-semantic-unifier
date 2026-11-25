@@ -45,7 +45,7 @@
 - Consumes: existing `profile_items(items: list[dict]) -> dict` and `recommend_pipeline(profile: dict, user_goal: str | None = None) -> dict`.
 - Produces: `profile["has_linkml_contract"]: bool`; `routing["method"]` with keys `key`, `label`, `stage`, `description`, `reason`, `available`; `method_for_routing(routing: dict | None) -> dict` for legacy rows.
 
-- [ ] **Step 1: Write failing tests for the four method routes and LinkML detection**
+- [x] **Step 1: Write failing tests for the four method routes and LinkML detection**
 
 ```python
 from pathlib import Path
@@ -102,12 +102,12 @@ def test_method_for_routing_backfills_legacy_rows():
     assert method_for_routing(None)["key"] == "rule_clean_w3c"
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `python3 -m pytest backend/tests/test_profiler.py -q`
 Expected: FAIL with `KeyError: 'method'` and `KeyError: 'has_linkml_contract'`.
 
-- [ ] **Step 3: Implement the method metadata**
+- [x] **Step 3: Implement the method metadata**
 
 In `profiler.py`, add a module constant `METHOD_META` with the four entries. In `profile_items`, set `has_linkml_contract` true when a YAML item contains `classes:` and any of `prefixes:`, `default_range:`, `imports:`. Add an explicit branch to the stage chain: `elif profile.get("has_linkml_contract"): stage, conf = "L3", 0.98`, before the table/row-count branch. Then set `method` from `METHOD_META` after the stage is chosen. Add `method_for_routing(routing)` that returns `routing["method"]` when present, otherwise maps `routing["recommended_stage"]` to `METHOD_META`, defaulting to `rule_clean_w3c`. In `list_datasources`, return `"routing": {**d.routing_json, "method": method_for_routing(d.routing_json)}` so legacy rows do not break the UI. Build `reason` in one plain sentence from the stage:
 
@@ -118,12 +118,12 @@ In `profiler.py`, add a module constant `METHOD_META` with the four entries. In 
 
 Keep every existing routing field unchanged. Set `available` to `True`.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `python3 -m pytest backend/tests/test_profiler.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/services/profiler.py backend/app/api/v1/projects_sources.py backend/tests/test_profiler.py
@@ -143,7 +143,7 @@ git commit -m "feat(profiler): expose method recommendations for clean, match, c
 - Produces: `record_payload(revision, scheme) -> dict`, `compare_attributes(left_attributes, right_attributes, scheme) -> list[dict]`, `explain_review(evidence_codes: tuple[str, ...]) -> str`, `suggest_action(verdict: str | None, evidence_codes: tuple[str, ...]) -> str`, `auto_separated_items(run_result: dict, revisions_by_id: dict, scheme, cap: int = 20) -> list[dict]`.
 - Response: `{"items": [...], "auto_separated": [...], "total": int, "auto_separated_total": int, "run_id": str}`.
 
-- [ ] **Step 1: Write failing unit tests for the explanation and comparison helpers**
+- [x] **Step 1: Write failing unit tests for the explanation and comparison helpers**
 
 ```python
 from app.services.unification.reviews import compare_attributes, explain_review, suggest_action
@@ -206,27 +206,27 @@ def test_auto_separated_is_empty_safe_and_capped():
     assert len(auto_separated_items({"pairs": pairs}, revisions, scheme, cap=20)) == 20
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `python3 -m pytest backend/tests/test_unification_reviews.py -q`
 Expected: FAIL with `ModuleNotFoundError` or missing symbols.
 
-- [ ] **Step 3: Implement the helper module**
+- [x] **Step 3: Implement the helper module**
 
 Use the scheme's `field_map` and `normalizers`. `compare_attributes` compares normalized values and returns `MATCH`, `DIFFERENT`, or `MISSING`; it displays the raw values. `record_payload` returns `record_ref`, `source_system`, `dataset`, `source_record_id`, and the canonical `attributes` subset. `explain_review` returns the four sentence families from the spec. `suggest_action(verdict, evidence_codes)` returns `建议合并` only when the verdict is `SAME` and `STRONG_IDENTIFIER_MATCH` is in the evidence codes; every other case returns `建议分离`. `auto_separated_items` keeps only `action == "DISTINCT"` pairs whose evidence codes intersect `{"CONFLICT_CONSTRAINT", "STRONG_IDENTIFIER_CONFLICT", "CANNOT_LINK", "TRANSITIVE_CONFLICT"}`, builds the same payload with `why`, sorts by record refs, and slices to `cap`. `human_cannot_link` is an evidence `rule`, not an evidence code.
 
-- [ ] **Step 4: Wire the endpoint and add the endpoint test**
+- [x] **Step 4: Wire the endpoint and add the endpoint test**
 
 In `list_unification_reviews`, load the scheme from `UnificationSchemeVersion` and build `items` by keeping every existing pair field (`left_source_revision_id`, `right_source_revision_id`, `candidate`, `action`, `score`, `evidence_codes`, `evidence`, `recommendation`, `model_error`) and adding `left`, `right`, `comparison`, `why`, `suggestion`, and `consequence`. Do not replace the pair dict; the existing unification spec reads the raw revision ids from this response. Build `auto_separated` from the full run result. The revision query must include every revision referenced by both the REVIEW pairs and the DISTINCT pairs that can enter `auto_separated`; do not build `revisions_by_id` from REVIEW pairs only. Keep the existing pending-decision filtering for `items`.
 
 Add `from test_unification_public_api import public_api  # noqa: F401` at the top of the test module. Seed a project, scheme version, four source records/revisions, and a `UnificationRun` whose `result_json` contains one REVIEW pair with `STRONG_IDENTIFIER_MISSING` using revisions `rev-review-left/right`, and one DISTINCT pair with `CANNOT_LINK` using different revisions `rev-distinct-left/right`. Assert `items[0]["left_source_revision_id"] == "rev-review-left"` and `items[0]["right_source_revision_id"] == "rev-review-right"` (raw fields are preserved), `items[0]["why"]` mentions the missing strong identifier, `items[0]["comparison"]` has the expected fields, and `auto_separated[0]["left"]["attributes"]` is non-empty, proving the DISTINCT revisions were loaded.
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `python3 -m pytest backend/tests/test_unification_reviews.py -q`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/app/services/unification/reviews.py backend/app/api/v1/unification.py backend/tests/test_unification_reviews.py
@@ -248,7 +248,7 @@ git commit -m "feat(reviews): explain why a pair needs review and list auto-sepa
 - Produces: `POST /api/v1/projects/{project_id}/assistant/plan`, body `{"message": str, "page": str}`, response `{"intent": str, "confidence": float, "explanation": str, "suggested_task": str, "source": "model" | "rules"}`. Intents: `clean`, `match`, `metrics`, `contract`, `review`, `unknown`; `select_openai_provider(db, workspace_id) -> LLMProvider | None`; `select_decision_provider(db, workspace_id) -> LLMProvider | None`.
 - Consumes: `LLMProvider`, `DataSource.profile_json`, `llm_client.call_llm_json`.
 
-- [ ] **Step 1: Write failing tests with a controlled OpenAI-compatible server and a no-provider fallback**
+- [x] **Step 1: Write failing tests with a controlled OpenAI-compatible server and a no-provider fallback**
 
 Use the `_OpenAIHandler` pattern from `backend/tests/test_unification_llm.py`. Seed a workspace, project, default `openai_compatible` provider pointing at the controlled server, and a data source with `profile_json` containing `tables[0].preview[0].name = "SECRET-RECORD-VALUE"`. Call the endpoint with `{"message":"帮我把客户名单去重","page":"data"}`. Assert:
 
@@ -262,21 +262,21 @@ Add a fourth case: make a `typesafe_jev` provider `is_default=True` and leave th
 
 Add a fifth case: insert an `offline` provider (`provider_key="offline"`, `provider_kind="openai_compatible"`, empty base URL and API key) with an earlier `created_at` than the controlled provider, and make it `is_default=False`. Call the endpoint and assert it still uses the controlled provider, not `offline`.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `python3 -m pytest backend/tests/test_assistant.py -q`
 Expected: FAIL with 404 or import errors.
 
-- [ ] **Step 3: Implement the service and route**
+- [x] **Step 3: Implement the service and route**
 
 `data_summary(db, project_id)` returns `{"source_count", "total_rows", "table_count", "field_names": [...]}` from `profile_json`, never `preview`. `provider_selection.py` defines `select_openai_provider(db, workspace_id)` and `select_decision_provider(db, workspace_id)`. Each filters its kind (`openai_compatible` or `perplexity_decisions/typesafe_jev`), orders `is_default` first then `created_at`, and returns the first usable row. `select_openai_provider` skips `provider_key == "offline"` and rows with an empty base URL and an empty encrypted key; a decision provider being default must not hide the openai provider. `classify_assistant_message` uses `select_openai_provider`, decrypts the key, and calls `call_llm_json` with a prompt that lists the allowed intents and asks for `{"intent","confidence","explanation"}`. Validate the result; on any error or confidence below `0.55`, call `deterministic_intent(message)`. `deterministic_intent` matches the keyword lists: clean, match, metrics, contract, review; unknown otherwise. Register the router in `main.py`.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `python3 -m pytest backend/tests/test_assistant.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/services/assistant.py backend/app/services/provider_selection.py backend/app/api/v1/assistant.py backend/app/main.py backend/tests/test_assistant.py
@@ -300,16 +300,16 @@ git commit -m "feat(assistant): classify goals with the default provider and a d
 - Changes: `UnificationRun.input_source_system: str | None`; `submit_run(..., input_source_system: str | None = None)`; `_current_input_manifest(db, project_id, input_source_system=None)` filters `SourceRecord.source_system` when the argument is set. Existing callers keep passing `None`.
 - Consumes: `save_scheme`, `ingest_batch`, `submit_run_service`, `dispatch_unification_run`, `select_decision_provider` from `app.services.provider_selection`.
 
-- [ ] **Step 1: Write the failing endpoint test**
+- [x] **Step 1: Write the failing endpoint test**
 
 Add `from test_unification_public_api import public_api  # noqa: F401` and use the fixture. Seed a pre-existing `SourceRecord` with `source_system="erp"` whose tax id matches one of the demo records. Patch `app.api.v1.unification.dispatch_unification_run` to a function that opens the fixture maker and calls `execute_unification_run`, so the run does not use the global `SessionLocal`. Call the endpoint. Poll `GET /projects/{id}/unification/runs/{run_id}` until terminal. Assert the run is `SUCCEEDED`, the result has 3 pairs, the input manifest contains only the six `assistant_demo` records and not the `erp` record, at least one pair has `action == "REVIEW"` and at least one has `action == "DISTINCT"`, no pair has `action == "AUTO_MATCH"`, no `IdentityDecisionRecord` with action `MERGE` exists for the project, and no snapshot exists. Call the endpoint again and assert it returns the same `run_id`.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `python3 -m pytest backend/tests/test_unification_demo.py -q`
 Expected: FAIL with 404.
 
-- [ ] **Step 3: Implement the demo records and endpoint**
+- [x] **Step 3: Implement the demo records and endpoint**
 
 `entity_demo.py` defines six records, all with `source_system="assistant_demo"`. None may form an `AUTO_MATCH` pair:
 
@@ -321,12 +321,12 @@ The endpoint saves the scheme `assistant_entity_demo` with `entity_type="Supplie
 
 In `releases.py`, `_current_input_manifest` adds `.where(SourceRecord.source_system == input_source_system)` when the filter is set, and `submit_run` forwards the optional argument. Persist it on the run with a nullable `input_source_system` column and migration. `_execute_unification_run` must pass `run.input_source_system` at both manifest re-reads (`releases.py:357` and `:510`), and `_snapshot_result_at_publication` must do the same at `:599`; filtering only at submit makes the run fail with `RunConflict` whenever any non-demo record exists. Include the filter in the demo endpoint's payload hash so an idempotency key cannot collide with an unfiltered run.
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `python3 -m pytest backend/tests/test_unification_demo.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/demo/entity_demo.py backend/app/api/v1/unification.py backend/app/models/unification.py backend/alembic/versions backend/app/services/unification/releases.py backend/tests/test_unification_demo.py
@@ -394,18 +394,18 @@ export type TaskItem = {
 - `SettingsPage` props `{projectId: string, currentUser: UserInfo, canEdit: boolean}` with tabs `providers`, `team`, `api-keys`.
 - `ReviewHomePage` props `{projectId: string}`.
 
-- [ ] **Step 1: Write the failing menu shell spec**
+- [x] **Step 1: Write the failing menu shell spec**
 
 Create `frontend/tests/menu_shell.spec.py` using the isolated backend pattern from `unification_workbench.spec.py`. Seed one workspace and project. After login, assert exactly four menu buttons: 数据, 任务, 复核, 设置. Click 任务 and assert a heading `任务`. Click 复核 and assert `人工复核` and `实体配对` text. Click 设置 and assert tabs `模型 Provider`, `团队`, `API Key`. Visit `http://127.0.0.1:5173/#/tasks/publish` and assert the `发布中心` heading and the empty-state copy `还没有已生成的版本`; the publish button is asserted in Task 8 after seeding a releasable artifact. Visit `http://127.0.0.1:5173/#/tasks/new/entity` and assert the `实体统一工作台` heading. Visit `http://127.0.0.1:5173/#/tasks/job/missing-job` and assert `任务不存在` and a `返回任务` link.
 
 Create `frontend/tests/deep_link.spec.py`: seed 21 unification runs and 51 contract versions directly in the fixture database, then open the oldest run via `#/tasks/run/{run_id}` and the first version via `#/tasks/contract/{version_id}`. Assert the ids render, proving the single-resource fallback outside the first list page.
 
-- [ ] **Step 2: Run the spec to verify it fails**
+- [x] **Step 2: Run the spec to verify it fails**
 
 Run: `python3 frontend/tests/menu_shell.spec.py` and `python3 frontend/tests/deep_link.spec.py`
 Expected: FAIL because the menu buttons and hash routes do not exist.
 
-- [ ] **Step 3: Implement the router, task aggregation, and shell**
+- [x] **Step 3: Implement the router, task aggregation, and shell**
 
 `router.ts` parses and serializes the routes `#/data`, `#/tasks`, `#/tasks/new/{clean|match|metrics|contract|entity}`, `#/tasks/job/{jobId}`, `#/tasks/run/{runId}`, `#/tasks/contract/{versionId}`, `#/reviews`, and `#/settings/{providers|team|api-keys}`. `App.tsx` listens to `hashchange`, falls back to `#/data`, and renders the four menus. `loadTasks` fetches jobs, unification runs, and contract versions, then normalizes them into `TaskItem[]`.
 
@@ -417,7 +417,7 @@ Add `initialJobId` and `initialStage` to `WorkbenchPage`; when `initialJobId` is
 
 Update `DataSourcesPage`'s `onRouteReady` in `App.tsx`: store `activeDsIds`, `activeProfile`, and `activeRouting`, then route to `#/tasks/new/clean`, `#/tasks/new/match`, or `#/tasks/new/metrics` based on `routing.method?.stage || routing.recommended_stage`. L3 routes to `#/tasks/new/contract`.
 
-- [ ] **Step 4: Update the three existing specs to the new shell**
+- [x] **Step 4: Update the three existing specs to the new shell**
 
 Add `frontend/tests/ui_helpers.py` with:
 
@@ -436,7 +436,7 @@ The hash-only branch matters: the unification spec selects `project-customer` an
 
 Replace every `page.get_by_role("button", name="实体统一工作台").click()` with `open_route(page, "#/tasks/new/entity")`. Replace the `契约统一` nav click with `open_route(page, "#/tasks/new/contract")`. Replace the `模型 Provider` nav click with `open_route(page, "#/settings/providers")`. Keep all page-level assertions unchanged except the evidence-code assertion in `unification_workbench.spec.py`, which Task 7 updates to expand `查看原始证据` first.
 
-- [ ] **Step 5: Run the shell spec and the updated specs**
+- [x] **Step 5: Run the shell spec and the updated specs**
 
 Start Vite on port 5173 and run:
 
@@ -450,7 +450,7 @@ python3 frontend/tests/decision_models_workbench.spec.py
 
 Expected: all exit 0.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add frontend/src frontend/tests
@@ -471,7 +471,7 @@ git commit -m "feat(ui): add the four-menu shell, task aggregation, and settings
 - `AssistantPanel` props: `{projectId: string, currentPage: string, onRoute: (hash: string) => void}`.
 - Internal `AssistantPlan`: `{task: 'clean'|'match'|'metrics'|'contract'|'entity', stage: 'L1'|'L2'|'L3'|'L4'|'ENTITY', datasourceIds: string[], profile?: any, routing?: any}`.
 
-- [ ] **Step 1: Write the failing assistant spec**
+- [x] **Step 1: Write the failing assistant spec**
 
 Use the isolated backend pattern. In the spec setup, set `app.workers.tasks.SessionLocal = maker` so `run_job_sync` writes the job and result into the fixture database, and patch `app.api.v1.unification.dispatch_unification_run` to a function that runs `execute_unification_run` with the fixture maker. Without these two patches, `POST /jobs` and `POST /unification/demo` return 500 and leave PENDING rows. After login:
 
@@ -483,12 +483,12 @@ Use the isolated backend pattern. In the spec setup, set `app.workers.tasks.Sess
 6. Type `帮我把客户名单去重` in the free-text input; submit; assert the plan mentions `跨系统匹配客户` or `Splink`.
 7. Click `实体匹配`; wait for completion; assert the entity page or a `复核` link is shown.
 
-- [ ] **Step 2: Run the spec to verify it fails**
+- [x] **Step 2: Run the spec to verify it fails**
 
 Run: `python3 frontend/tests/guided_assistant.spec.py`
 Expected: FAIL because the panel does not exist.
 
-- [ ] **Step 3: Implement the panel**
+- [x] **Step 3: Implement the panel**
 
 The panel fetches `GET /api/v1/projects/{id}/datasources` when opened. It renders five task chips: `清洗供应商名单`, `跨系统匹配客户`, `实体匹配`, `统一 GMV 口径`, `生成数据契约`, plus a free-text input. Free text calls `POST /api/v1/projects/{id}/assistant/plan`; on failure or `source == "rules"`, show a small `本地规则` note. The plan card shows the selected data source, the method label and reason, three steps, and `开始`.
 
@@ -503,12 +503,12 @@ On success, render a done state: `已完成`, the result summary, and the contro
 
 `pageHelp.ts` maps each current page key to two or three sentences explaining its purpose and the next action.
 
-- [ ] **Step 4: Run the spec to verify it passes**
+- [x] **Step 4: Run the spec to verify it passes**
 
 Run: `python3 frontend/tests/guided_assistant.spec.py`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src/components/AssistantPanel.tsx frontend/src/lib/pageHelp.ts frontend/src/App.tsx frontend/tests/guided_assistant.spec.py
@@ -531,7 +531,7 @@ git commit -m "feat(assistant): add the guided panel, auto-run, and page explana
 - `ReviewPair` adds `why?: string`, `suggestion?: string`, `consequence?: string`, `left?: {record_ref: string; attributes: Record<string, unknown>}`, `right?: ...`, `comparison?: Array<{field: string; left: unknown; right: unknown; status: 'MATCH'|'DIFFERENT'|'MISSING'}>`.
 - `EntityReviewCard` props `{pair: ReviewPair, busy: boolean, onDecide: (action: 'MERGE'|'KEEP_DISTINCT') => void}`.
 
-- [ ] **Step 1: Write the failing review readability spec**
+- [x] **Step 1: Write the failing review readability spec**
 
 Start a controlled choice server and seed a default `typesafe_jev` provider pointing at it with `send_fields ["name","tax_id"]`, reusing the setup from `decision_models_workbench.spec.py`. In the spec setup, patch `app.api.v1.unification.dispatch_unification_run` to use the fixture maker; otherwise `POST /unification/demo` returns 500. Call `POST /unification/demo`, poll the run, open `#/tasks/run/{run_id}`, then click the `人工复核` tab. Assert:
 
@@ -544,12 +544,12 @@ Start a controlled choice server and seed a default `typesafe_jev` provider poin
 
 Seed an L2 `ReviewItem` and open the review page; assert the model sentence and `L2 灰色边界样本`.
 
-- [ ] **Step 2: Run the spec to verify it fails**
+- [x] **Step 2: Run the spec to verify it fails**
 
 Run: `python3 frontend/tests/review_readability.spec.py`
 Expected: FAIL because the new text is missing.
 
-- [ ] **Step 3: Implement the review card and queue copy**
+- [x] **Step 3: Implement the review card and queue copy**
 
 Extract the review article from `UnificationPage` into `EntityReviewCard`. Render the title, `why`, comparison table with `MATCH`/`DIFFERENT`/`MISSING` labels, model badge (keep `模型建议 · SAME` text and add the Chinese translation), confidence, distribution, model version, provider kind/key, latency, `suggestion`, `consequence`, and the two existing action buttons. Put evidence codes and raw JSON inside `<details><summary>查看原始证据</summary>...`. Render `auto_separated` in a sibling `<details>` with a count and the `why` for each item.
 
@@ -557,12 +557,12 @@ In `ReviewQueuePage`, render `llm_suggestion.reason` as `模型理由：...`, a 
 
 Update `frontend/tests/unification_workbench.spec.py`: before the existing `CANDIDATE` assertion, click `查看原始证据`. This is required because the evidence codes are now collapsed by default.
 
-- [ ] **Step 4: Run the spec to verify it passes**
+- [x] **Step 4: Run the spec to verify it passes**
 
 Run: `python3 frontend/tests/review_readability.spec.py`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src/components/EntityReviewCard.tsx frontend/src/pages/UnificationPage.tsx frontend/src/pages/ReviewQueuePage.tsx frontend/src/lib/api.ts frontend/tests/review_readability.spec.py frontend/tests/unification_workbench.spec.py
@@ -585,7 +585,7 @@ git commit -m "feat(review): explain reviews in plain language with field compar
 - `parseCsv(text: string, limit = 200): {headers: string[]; rows: string[][]}` handles quotes, escaped quotes, CRLF, and a UTF-8 BOM.
 - `ResultViewer` source: `{kind: 'artifact', id: string, filename: string} | {kind: 'contract', projectId: string, versionId: string, filename: string}`.
 
-- [ ] **Step 1: Write the failing result viewer spec**
+- [x] **Step 1: Write the failing result viewer spec**
 
 Seed the `Job`, `ArtifactVersion`, contract source, contract version, and snapshot rows directly in the fixture database; do not call `POST /jobs` or `POST /unification/demo` in this spec, because their dispatch uses the global `SessionLocal`. Seed an artifact with CSV content containing a quoted comma and a BOM:
 
@@ -596,21 +596,21 @@ name,note
 
 Write the CSV bytes and the contract YAML to storage with `storage.put_bytes` under the artifact and source object keys. Put `artifacts: [{id, filename, version}]` in the job's `result_json` so the workbench renders the artifact button. Seed one `l4_metrics` artifact and open `#/tasks/publish`; assert a `发布到线上 API` button is visible. Open the task detail, click `查看`, and assert the table shows two columns and the value `Acme, Ltd.`. Then open `#/tasks/contract/{versionId}`; assert the `versions` tab is active and the seeded version row is visible, then click `查看模型` and assert class names `Supplier` and `Country` are visible.
 
-- [ ] **Step 2: Run the spec to verify it fails**
+- [x] **Step 2: Run the spec to verify it fails**
 
 Run: `python3 frontend/tests/result_viewer.spec.py`
 Expected: FAIL because no view buttons or viewer exist.
 
-- [ ] **Step 3: Implement the viewer and wire the buttons**
+- [x] **Step 3: Implement the viewer and wire the buttons**
 
 Fetch artifact content with `Authorization` from `getToken()`, read it as text, and render by filename: CSV table, JSON/YAML code, HTML iframe, SQL/text code. For contracts, fetch `/api/v1/projects/{projectId}/contracts/versions/{versionId}/export?kind=model` and render classes, attributes, enums, and relations, with a JSON toggle. Add `查看` buttons next to the existing download buttons in `WorkbenchPage`, `ContractsPage`, and `ServingReleasePage`.
 
-- [ ] **Step 4: Run the spec to verify it passes**
+- [x] **Step 4: Run the spec to verify it passes**
 
 Run: `python3 frontend/tests/result_viewer.spec.py`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src/components/ResultViewer.tsx frontend/src/lib/csv.ts frontend/src/pages/WorkbenchPage.tsx frontend/src/pages/ContractsPage.tsx frontend/src/pages/ServingReleasePage.tsx frontend/tests/result_viewer.spec.py
@@ -633,20 +633,20 @@ git commit -m "feat(results): view CSV, JSON, and contract models online"
 **Interfaces:**
 - Consumes: `profile.routing.method` from Task 1 and the latest data source from `GET /datasources`.
 
-- [ ] **Step 1: Write the failing method recommendation spec**
+- [x] **Step 1: Write the failing method recommendation spec**
 
 Seed the legacy data source first (`recommended_stage: "L1"`, no `method`), then the L1 source, then the L2 source last, so the L2 source is the latest by `created_at`. Open 数据 and assert `规则清洗 + W3C 契约` and `Splink + DuckDB` labels, and that the legacy source still renders a method label instead of crashing. Open `#/tasks/new/match` directly and assert the workbench header `处理方法` and the method card, proving `WorkbenchPage` fetched the latest routing without the user clicking a data source. Open `#/tasks/new/entity` and assert the banner mention `Splink + DuckDB` and the override link `仍然直接匹配`.
 
-- [ ] **Step 2: Run the spec to verify it fails**
+- [x] **Step 2: Run the spec to verify it fails**
 
 Run: `python3 frontend/tests/method_recommendation.spec.py`
 Expected: FAIL because the labels and banner are missing.
 
-- [ ] **Step 3: Implement the labels and banner**
+- [x] **Step 3: Implement the labels and banner**
 
 In `DataSourcesPage`, show `routing.method?.label` and fall back to a label derived from `routing.recommended_stage` when `method` is missing; change the button text to `进入处理方法`. In `WorkbenchPage`, use `activeRouting` when present, otherwise the latest routing fetched from `/datasources`; show the method label, reason, and an expandable list of `routing.reasons`; rename the page header to `处理方法`. In `UnificationPage`, fetch `/datasources`, pick the selected or latest source with routing, and render a dismissible banner with the method label, reason, and two actions: route to the recommended task or `仍然直接匹配`. Use `window.location.hash` for navigation. The backend's `method_for_routing` backfill is the primary source, but the frontend fallback keeps legacy or stale responses usable.
 
-- [ ] **Step 4: Run all checks**
+- [x] **Step 4: Run all checks**
 
 ```bash
 python3 -m pytest backend/tests -q
@@ -682,7 +682,7 @@ python3 frontend/tests/decision_models_workbench.spec.py
 
 Expected: backend suite passes; build passes; every spec exits 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/src frontend/tests .github/workflows/ci.yml README.md
