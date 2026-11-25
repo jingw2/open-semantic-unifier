@@ -56,6 +56,18 @@ class AssistantHandler(BaseHTTPRequestHandler):
                 "params": {"target_col": "SECRET-COLUMN", "bogus": "x"},
                 "recipe_id": "not_a_recipe",
             })
+        elif self.behavior == "match_fields":
+            content = json.dumps({
+                "intent": "match",
+                "confidence": 0.93,
+                "explanation": "我会按名称和税号匹配。",
+                "needs_clarification": False,
+                "question": None,
+                "options": [],
+                "datasource_id": "ds-assistant",
+                "params": {"match_fields": ["company_name", "tax_id", "not_a_column"]},
+                "recipe_id": None,
+            })
         elif self.behavior == "other_source_param":
             content = json.dumps({
                 "intent": "clean",
@@ -255,6 +267,20 @@ def test_assistant_keeps_valid_source_params_and_recipe(public_api, assistant_se
     assert payload["datasource_id"] == "ds-assistant"
     assert payload["params"] == {"target_col": "company_name", "amount_col": "tax_id"}
     assert payload["recipe_id"] == "normalize_company_name"
+
+
+def test_assistant_keeps_one_or_more_match_fields(public_api, assistant_server):
+    client, _maker, _identity = public_api
+    _seed_providers(public_api, assistant_server.server_port)
+    AssistantHandler.behavior = "match_fields"
+    response = client.post(
+        "/api/v1/projects/project-one/assistant/plan",
+        json={"message": "按名称和税号匹配", "page": "data"},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["intent"] == "match"
+    assert payload["params"] == {"match_fields": ["company_name", "tax_id"]}
 
 
 def test_assistant_drops_params_from_another_source(public_api, assistant_server):

@@ -27,7 +27,7 @@ ALLOWED_METRIC_NAMES = frozenset({"net_gmv", "signed_fulfillment_rate", "settled
 
 ALLOWED_PARAM_KEYS: dict[str, tuple[str, ...]] = {
     "clean": ("target_col", "amount_col"),
-    "match": ("name_col", "tax_col", "phone_col", "city_col"),
+    "match": ("name_col", "tax_col", "phone_col", "city_col", "match_fields"),
     "metrics": ("metric_name", "group_by"),
 }
 
@@ -44,9 +44,9 @@ PAGE_LABELS = {
 }
 
 CLARIFY_OPTIONS = (
-    {"label": "清洗供应商名单", "message": "清洗供应商名单"},
-    {"label": "跨系统匹配客户", "message": "跨系统匹配客户"},
-    {"label": "统一 GMV 口径", "message": "统一 GMV 口径"},
+    {"label": "清洗字段", "message": "清洗字段"},
+    {"label": "跨系统匹配字段", "message": "跨系统匹配字段"},
+    {"label": "统一指标口径", "message": "统一指标口径"},
 )
 
 
@@ -162,6 +162,15 @@ def _prune_params(
     params: dict[str, Any] = {}
     for key in allowed:
         value = raw_params.get(key)
+        if key == "match_fields":
+            if isinstance(value, list):
+                fields = []
+                for field in value:
+                    if isinstance(field, str) and field in allowed_fields and field not in fields:
+                        fields.append(field)
+                if fields:
+                    params[key] = fields
+            continue
         if not isinstance(value, str) or not value.strip():
             continue
         value = value.strip()
@@ -194,6 +203,8 @@ def _build_prompt(page: str, summaries: list[dict[str, Any]], history: list[dict
         "Select datasource_id from the listed ids when one source fits; otherwise null. "
         "datasource_id (a data source id or null), params (object or null), and recipe_id "
         "(a built-in recipe id or null). Do not execute or decide any data action.\n"
+        "For match, prefer match_fields and ask the user which fields to compare when they are unclear. "
+        "Entity demo match fields are name, tax_id, and phone.\n"
         "Intent definitions:\n"
         "- clean: normalize or reformat fields in one table (trim, casing, punctuation, split or merge columns).\n"
         "- match: find or deduplicate the same real-world entity, including requests to 去重 an entity list "
@@ -206,7 +217,7 @@ def _build_prompt(page: str, summaries: list[dict[str, Any]], history: list[dict
         "- unknown: the goal is unclear; ask one short clarifying question.\n"
         "Allowed params by intent:\n"
         "- clean: target_col, amount_col\n"
-        "- match: name_col, tax_col, phone_col, city_col\n"
+        "- match: match_fields (an array of one or more source field names), or the legacy name_col/tax_col/phone_col/city_col\n"
         "- metrics: metric_name, group_by\n"
         "- others: none\n"
         f"Built-in recipe ids: {', '.join(sorted(_builtin_recipe_ids()))}\n"

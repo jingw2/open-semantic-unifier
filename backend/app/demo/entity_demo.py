@@ -20,18 +20,28 @@ DEMO_RECORDS = [
 ]
 
 
-def demo_scheme(model_provider_id: str | None = None) -> dict:
+DEMO_MATCH_FIELDS = ("name", "tax_id", "phone")
+
+
+def demo_scheme(model_provider_id: str | None = None, match_fields: list[str] | None = None) -> dict:
+    selected = [field for field in (match_fields or DEMO_MATCH_FIELDS) if field in DEMO_MATCH_FIELDS]
+    if not selected:
+        selected = ["name"]
+    candidate_rules = []
+    if "tax_id" in selected:
+        candidate_rules.append({"kind": "exact", "fields": ["tax_id"]})
+    if "name" in selected:
+        candidate_rules.append({"kind": "name_similarity", "field": "name", "threshold": 0.82})
+    if "phone" in selected:
+        candidate_rules.append({"kind": "exact", "fields": ["phone"]})
     return {
         "entity_type": "Supplier",
         "identity_granularity": "legal_entity",
         "normalizers": ["unicode_nfkc", "trim", "casefold", "strip_punctuation"],
-        "field_map": {"name": "name", "tax_id": "tax_id", "phone": "phone"},
-        "strong_identifiers": ["tax_id"],
-        "conflict_constraints": [{"field": "tax_id", "action": "veto_auto_merge"}],
-        "candidate_rules": [
-            {"kind": "exact", "fields": ["tax_id"]},
-            {"kind": "name_similarity", "field": "name", "threshold": 0.82},
-        ],
+        "field_map": {field: field for field in selected},
+        "strong_identifiers": ["tax_id"] if "tax_id" in selected else [],
+        "conflict_constraints": [{"field": "tax_id", "action": "veto_auto_merge"}] if "tax_id" in selected else [],
+        "candidate_rules": candidate_rules,
         "model_judgment_enabled": bool(model_provider_id),
         "model_provider_id": model_provider_id,
         "model_failure_policy": "REVIEW",

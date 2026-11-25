@@ -375,6 +375,35 @@ def execute_l1(
 
 # ==================== L2 执行引擎（Splink 5.0 + Hybrid ER + 灰色队列推送） ====================
 
+
+_L2_NAME_TERMS = ("name", "company", "supplier", "customer", "名称", "公司", "供应商", "客户", "姓名")
+
+
+def resolve_l2_match_fields(params: Dict[str, Any], columns: set[str]) -> tuple[List[str], List[str], List[str]]:
+    """Return (all fields, fuzzy fields, exact fields) for the requested L2 match fields."""
+    raw = params.get("match_fields")
+    selected: List[str] = []
+    if isinstance(raw, list):
+        selected = [field for field in raw if isinstance(field, str) and field in columns]
+        if not selected:
+            raise ValueError("所选匹配字段不在数据表中，请重新选择至少一个字段")
+        selected = list(dict.fromkeys(selected))
+    else:
+        for key in ("name_col", "tax_col", "phone_col", "city_col"):
+            field = params.get(key)
+            if isinstance(field, str) and field in columns and field not in selected:
+                selected.append(field)
+        if not selected:
+            for fallback in ("company_name", "tax_id", "phone", "city"):
+                if fallback in columns:
+                    selected.append(fallback)
+    if not selected:
+        raise ValueError("L2 匹配至少需要一个匹配字段")
+    fuzzy = [field for field in selected if any(term in field.casefold() for term in _L2_NAME_TERMS)]
+    exact = [field for field in selected if field not in fuzzy]
+    return selected, fuzzy, exact
+
+
 def execute_l2(
     db: Session,
     project_id: str,
@@ -401,29 +430,19 @@ def execute_l2(
         prepared.append(d)
 
     cols = set(prepared[0].columns)
-    name_col = params.get("name_col") if params.get("name_col") in cols else ("company_name" if "company_name" in cols else None)
-    tax_col = params.get("tax_col") if params.get("tax_col") in cols else ("tax_id" if "tax_id" in cols else None)
-    phone_col = params.get("phone_col") if params.get("phone_col") in cols else ("phone" if "phone" in cols else None)
-    city_col = params.get("city_col") if params.get("city_col") in cols else ("city" if "city" in cols else None)
+    selected_fields, fuzzy_fields, exact_fields = resolve_l2_match_fields(params, cols)
 
     blocking_rules, comparisons = [], []
-    if city_col and phone_col:
-        blocking_rules.append(block_on(city_col, phone_col))
-    elif phone_col:
-        blocking_rules.append(block_on(phone_col))
-    if tax_col:
-        blocking_rules.append(block_on(tax_col))
-    if not blocking_rules and name_col:
-        blocking_rules.append(block_on(name_col))
-
-    if name_col:
-        comparisons.append(cl.LevenshteinAtThresholds(name_col, [2, 4]))
-    if tax_col:
-        comparisons.append(cl.ExactMatch(tax_col).configure(term_frequency_adjustments=True))
-    if phone_col:
-        comparisons.append(cl.ExactMatch(phone_col))
-    if city_col:
-        comparisons.append(cl.ExactMatch(city_col))
+    for field in selected_fields[:3]:
+        blocking_rules.append(block_on(field))
+    for field in fuzzy_fields:
+        comparisons.append(cl.LevenshteinAtThresholds(field, [2, 4]))
+    for field in exact_fields:
+        comparisons.append(
+            cl.ExactMatch(field).configure(term_frequency_adjustments=True)
+            if field in ("tax_id", "tax", "uscc", "credit_code")
+            else cl.ExactMatch(field)
+        )
 
     settings = SettingsCreator(
         link_type="link_and_dedupe" if len(prepared) >= 2 else "dedupe_only",
@@ -539,6 +558,7 @@ def execute_l2(
         "evaluated_pairs": len(pred_pdf),
         "reduction_pct": round((1 - len(pred_pdf) / max(naive_pairs, 1)) * 100, 4),
         "unique_clusters": int(df_clusters["cluster_id"].nunique()),
+        "match_fields": selected_fields,
         "token_cost_saved_pct": token_saved,
         "weights_artifact_id": w_art.id,
         "waterfall_artifacts": waterfall_arts,

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_user, require_resource_access, require_role
 from app.core.db import get_db
-from app.demo.entity_demo import DEMO_INPUT_VERSION, DEMO_RECORDS, DEMO_SCHEME_KEY, DEMO_SOURCE_SYSTEM, demo_scheme
+from app.demo.entity_demo import DEMO_INPUT_VERSION, DEMO_MATCH_FIELDS, DEMO_RECORDS, DEMO_SCHEME_KEY, DEMO_SOURCE_SYSTEM, demo_scheme
 from app.models.entities import Project
 from app.models.unification import DecisionModelCall, IdentityChangeRecord, IdentityConflictRecord, IdentityDecisionRecord, ProjectSnapshotState, SourceRecord, SourceRevision, UnifiedEntity, UnificationRun, UnificationSchemeVersion, UnificationSnapshot
 from app.services.unification.identity import DecisionInput, IdentityConflict, apply_decision, find_current_member_conflicts, record_identity_conflict, resolve_entity_id, set_attribute_override, split_entity, undo_identity_change
@@ -93,6 +93,10 @@ class SplitInput(BaseModel):
     source_record_ids: list[str] = Field(min_length=1)
     reason: str
     expected_revision: int = Field(ge=1)
+
+
+class DemoRunRequest(BaseModel):
+    match_fields: list[str] = Field(default_factory=list)
 
 
 class RunSubmissionRequest(BaseModel):
@@ -573,14 +577,21 @@ def scheme_revision(
 @router.post("/projects/{project_id}/unification/demo", status_code=status.HTTP_202_ACCEPTED)
 def create_unification_demo(
     project_id: str,
+    request: DemoRunRequest | None = None,
     ctx: dict[str, str] = Depends(require_role("admin", "editor")),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     project = db.get(Project, project_id)
     if project is None or project.workspace_id != ctx["workspace_id"]:
         raise HTTPException(status_code=404, detail="项目不存在")
+    requested_fields = list(dict.fromkeys((request.match_fields if request else []) or []))
+    invalid_fields = [field for field in requested_fields if field not in DEMO_MATCH_FIELDS]
+    if invalid_fields:
+        raise HTTPException(status_code=422, detail=f"不支持的实体匹配字段: {', '.join(invalid_fields)}")
+    match_fields = requested_fields or list(DEMO_MATCH_FIELDS)
+    input_version = DEMO_INPUT_VERSION if match_fields == list(DEMO_MATCH_FIELDS) else f"{DEMO_INPUT_VERSION}:{'-'.join(match_fields)}"
     provider = select_decision_provider(db, project.workspace_id)
-    scheme = MatchScheme.model_validate(demo_scheme(provider.id if provider else None))
+    scheme = MatchScheme.model_validate(demo_scheme(provider.id if provider else None, match_fields))
     saved = save_scheme(db, project_id=project_id, scheme_key=DEMO_SCHEME_KEY, scheme=scheme)
     version_row = db.scalar(select(UnificationSchemeVersion).where(
         UnificationSchemeVersion.project_id == project_id,
@@ -603,14 +614,14 @@ def create_unification_demo(
             for record in DEMO_RECORDS
         ],
         mode=IngestMode.SYNC,
-        input_version=DEMO_INPUT_VERSION,
+        input_version=input_version,
     )
     if not ingested.accepted:
         raise HTTPException(status_code=422, detail=[asdict(issue) for issue in ingested.errors])
     db.commit()
     payload_hash = hashlib.sha256(json.dumps({
         "project_id": project_id,
-        "input_version": DEMO_INPUT_VERSION,
+        "input_version": input_version,
         "scheme_revision": version_row.id,
         "input_source_system": DEMO_SOURCE_SYSTEM,
     }, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
@@ -618,21 +629,26 @@ def create_unification_demo(
         run = submit_run_service(
             db,
             project_id=project_id,
-            input_version=DEMO_INPUT_VERSION,
+            input_version=input_version,
             scheme_revision=version_row.id,
-            idempotency_key=DEMO_INPUT_VERSION,
+            idempotency_key=input_version,
             payload_hash=payload_hash,
             input_source_system=DEMO_SOURCE_SYSTEM,
         )
     except RunConflict:
         run = db.scalar(select(UnificationRun).where(
             UnificationRun.project_id == project_id,
-            UnificationRun.idempotency_key == DEMO_INPUT_VERSION,
+            UnificationRun.idempotency_key == input_version,
         ))
         if run is None:
             raise HTTPException(status_code=409, detail="demo run conflict")
     dispatch_unification_run(run.id)
-    return {"run_id": run.id, "scheme_key": DEMO_SCHEME_KEY, "revision": version_row.revision}
+    return {
+        "run_id": run.id,
+        "scheme_key": DEMO_SCHEME_KEY,
+        "revision": version_row.revision,
+        "match_fields": match_fields,
+    }
 
 
 @router.post("/projects/{project_id}/unification/runs", status_code=status.HTTP_202_ACCEPTED)

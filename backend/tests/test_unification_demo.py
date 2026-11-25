@@ -87,5 +87,16 @@ def test_demo_run_is_scoped_to_demo_records_and_never_merges(public_api):
         second = client.post("/api/v1/projects/project-one/unification/demo")
         assert second.status_code == 202, second.text
         assert second.json()["run_id"] == run_id
+
+        tax_only = client.post(
+            "/api/v1/projects/project-one/unification/demo",
+            json={"match_fields": ["tax_id"]},
+        )
+        assert tax_only.status_code == 202, tax_only.text
+        assert tax_only.json()["run_id"] != run_id
+        assert tax_only.json()["match_fields"] == ["tax_id"]
+        with maker() as db:
+            tax_run = db.get(UnificationRun, tax_only.json()["run_id"])
+            assert tax_run is not None
     finally:
         unification_module.dispatch_unification_run = original_dispatch
