@@ -75,6 +75,7 @@ jobs:
           python frontend/tests/openrefine_diff.spec.py
           python frontend/tests/roster.spec.py
           python frontend/tests/jsonld_viewer.spec.py
+          python frontend/tests/etl.spec.py
 
   compose-config:
     runs-on: ubuntu-latest

@@ -1,10 +1,52 @@
 import { ArtifactDownload, ArtifactPreview } from '../components/ArtifactAccess'
 import ResultViewer, { ResultViewerSource } from '../components/ResultViewer'
 import React, { useEffect, useState } from 'react'
-import { Play, Download, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { Play, Download, CheckCircle2, AlertTriangle, Clock, Trash2 } from 'lucide-react'
 import { ApiError, apiFetch, DataSourceItem, JobItem } from '../lib/api'
 
 type WorkbenchStage = 'L1' | 'L2' | 'L4'
+
+interface EtlScheduleItem {
+  id: string
+  name: string
+  stage: string
+  datasource_ids: string[]
+  params: Record<string, any>
+  target_datasource_id: string
+  target_table: string
+  write_mode: string
+  interval_minutes: number
+  enabled: boolean
+  next_run_at: string | null
+  last_run_at: string | null
+  last_job_id: string | null
+  created_at: string
+}
+
+const ETL_SINK_TYPES = ['sqlite', 'duckdb', 'postgresql', 'mysql', 'mongodb']
+
+const SCHEDULE_INTERVALS: { value: string; label: string }[] = [
+  { value: '', label: '不定时' },
+  { value: '15', label: '15 分钟' },
+  { value: '60', label: '1 小时' },
+  { value: '360', label: '6 小时' },
+  { value: '1440', label: '24 小时' },
+]
+
+function intervalLabel(minutes: number): string {
+  if (minutes === 15) return '15 分钟'
+  if (minutes === 60) return '1 小时'
+  if (minutes === 360) return '6 小时'
+  if (minutes === 1440) return '24 小时'
+  return `${minutes} 分钟`
+}
+
+function formatNextRun(iso: string | null): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleString('zh-CN', { hour12: false })
+}
 
 interface OpenRefinePreview {
   preview_id: string
@@ -61,12 +103,25 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
 
   const [job, setJob] = useState<JobItem | null>(null)
   const [running, setRunning] = useState(false)
+
+  const [datasources, setDatasources] = useState<DataSourceItem[]>([])
+  const [etlTargetId, setEtlTargetId] = useState('')
+  const [etlTable, setEtlTable] = useState('')
+  const [etlMode, setEtlMode] = useState<'replace' | 'append'>('replace')
+  const [scheduleInterval, setScheduleInterval] = useState('')
+  const [schedules, setSchedules] = useState<EtlScheduleItem[]>([])
+  const [savingSchedule, setSavingSchedule] = useState(false)
+  const [scheduleMessage, setScheduleMessage] = useState('')
+
   const dsIds = localDsIds.length ? localDsIds : activeDsIds
   const profile = localProfile || activeProfile
   const routing = effectiveRouting || activeRouting
   const needsDataSource = stage === 'L1' && dsIds.length === 0
   const isOpenRefine = stage === 'L1' && routing?.method?.key === 'openrefine_w3c'
   const currentRecipe = recipes.find((recipe) => recipe.id === recipeId) || recipes[0]
+  const targetOptions = datasources.filter((ds) => ETL_SINK_TYPES.includes(ds.source_type))
+  const canSaveSchedule = Boolean(etlTargetId && etlTable.trim() && scheduleInterval)
+  const needTargetTable = Boolean(etlTargetId && !etlTable.trim())
 
   const applyRecipe = (recipe: any) => {
     if (!recipe) return
@@ -157,27 +212,53 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
       .catch(() => setRecipes([]))
   }, [isOpenRefine, dsIds.join(','), projectId])
 
+  useEffect(() => {
+    apiFetch<DataSourceItem[]>(`/api/v1/projects/${projectId}/datasources`)
+      .then(setDatasources)
+      .catch(() => setDatasources([]))
+  }, [projectId])
+
+  const loadSchedules = async () => {
+    try {
+      const rows = await apiFetch<EtlScheduleItem[]>(`/api/v1/projects/${projectId}/etl/schedules`)
+      setSchedules(rows)
+    } catch {
+      setSchedules([])
+    }
+  }
+
+  useEffect(() => {
+    loadSchedules()
+  }, [projectId])
+
+  const stageParams = (): Record<string, any> => {
+    const sp = routing?.suggested_params || {}
+    if (stage === 'L1') return { target_col: sp.name_col, amount_col: sp.amount_col }
+    if (stage === 'L2')
+      return { name_col: sp.name_col, tax_col: sp.tax_col, phone_col: sp.phone_col, city_col: sp.city_col, enable_hybrid_llm: enableHybrid }
+    if (stage === 'L4') return { metric_name: metricName, group_by: 'order_channel' }
+    return {}
+  }
+
   const submitJob = async () => {
     setRunning(true)
     try {
-      const sp = routing?.suggested_params || {}
-      const params: Record<string, any> =
-        stage === 'L1'
-          ? { target_col: sp.name_col, amount_col: sp.amount_col }
-          : stage === 'L2'
-            ? { name_col: sp.name_col, tax_col: sp.tax_col, phone_col: sp.phone_col, city_col: sp.city_col, enable_hybrid_llm: enableHybrid }
-            : stage === 'L4'
-              ? { metric_name: metricName, group_by: 'order_channel' }
-              : {}
+      const params = stageParams()
+      const body: Record<string, any> = {
+        stage,
+        datasource_ids: dsIds,
+        provider_id: providerId || null,
+        params,
+      }
+      if (etlTargetId) {
+        body.etl_target_datasource_id = etlTargetId
+        body.etl_target_table = etlTable.trim()
+        body.etl_write_mode = etlMode
+      }
 
       const created = await apiFetch<JobItem>(`/api/v1/projects/${projectId}/jobs`, {
         method: 'POST',
-        body: JSON.stringify({
-          stage,
-          datasource_ids: dsIds,
-          provider_id: providerId || null,
-          params,
-        }),
+        body: JSON.stringify(body),
       })
       setJob(created)
 
@@ -196,6 +277,58 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
     } catch (e: any) {
       alert('任务提交失败：' + e.message)
       setRunning(false)
+    }
+  }
+
+  const saveSchedule = async () => {
+    setSavingSchedule(true)
+    setScheduleMessage('')
+    try {
+      const params = { ...stageParams(), provider_id: providerId || null }
+      await apiFetch(`/api/v1/projects/${projectId}/etl/schedules`, {
+        method: 'POST',
+        body: JSON.stringify({
+          name: `${stage} 定时写入 ${etlTable.trim()}`,
+          stage,
+          datasource_ids: dsIds,
+          params,
+          target_datasource_id: etlTargetId,
+          target_table: etlTable.trim(),
+          write_mode: etlMode,
+          interval_minutes: Number(scheduleInterval),
+        }),
+      })
+      setScheduleMessage('定时任务已保存。')
+      await loadSchedules()
+    } catch (e: any) {
+      alert('保存定时任务失败：' + e.message)
+    } finally {
+      setSavingSchedule(false)
+    }
+  }
+
+  const runScheduleNow = async (schedule: EtlScheduleItem) => {
+    setScheduleMessage('')
+    try {
+      const res = await apiFetch<{ job_id: string }>(
+        `/api/v1/projects/${projectId}/etl/schedules/${schedule.id}/run-now`,
+        { method: 'POST', body: JSON.stringify({}) },
+      )
+      setScheduleMessage(`已触发运行：任务 ${res.job_id}`)
+      await loadSchedules()
+    } catch (e: any) {
+      alert('立即运行失败：' + e.message)
+    }
+  }
+
+  const deleteSchedule = async (schedule: EtlScheduleItem) => {
+    setScheduleMessage('')
+    try {
+      await apiFetch(`/api/v1/projects/${projectId}/etl/schedules/${schedule.id}`, { method: 'DELETE' })
+      setScheduleMessage('定时任务已删除。')
+      await loadSchedules()
+    } catch (e: any) {
+      alert('删除定时任务失败：' + e.message)
     }
   }
 
@@ -321,7 +454,7 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
               </button>
             )}
             <button
-              disabled={running || needsDataSource}
+              disabled={running || needsDataSource || needTargetTable}
               onClick={submitJob}
               className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 text-white font-medium text-sm rounded-lg flex items-center gap-2 disabled:opacity-40"
             >
@@ -329,6 +462,7 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
             </button>
           </div>
           {needsDataSource && <span className="text-[11px] text-neutral-500">先在数据源加载示例或上传文件</span>}
+          {needTargetTable && <span className="text-[11px] text-neutral-500">选择目标数据库后需填写目标表</span>}
         </div>
       </div>
 
@@ -538,6 +672,126 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
       </div>
       )}
 
+      {/* ETL 写入与定时 */}
+      <div className="bg-white border border-neutral-200 rounded-xl p-5 space-y-4">
+        <div className="flex items-start gap-2">
+          <Clock className="w-4 h-4 text-neutral-400 mt-0.5" />
+          <div>
+            <div className="text-sm font-semibold text-neutral-900">ETL 写入与定时</div>
+            <p className="mt-0.5 text-xs text-neutral-500">
+              将 {stage} 结果直接写入目标数据库，或按间隔定时运行。
+              {stage === 'L2' && ' L2 写入的是 2,000 行聚类样本，不是完整配对集合。'}
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <label className="flex flex-col gap-1 text-xs">
+            <span className="font-medium text-neutral-700">目标数据库</span>
+            <select
+              aria-label="目标数据库"
+              value={etlTargetId}
+              onChange={(e) => setEtlTargetId(e.target.value)}
+              className="border border-neutral-300 rounded-md px-2.5 py-1.5 bg-white"
+            >
+              <option value="">不写入数据库</option>
+              {targetOptions.map((ds) => (
+                <option key={ds.id} value={ds.id}>{ds.name}（{ds.source_type}）</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs">
+            <span className="font-medium text-neutral-700">目标表</span>
+            <input
+              aria-label="目标表"
+              value={etlTable}
+              onChange={(e) => setEtlTable(e.target.value)}
+              placeholder="例如 supplier_clean"
+              className="border border-neutral-300 rounded-md px-2.5 py-1.5 bg-white"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs">
+            <span className="font-medium text-neutral-700">写入模式</span>
+            <select
+              aria-label="写入模式"
+              value={etlMode}
+              onChange={(e) => setEtlMode(e.target.value as 'replace' | 'append')}
+              className="border border-neutral-300 rounded-md px-2.5 py-1.5 bg-white"
+            >
+              <option value="replace">replace（覆盖）</option>
+              <option value="append">append（追加）</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs">
+            <span className="font-medium text-neutral-700">定时间隔</span>
+            <select
+              aria-label="定时间隔"
+              value={scheduleInterval}
+              onChange={(e) => setScheduleInterval(e.target.value)}
+              className="border border-neutral-300 rounded-md px-2.5 py-1.5 bg-white"
+            >
+              {SCHEDULE_INTERVALS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            disabled={!canSaveSchedule || savingSchedule}
+            onClick={saveSchedule}
+            className="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-xs font-medium text-neutral-800 hover:bg-neutral-50 disabled:opacity-40"
+          >
+            {savingSchedule ? '保存中…' : '保存定时任务'}
+          </button>
+          {!canSaveSchedule && (
+            <span className="text-[11px] text-neutral-500">保存定时任务需要选择目标数据库、填写目标表并选择间隔。</span>
+          )}
+          {scheduleMessage && <span className="text-xs text-neutral-700">{scheduleMessage}</span>}
+        </div>
+
+        {schedules.length > 0 && (
+          <div className="overflow-hidden rounded-lg border border-neutral-200">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-neutral-50 text-neutral-500">
+                <tr>
+                  <th className="p-2.5 font-medium">名称</th>
+                  <th className="p-2.5 font-medium">阶段</th>
+                  <th className="p-2.5 font-medium">间隔</th>
+                  <th className="p-2.5 font-medium">下次运行</th>
+                  <th className="p-2.5 font-medium text-right">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {schedules.map((s) => (
+                  <tr key={s.id} className="border-t border-neutral-100 align-middle">
+                    <td className="p-2.5 font-medium text-neutral-800">{s.name}</td>
+                    <td className="p-2.5 text-neutral-600">{s.stage}</td>
+                    <td className="p-2.5 text-neutral-600">{intervalLabel(s.interval_minutes)}</td>
+                    <td className="p-2.5 text-neutral-600">{formatNextRun(s.next_run_at)}</td>
+                    <td className="p-2.5 flex justify-end gap-1">
+                      <button
+                        onClick={() => runScheduleNow(s)}
+                        className="rounded-lg border border-neutral-200 px-2.5 py-1 text-neutral-600 hover:bg-neutral-50"
+                      >
+                        立即运行
+                      </button>
+                      <button
+                        onClick={() => deleteSchedule(s)}
+                        className="rounded-lg border border-neutral-200 px-2.5 py-1 text-neutral-600 hover:bg-neutral-50 flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3 h-3" /> 删除
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* 实时任务进度条与结果看板 */}
       {job && (
         <div className="bg-white border border-neutral-200 rounded-xl p-6  space-y-5">
@@ -641,6 +895,14 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
                 数据来源：{job.result.data_source_kind === 'sources' ? '所选订单、物流与结算数据' : '演示数据'}
               </p>
               <pre className="bg-neutral-900 text-neutral-100 p-4 rounded-xl text-xs overflow-x-auto">{job.result.compiled_sql}</pre>
+            </div>
+          )}
+
+          {/* ETL 落库结果 */}
+          {job.status === 'SUCCESS' && job.result?.etl && (
+            <div className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-700">
+              <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+              已写入数据库：{job.result.etl.target_type} · 表 {job.result.etl.target_table} · 模式 {job.result.etl.write_mode} · 写入 {job.result.etl.rows_written} 行
             </div>
           )}
         </div>

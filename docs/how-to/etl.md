@@ -27,6 +27,14 @@ Schedules persist under `POST /api/v1/projects/{project_id}/etl/schedules`. Each
 
 In the Compose deployment a `beat` service calls `run_due_etl_schedules` every 60 seconds. Each due, enabled schedule creates a normal Job, advances its `next_run_at` by the interval, and commits before dispatch, so a failed dispatch never double-runs the same tick. Local non-Celery mode supports `run-now` and direct invocation in tests.
 
+## Workbench UI
+
+The workbench L1/L2/L4 page has an `ETL 写入与定时` card. Pick a target database from the project's DB data sources (SQLite, DuckDB, PostgreSQL, MySQL, or MongoDB), fill a target table, and choose replace or append. `不写入数据库` keeps the current behaviour of only producing artifacts. With a target selected, the run button stays disabled until a table name is present, and the submitted job carries `etl_target_datasource_id`, `etl_target_table`, and `etl_write_mode` alongside the normal stage parameters.
+
+The card also saves persisted schedules: choose an interval (15 minutes, 1 hour, 6 hours, or 24 hours) and press `保存定时任务`. Existing schedules list their name, stage, interval, and next run, with `立即运行` and `删除` actions. A saved schedule includes the current stage, selected sources, stage parameters, and the configured provider id when one is set.
+
+A successful job whose result includes a sink shows the outcome line: target type, table, write mode, and rows written. On a sink failure the job stays FAILED and the error surfaces in the status line; the UI never reports a fake success. On L2 the card notes that the written table is the 2,000-row cluster sample, not the full pair set.
+
 ## Testing the live connectors
 
 The sink and scheduling paths are covered by `backend/tests/test_etl.py` (SQLite and DuckDB sinks, target jobs, failure handling, and schedule selection). Live server connectors are proven by an opt-in test that starts isolated PostgreSQL 16, MySQL 8, and MongoDB 7 containers:
