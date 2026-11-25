@@ -129,7 +129,8 @@ done
 ### 6.2 意图与模型边界
 
 - 按钮任务不用模型。
-- 自由文本先用确定性关键词匹配；未命中时调用后端助手接口，用工作区默认 Provider 做意图分类和解释。
+- 自由文本先用确定性关键词匹配；未命中时调用后端助手接口，用工作区里 `is_default` 的 `openai_compatible` Provider 做意图分类和解释；没有默认项时取第一个 `openai_compatible`；一个都没有才回退规则。
+- 不能把唯一的 `is_default` 同时当作“助手聊天 Provider”和“实体复核决策 Provider”。两个角色分别按 kind 选择：`openai_compatible` 和 `perplexity_decisions/typesafe_jev` 各取默认项，没有默认项取第一个同类。
 - 模型只返回 `intent`、`confidence`、`explanation`、`suggested_task`，没有工具调用权，不能执行动作。
 - 模型看到的是用户消息、当前页面、数据摘要（数量、字段名、方法标签），不包含记录字段值。
 - Provider 未配置、调用失败或置信度低时，回退确定性按钮并请用户确认，不阻塞。
@@ -141,8 +142,9 @@ done
 
 - 选择现有数据源，或加载示例数据（按钮明示会新增一份）。
 - 创建默认方案：实体类型来自数据，强标识取税号/GTIN/邮箱等可识别字段，候选规则取名称相似和精确标识，模型 Provider 使用当前默认值，失败策略 REVIEW。
-- 提交并轮询 L1/L2/L4 任务，或实体统一运行。
+- 提交并轮询 L1/L2/L4 任务，或实体统一运行。L1 的任务参数必须像 `WorkbenchPage` 一样把 `suggested_params.name_col` 映射为 `target_col`、`amount_col` 映射为 `amount_col`，不能直接透传 routing。
 - 为 L3 编译 DRAFT 版本，前提是已有契约源和实体快照。
+- 助手触发的实体 demo 只允许产生 REVIEW / DISTINCT 配对。demo 方案和记录不得包含会触发 `AUTO_MATCH` 的强标识匹配；运行后必须断言没有 `MERGE` 决策。真实业务里用户自己配置的 AUTO_MATCH 规则不属于助手行为，但 demo 不能替用户合并。
 
 助手不可以：
 
@@ -215,12 +217,13 @@ done
 - `attributes` 只带方案 `field_map` 的规范字段子集，键用规范名，值保留原始值；状态判断用方案 normalizers 归一化后比较。
 - `status` 只取 `MATCH`、`DIFFERENT`、`MISSING`。
 - `why` 由纯函数根据证据码生成，便于单测。
-- `suggestion` 由确定性规则生成：SAME 且强标识匹配 -> 建议合并；UNKNOWN 或弱证据 -> 建议分离；DIFFERENT -> 建议分离。
+- `suggestion` 由确定性规则生成，必须拿到证据码，不能只看 verdict：SAME 且 `STRONG_IDENTIFIER_MATCH` -> 建议合并；SAME 但 `STRONG_IDENTIFIER_MISSING` / `WEAK_EVIDENCE_ONLY` -> 建议分离；UNKNOWN 或 DIFFERENT -> 建议分离。签名是 `suggest_action(verdict, evidence_codes)`。
 
 `auto_separated` 每个 item 包含：
 
 - 左/右记录摘要、`comparison`、`why`、证据码。
-- 只包含有明确原因的 DISTINCT 配对：`CONFLICT_CONSTRAINT`、`STRONG_IDENTIFIER_CONFLICT`、`human_cannot_link`、`TRANSITIVE_CONFLICT`。
+- 只包含有明确原因的 DISTINCT 配对。证据码过滤用 `{"CONFLICT_CONSTRAINT", "STRONG_IDENTIFIER_CONFLICT", "CANNOT_LINK", "TRANSITIVE_CONFLICT"}`；人工 cannot-link 的 `evidence_codes` 是 `CANNOT_LINK`，`human_cannot_link` 只出现在 evidence 的 `rule` 里，不能当成证据码用。
+- 接口构建 `auto_separated` 时，`revisions_by_id` 必须覆盖 run result 里所有 REVIEW 和 DISTINCT 配对的 revision，不能只查 REVIEW 配对。
 - 最多 20 条；超过时显示总数和“在高级筛选里查看”。
 - 不包含普通 AUTO_MATCH 或无关配对。
 
@@ -308,6 +311,8 @@ type TaskItem = {
 - ENTITY -> 实体统一工作台。
 - 发布、导出、回滚留在详情页。
 
+`TaskDetailPage` 必须把现有组件需要的 props 传下去：`ContractsPage` 需要 `projectId` 和 `canEdit`；`UnificationPage` 需要 `projectId` 和 `canEdit`；`WorkbenchPage` 需要 `projectId`、`activeDsIds`、`activeProfile`、`activeRouting` 和 `initialJobId`。直接打开任务详情时，若 `activeRouting` 为空，`WorkbenchPage` 自己拉 `GET /datasources` 并使用最新一条带 routing 的数据源，方法卡不能依赖用户先点数据源。
+
 ### 9.3 设置
 
 - 模型 Provider。
@@ -316,11 +321,15 @@ type TaskItem = {
 - 项目设置（名称、默认方法偏好）。
 - 发布动作不在这里。
 
+`SettingsPage` props 是 `{projectId, currentUser, canEdit}`。团队页需要 `currentUser`，API Key 面板需要 `projectId` 和 `canEdit`；只传 `projectId` 无法通过 TypeScript 构建。
+
 ### 9.4 兼容
 
 - 旧一级入口移除后，现有 Playwright 验收改为从“任务”进入对应详情，或通过深链接进入。
 - 现有页面组件保留，避免重写业务逻辑。
 - 旧书签或外部链接通过路由参数落到对应任务详情。
+- 测试 helper `open_route` 在应用已加载时必须只改 `window.location.hash`，不能整页 `goto`，否则会丢掉 spec 刚选中的项目。只有在还没有加载应用时才允许 `goto`。
+- 历史数据源的 `routing_json` 没有 `method` 字段。读取数据源列表时用 `recommended_stage` 做一次只读 fallback，映射到 `METHOD_META` 的默认方法；不写数据库，不做迁移。前端也要对缺失 `method` 的 routing 做同样的兜底。
 
 ## 10. 方法推荐与路由
 
@@ -349,6 +358,8 @@ type TaskItem = {
 | `contract_w3c` | Schemasheets/LinkML，或用户指定 L3 | L3 | LinkML W3C 契约 |
 | `splink_duckdb` | 多表、总行数 ≥ 5 万、多维消歧键或有黑话 | L2 | Splink + DuckDB |
 | `rule_clean_w3c` | 其他小表单表 | L1 | 规则清洗 + W3C 契约 |
+
+第一交付还要提供 `method_for_routing(routing: dict) -> dict`：如果 routing 已有 `method` 就原样返回；否则按 `recommended_stage` 映射到 `METHOD_META` 的默认方法。`GET /datasources` 和前端数据源卡片都走这个 helper，保证历史行不会因为缺 `method` 报错。
 
 第二交付：
 
@@ -432,10 +443,12 @@ RDF/OWL 不在第一版范围；如果客户明确要求，单独评估。
 
 ## 12. API 与数据变更
 
-- `recommend_pipeline` 新增 `method` 对象。
+- `recommend_pipeline` 新增 `method` 对象，并在 `has_linkml_contract` 时明确选 L3。
 - `profile_items` 新增 LinkML YAML 识别 `has_linkml_contract`。
-- `GET /unification/reviews` 返回 `items` 和 `auto_separated`，item 增加 `left`、`right`、`comparison`、`why`、`suggestion`、`consequence`。
-- 新增助手接口：`POST /projects/{id}/assistant/plan`。请求只含用户消息、当前页面和（后端自建的）数据摘要；响应只含意图、置信度、解释和建议任务；不执行动作。
+- 新增 `method_for_routing(routing)`，读取数据源时对缺少 `method` 的历史 routing 做只读补全。
+- `GET /unification/reviews` 返回 `items` 和 `auto_separated`，item 增加 `left`、`right`、`comparison`、`why`、`suggestion`、`consequence`；`auto_separated` 使用 `CANNOT_LINK` 证据码，并为 REVIEW 和 DISTINCT 配对都加载 revision。
+- 新增助手接口：`POST /projects/{id}/assistant/plan`。请求只含用户消息、当前页面和（后端自建的）数据摘要；响应只含意图、置信度、解释和建议任务；不执行动作。聊天 Provider 和决策 Provider 按 kind 分别选择，不共用 `is_default`。
+- 新增 `POST /projects/{id}/unification/demo`：幂等 demo 运行，只产生 REVIEW / DISTINCT 配对，不产生 AUTO_MATCH/MERGE，不发布快照。
 - 新增 OpenRefine 适配器和配方注册表；环境变量 `OPENREFINE_URL`、`OPENREFINE_ENABLED`。
 - 新增 JSON-LD 实例导出接口。
 - 第一交付无数据库迁移；第二交付只加必要的配方/映射记录，优先用文件存储，避免迁移。
@@ -500,3 +513,11 @@ RDF/OWL 不在第一版范围；如果客户明确要求，单独评估。
 - 任务与数据推荐冲突时展示两种选择，用户优先。
 - 第一交付的方法标签是“规则清洗 + W3C 契约”，不冒充 OpenRefine。
 - 第二交付接入 OpenRefine companion 服务、内置只读配方、diff 预览、降级，以及 LinkML + JSON Schema + JSON-LD 输出；RDF/OWL 不在第一版。
+- 助手触发的实体 demo 不得产生 AUTO_MATCH/MERGE；demo 记录和方案只产生 REVIEW / DISTINCT。
+- `auto_separated` 用 `CANNOT_LINK` 证据码，并为 REVIEW 和 DISTINCT 配对都加载 revision。
+- 建议规则必须拿到证据码：SAME 且强标识匹配才建议合并，弱证据建议分离。
+- 聊天 Provider 和决策 Provider 按 kind 分别选择，不共用一个 `is_default`。
+- 历史数据源缺少 `routing.method` 时，读取时用 `recommended_stage` 做只读 fallback。
+- `WorkbenchPage` 在直接进入时自己拉最新 routing，方法卡不依赖用户先点数据源。
+- `SettingsPage` 接收 `currentUser`，`TaskDetailPage` 把 `canEdit` 传给现有页面。
+- 测试 helper `open_route` 只改 hash，不整页刷新，避免丢掉已选项目。
