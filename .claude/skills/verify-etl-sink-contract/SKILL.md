@@ -56,12 +56,12 @@ The formal checker itself does not spawn live databases, run Celery beat, or exe
 
 | File | Functions | Last changed |
 | --- | --- | --- |
-| `backend/app/workers/tasks.py` | `run_job_sync` stage result and ETL sink block, `JobExecutionError`, local `dispatch_job` | `e23ecef` |
-| `backend/app/services/etl.py` | `resolve_target`, `load_job_frame`, `write_dataframe`, `validate_table_name`, `_sink_lock`, empty-replace guard | `e23ecef` |
+| `backend/app/workers/tasks.py` | `run_job_sync` stage result and ETL sink block, `JobExecutionError`, local `dispatch_job` | `a1b5d9a` |
+| `backend/app/services/etl.py` | `resolve_target`, `load_job_frame`, `write_dataframe`, `validate_table_name`, `_sink_lock`, empty-replace guard | `a1b5d9a` |
 | `backend/app/api/v1/providers_jobs.py` | ETL target validation on Job submission | `cec8dd5` |
 | `backend/app/models/entities.py` | `Job`, `DataSource`, `ArtifactVersion` | `8c8a3bd` |
 
-Sync commit: `e23ecef`. The check was added in `1b29b81`, extended with the empty-replace case in `2d82c93`, extended to require the raised `JobExecutionError` in `e23ecef`, and confirmed against the full-L2 artifact at `e23ecef`. Move the sync commit forward only after you confirm the check still describes these functions at the new commit.
+Sync commit: `a1b5d9a`. The check was added in `1b29b81`, extended with the empty-replace case in `2d82c93`, extended to require the raised `JobExecutionError` in `a1b5d9a`, and confirmed against the full-L2 artifact at `a1b5d9a`. Move the sync commit forward only after you confirm the check still describes these functions at the new commit.
 
 ## If it fails
 
