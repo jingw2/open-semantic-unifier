@@ -82,6 +82,15 @@ def test_duckdb_sink_replace_and_append(tmp_path):
     assert len(out) == 4
 
 
+def test_empty_replace_is_rejected_and_preserves_target(tmp_path):
+    cfg = {"db_type": "sqlite", "database": str(tmp_path / "empty.db")}
+    etl_service.write_dataframe(cfg, "t", pd.DataFrame([{"x": "keep"}]), "replace")
+    with pytest.raises(ValueError, match="empty result"):
+        etl_service.write_dataframe(cfg, "t", pd.DataFrame(), "replace")
+    out = read_db_dataframe(cfg, "t", limit=None)
+    assert out["x"].tolist() == ["keep"]
+
+
 def test_concurrent_sqlite_sink_serializes(tmp_path):
     from concurrent.futures import ThreadPoolExecutor
 
@@ -131,6 +140,38 @@ def test_l1_job_writes_target_sqlite(api):
     assert result["etl"]["rows_written"] == 2
     out = read_db_dataframe({"db_type": "sqlite", "database": str(tmp_path / "target.db")}, "supplier_clean", limit=None)
     assert len(out) == 2
+
+
+def test_empty_l1_result_does_not_destroy_existing_target(api):
+    _client, maker, tmp_path = api
+    target_path = tmp_path / "target.db"
+    etl_service.write_dataframe({"db_type": "sqlite", "database": str(target_path)}, "supplier_clean",
+                                pd.DataFrame([{"x": "keep"}]), "replace")
+    storage.put_bytes("projects/proj/uploads/empty.csv", b"company_name\n")
+    with maker() as db:
+        src = DataSource(id="src", project_id="proj", name="empty.csv", source_type="file",
+                         object_key="projects/proj/uploads/empty.csv")
+        db.add_all([src, _sqlite_target(tmp_path)])
+        job = Job(project_id="proj", stage="L1", status="PENDING", params_json={
+            "datasource_ids": ["src"],
+            "clean_fields": ["company_name"],
+            "etl_target_datasource_id": "tgt",
+            "etl_target_table": "supplier_clean",
+            "etl_write_mode": "replace",
+        })
+        db.add(job)
+        db.commit()
+        job_id = job.id
+
+    result = run_job_sync(job_id)
+
+    assert "etl" not in result
+    with maker() as db:
+        failed = db.get(Job, job_id)
+        assert failed.status == "FAILED"
+        assert failed.error_message.startswith("ETL_LOAD_FAILED")
+    out = read_db_dataframe({"db_type": "sqlite", "database": str(target_path)}, "supplier_clean", limit=None)
+    assert out["x"].tolist() == ["keep"]
 
 
 def test_l2_job_writes_target_sqlite(api):

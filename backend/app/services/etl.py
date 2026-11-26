@@ -90,6 +90,8 @@ def write_dataframe(config: Dict[str, Any], table: str, frame: pd.DataFrame, mod
         raise ValueError(f"unsupported sink type: {db_type}")
     if mode not in ("replace", "append"):
         raise ValueError(f"invalid write mode: {mode}")
+    if mode == "replace" and frame.empty:
+        raise ValueError("refusing to replace a target table with an empty result")
     try:
         with _sink_lock(config, table):
             if db_type == "sqlite":

@@ -34,7 +34,7 @@ SOURCE_PROFILE = {
     "tables": [{"name": "source.csv", "rows": 2, "cols": 2, "columns": ["company_name", "city"]}],
 }
 STAGES = ("L1", "L2", "L4")
-OUTCOMES = ("success", "sink_failure", "invalid_table", "transform_failure")
+OUTCOMES = ("success", "sink_failure", "invalid_table", "transform_failure", "empty_replace")
 
 
 class Failure(RuntimeError):
@@ -83,25 +83,26 @@ def _seed(root: Path, stage: str):
         return engine, maker, job.id, target_path
 
 
-def _fake_transform(stage: str):
+def _fake_transform(stage: str, *, empty: bool = False):
     if stage == "L1":
         def run(db, project_id, job_id, df, fields, progress_cb=None):
-            art = _save_artifact(db, project_id, job_id, "clean_csv", "clean.csv", df.to_csv(index=False).encode())
+            payload = "company_name\n" if empty else df.to_csv(index=False)
+            art = _save_artifact(db, project_id, job_id, "clean_csv", "clean.csv", payload.encode())
             db.commit()
             return {"stage": "L1", "clean_fields": fields, "total_rows": len(df),
                     "artifacts": [{"id": art.id, "type": "clean_csv", "filename": art.filename, "version": art.version_no}]}
         return run
     if stage == "L2":
         def run(db, project_id, job_id, dfs, params, llm_cfg=None, progress_cb=None):
-            art = _save_artifact(db, project_id, job_id, "clusters_csv", "clusters.csv",
-                                 b"unique_id,cluster_id\nsrc0_0,1\nsrc0_1,1\n")
+            payload = b"unique_id,cluster_id\n" if empty else b"unique_id,cluster_id\nsrc0_0,1\nsrc0_1,1\n"
+            art = _save_artifact(db, project_id, job_id, "clusters_csv", "clusters.csv", payload)
             db.commit()
             return {"stage": "L2", "unique_clusters": 1,
                     "artifacts": [{"id": art.id, "type": "clusters_csv", "filename": art.filename, "version": art.version_no}]}
         return run
     def run(db, project_id, job_id, **kwargs):
         return {"stage": "L4", "selected_metric": "net_gmv",
-                "result_rows": [{"order_channel": "CROSS_BORDER_DTC", "net_gmv": 100.0}]}
+                "result_rows": [] if empty else [{"order_channel": "CROSS_BORDER_DTC", "net_gmv": 100.0}]}
     return run
 
 
@@ -116,7 +117,7 @@ def _run_case(root: Path, stage: str, outcome: str) -> int:
     }[stage]
     original_write = worker_tasks.write_dataframe
     worker_tasks.SessionLocal = maker
-    fake = _fake_transform(stage)
+    fake = _fake_transform(stage, empty=(outcome == "empty_replace"))
     if outcome == "transform_failure":
         def fail_transform(*_args, **_kwargs):
             raise RuntimeError("transform failed")
@@ -140,6 +141,15 @@ def _run_case(root: Path, stage: str, outcome: str) -> int:
             calls.append({"args": args, "kwargs": kwargs})
             return 1
         worker_tasks.write_dataframe = record_write
+
+    if outcome == "empty_replace":
+        con = sqlite3.connect(str(target_path))
+        try:
+            con.execute(f'CREATE TABLE "out_{stage}" (x text)')
+            con.execute(f'INSERT INTO "out_{stage}" VALUES (?)', ("keep",))
+            con.commit()
+        finally:
+            con.close()
 
     if outcome == "invalid_table":
         with maker() as db:
@@ -211,9 +221,14 @@ def _run_case(root: Path, stage: str, outcome: str) -> int:
             con = sqlite3.connect(str(target_path))
             try:
                 exists = con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (f"out_{stage}",)).fetchone()
+                rows = con.execute(f'SELECT x FROM "out_{stage}"').fetchall() if outcome == "empty_replace" else []
             finally:
                 con.close()
-            _assert(exists is None, f"{stage}/{outcome}: failed sink created a target table")
+            if outcome == "empty_replace":
+                _assert(exists is not None, f"{stage}/{outcome}: target table was dropped")
+                _assert([row[0] for row in rows] == ["keep"], f"{stage}/{outcome}: target rows changed")
+            else:
+                _assert(exists is None, f"{stage}/{outcome}: failed sink created a target table")
     engine.dispose()
     return 1
 
