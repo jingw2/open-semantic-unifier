@@ -145,8 +145,20 @@ def _model_judge_for_run(db: Session, project_id: str, run: UnificationRun, sche
                     trace_id=current_trace_id(),
                 )
             field_names = tuple(provider.send_fields_json)
+            left_attributes = {
+                name: left.attributes[active_scheme.field_map.get(name, name)]
+                for name in field_names
+                if active_scheme.field_map.get(name, name) in left.attributes
+            }
+            right_attributes = {
+                name: right.attributes[active_scheme.field_map.get(name, name)]
+                for name in field_names
+                if active_scheme.field_map.get(name, name) in right.attributes
+            }
         else:
             field_names = tuple(provider.send_fields_json) if provider.send_fields_json else tuple(active_scheme.field_map.values())
+            left_attributes = dict(left.attributes)
+            right_attributes = dict(right.attributes)
         return adapter.invoke(DecisionRequest(
             project_id=project_id,
             run_id=run.id,
@@ -155,8 +167,8 @@ def _model_judge_for_run(db: Session, project_id: str, run: UnificationRun, sche
             prompt_version=provider.prompt_version or active_scheme.prompt_version,
             entity_type=active_scheme.entity_type,
             identity_granularity=active_scheme.identity_granularity,
-            left=dict(left.attributes),
-            right=dict(right.attributes),
+            left=left_attributes,
+            right=right_attributes,
             field_names=field_names,
             evidence=tuple(evidence),
         ), config)
