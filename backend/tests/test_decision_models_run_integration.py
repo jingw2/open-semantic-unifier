@@ -141,13 +141,13 @@ def _provider(kind, base_url, *, send_fields=(), prompt_version="pair-v9", api_k
 
 
 def _submit_model_run(maker, *, provider, failure_policy="REVIEW", scheme_key="model-orgs", input_version="input-v1",
-                      candidate_rules=None, records=None):
+                      candidate_rules=None, records=None, field_map=None):
     with maker() as session:
         session.add(provider)
         session.flush()
         scheme = MatchScheme.model_validate({
             "entity_type": "organization", "identity_granularity": "legal_entity",
-            "field_map": {"name": "name", "tax_id": "tax_id", "phone": "phone"},
+            "field_map": field_map or {"name": "name", "tax_id": "tax_id", "phone": "phone"},
             "candidate_rules": candidate_rules or [{"kind": "exact", "fields": ["name"]}],
             "model_judgment_enabled": True, "model_provider_id": provider.id,
             "model_failure_policy": failure_policy, "prompt_version": "scheme-pair-v1",
@@ -175,6 +175,24 @@ def _execute(maker, run_id):
             return execute_unification_run(session, run_id), None
         except ModelFailure as exc:
             return session.get(UnificationRun, run_id), exc
+
+
+def test_choice_provider_receives_canonical_fields_mapped_from_source_columns(db, choice_server):
+    _engine, maker = db
+    run = _submit_model_run(
+        maker,
+        provider=_provider("perplexity_decisions", f"http://127.0.0.1:{choice_server.server_port}", send_fields=["name"]),
+        field_map={"name": "company_name", "tax_id": "tax_id"},
+        records=[
+            SourceRecordInput("project", "erp", "vendors", "1", {"company_name": "Acme", "tax_id": "T1"}),
+            SourceRecordInput("project", "crm", "vendors", "2", {"company_name": "Acme", "tax_id": "T1"}),
+        ],
+    )
+    completed, error = _execute(maker, run.id)
+    assert error is None and completed.status == "SUCCEEDED"
+    body = ChoiceProviderHandler.bodies[-1]
+    assert body["state"]["left"] == {"name": "Acme"}
+    assert body["state"]["right"] == {"name": "Acme"}
 
 
 def test_openai_compatible_provider_is_selected_for_the_run(db, openai_server):

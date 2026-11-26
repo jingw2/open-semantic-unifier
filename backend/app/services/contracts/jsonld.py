@@ -38,10 +38,10 @@ def _base_uri(linkml_yaml: str) -> tuple[str, dict[str, str]]:
     if not isinstance(document, dict):
         document = {}
     prefixes = {str(key): str(value) for key, value in (document.get("prefixes") or {}).items() if isinstance(value, str)}
-    base = document.get("id")
+    default_prefix = document.get("default_prefix")
+    base = prefixes.get(default_prefix) if isinstance(default_prefix, str) else None
     if not isinstance(base, str) or not base.strip():
-        default_prefix = document.get("default_prefix")
-        base = prefixes.get(default_prefix) if isinstance(default_prefix, str) else None
+        base = document.get("id")
     base = (base or "https://w3id.org/linkml/").strip()
     if not base.endswith(("/", "#")):
         base = f"{base}/"

@@ -32,6 +32,10 @@ from app.services.unification.releases import execute_unification_run, recover_i
 from app.services.unification.telemetry import attach_trace_context, inject_trace_context
 
 
+class JobExecutionError(RuntimeError):
+    """A Job completed its transform but the requested side effect failed."""
+
+
 def _publish_progress(job_id: str, status: str, progress: int, message: str, db=None) -> None:
     own_db = db is None
     sess = SessionLocal() if own_db else db
@@ -161,20 +165,29 @@ def run_job_sync(job_id: str) -> Dict[str, Any]:
             dfs = _load_datasource_dataframes(db, ds_ids, cb) if ds_ids else []
             tables = None
             data_kind = "demo"
+            yaml_text = params.get("yaml_text")
+            sources = db.query(DataSource).filter(
+                DataSource.project_id == job.project_id, DataSource.id.in_(ds_ids),
+            ).all() if ds_ids else []
+            if not yaml_text:
+                yaml_source = next(
+                    (source for source in sources
+                     if (source.profile_json or {}).get("has_metric_yaml") and source.object_key),
+                    None,
+                )
+                if yaml_source is not None:
+                    yaml_text = storage.get_bytes(yaml_source.object_key).decode("utf-8")
             if dfs:
                 tables = build_l4_tables(dfs)
                 data_kind = "sources"
             elif ds_ids:
-                sources = db.query(DataSource).filter(
-                    DataSource.project_id == job.project_id, DataSource.id.in_(ds_ids),
-                ).all()
                 if not any((source.profile_json or {}).get("has_metric_yaml") for source in sources):
                     raise ValueError("所选数据源没有可执行的表格数据，无法计算 L4 指标；请选择订单、物流、结算数据或加载 L4 示例。")
             result = execute_l4(
                 db,
                 job.project_id,
                 job.id,
-                yaml_text=params.get("yaml_text"),
+                yaml_text=yaml_text,
                 metric_name=params.get("metric_name", "net_gmv"),
                 group_by=params.get("group_by", "order_channel"),
                 progress_cb=cb,
@@ -210,7 +223,7 @@ def run_job_sync(job_id: str) -> Dict[str, Any]:
                 job.result_json = result
                 db.commit()
                 _publish_progress(job_id, "FAILED", 100, job.stage_message, db=db)
-                return result
+                raise JobExecutionError(f"ETL_LOAD_FAILED: {message}")
 
         job.status = "SUCCESS"
         job.progress = 100
@@ -219,6 +232,8 @@ def run_job_sync(job_id: str) -> Dict[str, Any]:
         db.commit()
         _publish_progress(job_id, "SUCCESS", 100, job.stage_message, db=db)
         return result
+    except JobExecutionError:
+        raise
     except Exception as e:
         db.rollback()
         job = db.query(Job).filter(Job.id == job_id).first()
@@ -282,7 +297,11 @@ def dispatch_job(job_id: str) -> None:
     if settings.celery_enabled and celery_app is not None:
         run_job_celery.delay(job_id)
     else:
-        run_job_sync(job_id)
+        try:
+            run_job_sync(job_id)
+        except JobExecutionError:
+            # The Job row already records FAILED; local callers return it to the API.
+            return
 
 
 def _as_utc(value: Optional[datetime]) -> Optional[datetime]:

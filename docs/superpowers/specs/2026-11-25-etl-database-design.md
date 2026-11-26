@@ -80,7 +80,7 @@ Table and collection names are validated with `[A-Za-z_][A-Za-z0-9_.]*`. Credent
 Stage output selection:
 
 - L1: the `clean_csv` artifact
-- L2: the `clusters_csv` artifact (current artifact is a 2,000-row sample; the UI must say so)
+- L2: the full `clusters_csv` artifact, one row per record with its `cluster_id`, not the pair set
 - L4: `result_rows`
 
 ## Scheduling
@@ -98,7 +98,7 @@ Stage output selection:
 - Workbench L1/L2/L4 gets an `写入目标数据库` panel: target DB data source, table, replace/append.
 - A `定时运行` control saves a schedule at 5-minute to 7-day intervals and lists next run.
 - Job results show the ETL sink row count and target.
-- L2 shows that the written table is the 2,000-row cluster sample, not the full pair set.
+- L2 writes the full cluster result, one row per record.
 
 ## Testing
 

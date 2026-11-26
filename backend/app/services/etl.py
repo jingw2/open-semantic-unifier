@@ -90,6 +90,8 @@ def write_dataframe(config: Dict[str, Any], table: str, frame: pd.DataFrame, mod
         raise ValueError(f"unsupported sink type: {db_type}")
     if mode not in ("replace", "append"):
         raise ValueError(f"invalid write mode: {mode}")
+    if mode == "replace" and frame.empty:
+        raise ValueError("refusing to replace a target table with an empty result")
     try:
         with _sink_lock(config, table):
             if db_type == "sqlite":
@@ -203,8 +205,8 @@ def _write_mongo(config: Dict[str, Any], table: str, frame: pd.DataFrame, mode: 
 def load_job_frame(db: Session, stage: str, result: Dict[str, Any]) -> pd.DataFrame:
     """Select the writable frame for a finished stage.
 
-    L1 -> the ``clean_csv`` artifact; L2 -> the ``clusters_csv`` artifact (a 2,000-row
-    sample of the cluster output, not the full pair set); L4 -> ``result_rows``.
+    L1 -> the ``clean_csv`` artifact; L2 -> the full ``clusters_csv`` artifact (one
+    row per record, not the pair set); L4 -> ``result_rows``.
     """
     if stage == "L4":
         return pd.DataFrame(result.get("result_rows") or [])

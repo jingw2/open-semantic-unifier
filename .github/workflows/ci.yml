@@ -25,6 +25,7 @@ jobs:
       - run: python3 tests/formal/check_decision_dispatch_boundary.py
       - run: python3 tests/formal/check_openrefine_preview_lifecycle.py
       - run: python3 tests/formal/check_etl_sink_contract.py
+      - run: python3 tests/formal/check_identity_graph.py
       - run: python -m pytest backend/tests -q
 
   database-connectors:

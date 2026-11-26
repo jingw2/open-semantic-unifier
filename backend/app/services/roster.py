@@ -12,7 +12,7 @@ from app.models.entities import DataSource
 from app.services.storage import storage
 
 ID_TERMS = ["id", "code", "编号", "编码", "supplier_id", "customer_id", "unique_id"]
-NAME_TERMS = ["name", "名称", "公司名称", "company_name", "supplier_name", "customer_name", "full_name"]
+NAME_TERMS = ["name", "名称", "公司名称", "company_name", "company", "supplier_name", "customer_name", "full_name"]
 ALIAS_TERMS = ["alias", "aliases", "别名", "曾用名"]
 TAX_TERMS = ["tax_id", "税号", "统一社会信用代码", "uscc"]
 PHONE_TERMS = ["phone", "mobile", "电话", "手机"]
@@ -41,17 +41,23 @@ def _normalized(column: str) -> str:
     return str(column).strip().lstrip("﻿").lower()
 
 
-def _match_first(columns: list[str], terms: list[str]) -> Optional[str]:
+def _match_first(columns: list[str], terms: list[str], *, allow_id_suffix: bool = False) -> Optional[str]:
     wanted = {term.lower() for term in terms}
     for col in columns:
         if _normalized(col) in wanted:
             return col
     for col in columns:
         normalized = _normalized(col)
-        if normalized == "id" or normalized.endswith("_id"):
-            return col
+        id_like = normalized == "id" or normalized.endswith("_id")
+        if id_like and not allow_id_suffix:
+            continue
         if any(len(term) >= 2 and (term in normalized or normalized in term) for term in wanted if term != "id"):
             return col
+    if allow_id_suffix:
+        for col in columns:
+            normalized = _normalized(col)
+            if normalized == "id" or normalized.endswith("_id"):
+                return col
     return None
 
 
@@ -64,7 +70,7 @@ def detect_roster_columns(columns: list[str]) -> dict:
         or any(len(term) >= 2 and term in _normalized(col) for term in alias_wanted)
     ]
     return {
-        "id_column": _match_first(columns, ID_TERMS) or "",
+        "id_column": _match_first(columns, ID_TERMS, allow_id_suffix=True) or "",
         "name_column": _match_first(columns, NAME_TERMS) or "",
         "alias_columns": alias_columns,
         "tax_id_column": _match_first(columns, TAX_TERMS) or "",

@@ -94,6 +94,14 @@ def test_detect_roster_columns_matches_substrings():
     assert detected["phone_column"] == "联系电话"
 
 
+def test_detect_roster_columns_does_not_use_id_as_name_or_contact():
+    detected = detect_roster_columns(["id", "company"])
+    assert detected["id_column"] == "id"
+    assert detected["name_column"] == "company"
+    assert detected["tax_id_column"] == ""
+    assert detected["phone_column"] == ""
+
+
 def test_detect_roster_columns_requires_a_name_term():
     detected = detect_roster_columns(["amount", "city"])
     assert detected["name_column"] == ""

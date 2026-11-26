@@ -67,8 +67,8 @@ def test_builds_context_and_graph_with_slot_overrides():
         "id_slot": "tax_id",
         "columns": {"tax_id": "tax_id", "company_name": "company_name"},
     })
-    assert payload["@context"]["@vocab"].endswith("/")
-    assert payload["@context"]["company_name"].endswith("/company_name")
+    assert payload["@context"]["@vocab"] == "https://example.org/"
+    assert payload["@context"]["company_name"] == "https://example.org/company_name"
     assert payload["@graph"][0]["@type"] == "Supplier"
     assert payload["@graph"][0]["@id"] == "urn:osu:91310000TEST"
     assert payload["@graph"][0]["company_name"] == "Acme"

@@ -95,6 +95,79 @@ def test_l4_uses_one_wide_order_table(public_api, storage_root):
     assert result["data_source_kind"] == "sources"
 
 
+CUSTOM_METRICS = b"""semantic_model:
+  name: my_own_model
+  base_table: SalesOrder
+  joins: []
+metrics:
+  my_custom_metric:
+    label: My custom metric
+    description: Count orders
+    sql_expr: COUNT(DISTINCT SalesOrder.order_id)
+    where: 1 = 1
+"""
+
+
+def test_l4_job_uses_the_selected_metrics_yaml(public_api, storage_root, monkeypatch):
+    _client, maker, _identity = public_api
+    storage.put_bytes("projects/project-one/uploads/custom_metrics.yaml", CUSTOM_METRICS)
+    with maker() as db:
+        db.add(DataSource(
+            id="ds-custom-metrics", project_id="project-one", name="custom_metrics.yaml", source_type="file",
+            object_key="projects/project-one/uploads/custom_metrics.yaml",
+            profile_json={"has_metric_yaml": True, "total_rows": 0, "table_count": 0,
+                          "tables": [{"columns": ["YAML"]}]},
+        ))
+        job = Job(
+            project_id="project-one", stage="L4", status="PENDING", progress=0,
+            stage_message="queued", params_json={"datasource_ids": ["ds-custom-metrics"], "metric_name": "my_custom_metric"},
+        )
+        db.add(job)
+        db.commit()
+        job_id = job.id
+
+    monkeypatch.setattr("app.workers.tasks.SessionLocal", maker)
+    result = run_job_sync(job_id)
+
+    assert result["selected_metric"] == "my_custom_metric"
+    assert result["data_source_kind"] == "demo"
+    assert result["result_rows"]
+
+
+def test_l4_job_applies_selected_yaml_to_selected_tables(public_api, storage_root, monkeypatch):
+    _client, maker, _identity = public_api
+    storage.put_bytes("projects/project-one/uploads/custom_metrics.yaml", CUSTOM_METRICS)
+    storage.put_bytes("projects/project-one/uploads/orders.csv",
+                      b"order_id,order_channel,total_amount,delivery_status,settled_amount\n"
+                      b"O1,CROSS_BORDER_DTC,100,DELIVERED,80\n"
+                      b"O2,DOMESTIC_B2B,50,EXCEPTION,0\n")
+    with maker() as db:
+        db.add_all([
+            DataSource(id="ds-custom-metrics", project_id="project-one", name="custom_metrics.yaml", source_type="file",
+                       object_key="projects/project-one/uploads/custom_metrics.yaml",
+                       profile_json={"has_metric_yaml": True, "total_rows": 0, "table_count": 0,
+                                     "tables": [{"columns": ["YAML"]}]}),
+            DataSource(id="ds-orders", project_id="project-one", name="orders.csv", source_type="file",
+                       object_key="projects/project-one/uploads/orders.csv",
+                       profile_json={"total_rows": 2, "table_count": 1,
+                                     "tables": [{"columns": ["order_id", "order_channel", "total_amount", "delivery_status", "settled_amount"]}]}),
+        ])
+        job = Job(
+            project_id="project-one", stage="L4", status="PENDING", progress=0,
+            stage_message="queued", params_json={"datasource_ids": ["ds-custom-metrics", "ds-orders"], "metric_name": "my_custom_metric", "group_by": None},
+        )
+        db.add(job)
+        db.commit()
+        job_id = job.id
+
+    monkeypatch.setattr("app.workers.tasks.SessionLocal", maker)
+    result = run_job_sync(job_id)
+
+    assert result["selected_metric"] == "my_custom_metric"
+    assert result["data_source_kind"] == "sources"
+    assert result["result_rows"][0]["my_custom_metric"] == 2
+
+
 def test_l4_job_with_a_metrics_yaml_uses_the_demo_dataset(public_api, storage_root, monkeypatch):
     _client, maker, _identity = public_api
     with maker() as db:

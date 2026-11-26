@@ -28,6 +28,7 @@ The check calls the real `PerplexityDecisionsAdapter._body`, the shared body bui
 
 - The OpenAI-compatible adapter. It sends no evidence and its filtering has separate backend tests.
 - The provider configuration path that supplies `field_names`, and the database row itself.
+- Canonical-to-source field mapping is covered by `backend/tests/test_decision_models_run_integration.py::test_choice_provider_receives_canonical_fields_mapped_from_source_columns`.
 - Non-string values. The filter is key based, so the value type does not change the result.
 - The HTTP transport after serialization.
 
@@ -38,9 +39,9 @@ The check calls the real `PerplexityDecisionsAdapter._body`, the shared body bui
 | `backend/app/services/decision_models/providers/choice.py` | `_evidence_without_unlisted_values`, `ChoiceAdapter._body` | `f4c3a01` |
 | `backend/app/services/decision_models/contracts.py` | `DecisionRequest` | `7b918f9` |
 | `backend/app/services/unification/matching.py` | Evidence entries that carry `value`, `left`, `right` | `507254c` |
-| `backend/app/services/unification/releases.py` | `field_names` selection and the empty-send-fields guard | `f4c3a01` |
+| `backend/app/services/unification/releases.py` | `field_names` selection, canonical-to-source mapping, and the empty-send-fields guard | `437f94b` |
 
-Sync commit: `1284db2`. The check was added in that commit and confirmed against the covered files at it. Move the sync commit forward only after you confirm the check still describes these functions at the new commit.
+Sync commit: `c754604`. The check was added in `1284db2` and confirmed against the covered files at `c754604` after the canonical-to-source mapping fix. Move the sync commit forward only after you confirm the check still describes these functions at the new commit.
 
 ## If it fails
 
