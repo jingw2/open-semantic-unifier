@@ -41,6 +41,12 @@ docker compose down
 
 连接器代码覆盖 DuckDB、SQLite、MySQL、PostgreSQL 和 MongoDB。项目对 SQLite、DuckDB 落库以及 Compose PostgreSQL 部署有自动化单元覆盖；PostgreSQL、MySQL、MongoDB 的实时连接测试作为可选 CI 作业运行。详见[连接器验证](docs/how-to/connectors.md)。Job 结果可以直接写入目标数据库，并支持按间隔运行的持久化调度；详见[写入目标库与调度](docs/how-to/etl.md)。
 
+## 系统截图
+
+[![工作台总览](docs/assets/screenshots/overview.png)](docs/screenshots.zh-CN.md)
+
+更多截图见[系统截图页](docs/screenshots.zh-CN.md)，包括助手字段确认和可读的实体复核。
+
 ## 指南
 
 - [安装与运维](docs/how-to/install.md)

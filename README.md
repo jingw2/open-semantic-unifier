@@ -35,6 +35,12 @@ Open the workbench at `http://localhost:8080`; API docs are at `http://localhost
 
 Connector code paths exist for DuckDB, SQLite, MySQL, PostgreSQL, and MongoDB. The project has automated unit coverage for SQLite and DuckDB sinks and the Compose PostgreSQL deployment; live PostgreSQL, MySQL, and MongoDB connection tests are available as an opt-in job. See [connector validation](docs/how-to/connectors.md). Job results can be written directly to a target database, with persisted schedules for interval runs; see [writing results and scheduling](docs/how-to/etl.md).
 
+## Screenshots
+
+[![Workbench overview](docs/assets/screenshots/overview.png)](docs/screenshots.md)
+
+[Open the screenshot tour](docs/screenshots.md) for the assistant field confirmation and readable entity review.
+
 ## Guides
 
 - [Installation and operations](docs/how-to/install.md)
