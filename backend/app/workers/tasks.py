@@ -32,6 +32,10 @@ from app.services.unification.releases import execute_unification_run, recover_i
 from app.services.unification.telemetry import attach_trace_context, inject_trace_context
 
 
+class JobExecutionError(RuntimeError):
+    """A Job completed its transform but the requested side effect failed."""
+
+
 def _publish_progress(job_id: str, status: str, progress: int, message: str, db=None) -> None:
     own_db = db is None
     sess = SessionLocal() if own_db else db
@@ -219,7 +223,7 @@ def run_job_sync(job_id: str) -> Dict[str, Any]:
                 job.result_json = result
                 db.commit()
                 _publish_progress(job_id, "FAILED", 100, job.stage_message, db=db)
-                return result
+                raise JobExecutionError(f"ETL_LOAD_FAILED: {message}")
 
         job.status = "SUCCESS"
         job.progress = 100
@@ -228,6 +232,8 @@ def run_job_sync(job_id: str) -> Dict[str, Any]:
         db.commit()
         _publish_progress(job_id, "SUCCESS", 100, job.stage_message, db=db)
         return result
+    except JobExecutionError:
+        raise
     except Exception as e:
         db.rollback()
         job = db.query(Job).filter(Job.id == job_id).first()
@@ -291,7 +297,11 @@ def dispatch_job(job_id: str) -> None:
     if settings.celery_enabled and celery_app is not None:
         run_job_celery.delay(job_id)
     else:
-        run_job_sync(job_id)
+        try:
+            run_job_sync(job_id)
+        except JobExecutionError:
+            # The Job row already records FAILED; local callers return it to the API.
+            return
 
 
 def _as_utc(value: Optional[datetime]) -> Optional[datetime]:

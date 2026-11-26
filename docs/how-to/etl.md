@@ -9,12 +9,12 @@ A job's sink is an existing DB DataSource (SQLite, DuckDB, PostgreSQL, MySQL, or
 | Stage | Written frame |
 | --- | --- |
 | L1 | The `clean_csv` artifact (cleaned rows plus `canonical_id`, `canonical_name`, `reconcile_score`) |
-| L2 | The `clusters_csv` artifact. This is a 2,000-row sample of the cluster output, not the full pair set. |
+| L2 | The full `clusters_csv` artifact, one row per record with its `cluster_id`, not the pair set. |
 | L4 | The metric `result_rows` |
 
 Write modes are `replace` (drop and recreate) and `append`. Table and collection names must match `[A-Za-z_][A-Za-z0-9_.]*`.
 
-When a job is submitted with `etl_target_datasource_id`, `etl_target_table`, and `etl_write_mode`, the sink runs after the transform and before the final success commit. A sink failure marks the job FAILED with `ETL_LOAD_FAILED` and keeps the transform artifacts, so the stage output is still available for inspection.
+When a job is submitted with `etl_target_datasource_id`, `etl_target_table`, and `etl_write_mode`, the sink runs after the transform and before the final success commit. A sink failure marks the job FAILED with `ETL_LOAD_FAILED`, keeps the transform artifacts, and raises so the worker task is not reported as a success. The stage output stays available for inspection.
 
 ## Schedules
 
@@ -33,7 +33,7 @@ The workbench L1/L2/L4 page has an `ETL 写入与定时` card. Pick a target dat
 
 The card also saves persisted schedules: choose an interval (15 minutes, 1 hour, 6 hours, or 24 hours) and press `保存定时任务`. Existing schedules list their name, stage, interval, and next run, with `立即运行` and `删除` actions. A saved schedule includes the current stage, selected sources, stage parameters, and the configured provider id when one is set.
 
-A successful job whose result includes a sink shows the outcome line: target type, table, write mode, and rows written. On a sink failure the job stays FAILED and the error surfaces in the status line; the UI never reports a fake success. On L2 the card notes that the written table is the 2,000-row cluster sample, not the full pair set.
+A successful job whose result includes a sink shows the outcome line: target type, table, write mode, and rows written. On a sink failure the job stays FAILED and the error surfaces in the status line; the UI never reports a fake success, and the dispatched task raises so a queue does not record it as completed. L2 writes the full cluster result, one row per record.
 
 ## Testing the live connectors
 

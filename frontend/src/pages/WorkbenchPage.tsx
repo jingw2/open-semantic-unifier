@@ -779,7 +779,7 @@ export default function WorkbenchPage({ projectId, activeDsIds, activeProfile, a
             <div className="text-sm font-semibold text-neutral-900">ETL 写入与定时</div>
             <p className="mt-0.5 text-xs text-neutral-500">
               将 {stage} 结果直接写入目标数据库，或按间隔定时运行。
-              {stage === 'L2' && ' L2 写入的是 2,000 行聚类样本，不是完整配对集合。'}
+              {stage === 'L2' && ' L2 写入完整聚类结果（每条记录一行），不是配对集合。'}
             </p>
           </div>
         </div>

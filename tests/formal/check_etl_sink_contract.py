@@ -176,6 +176,13 @@ def _run_case(root: Path, stage: str, outcome: str) -> int:
                 pass
             else:
                 raise Failure(f"{stage}/{outcome}: transform failure did not raise")
+        elif outcome in ("sink_failure", "invalid_table", "empty_replace"):
+            try:
+                worker_tasks.run_job_sync(job_id)
+            except worker_tasks.JobExecutionError:
+                pass
+            else:
+                raise Failure(f"{stage}/{outcome}: sink failure did not raise JobExecutionError")
         else:
             worker_tasks.run_job_sync(job_id)
     finally:

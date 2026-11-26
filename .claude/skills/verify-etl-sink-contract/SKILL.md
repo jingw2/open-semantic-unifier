@@ -5,7 +5,7 @@ description: "Prove that an L1/L2/L4 Job reports SUCCESS only after its target d
 
 # Verify the ETL sink success contract
 
-**Property.** For every L1, L2, and L4 Job that names a target table, the Job reports `SUCCESS` only after the target write succeeds. A sink failure marks the Job `FAILED` with `ETL_LOAD_FAILED`, preserves the transform result, and writes no table. A transform failure never calls the sink. A Job without a target never calls the sink.
+**Property.** For every L1, L2, and L4 Job that names a target table, the Job reports `SUCCESS` only after the target write succeeds. A sink failure marks the Job `FAILED` with `ETL_LOAD_FAILED`, preserves the transform result, writes no table, and raises `JobExecutionError` so the worker task is not reported as a success. A transform failure never calls the sink. A Job without a target never calls the sink.
 
 **Harm.** A false success tells the operator the target database was updated when it was not, so downstream reports and schedules trust stale data. A sink failure that loses the transform result also destroys the evidence needed to retry.
 
@@ -28,9 +28,9 @@ The check runs the real `run_job_sync` sink block, `resolve_target`, `load_job_f
 For each stage `L1`, `L2`, `L4`:
 
 - **Success.** Job `SUCCESS`, `result.etl.status == "SUCCEEDED"`, a positive row count, and at least one row in the target SQLite table.
-- **Sink failure.** Job `FAILED`, `error_message` starts with `ETL_LOAD_FAILED`, the transform result is preserved, the sink was called, and no target table exists.
-- **Invalid target table.** Same contract as a sink failure; the table name is rejected before any write.
-- **Empty replace.** Job `FAILED` with `ETL_LOAD_FAILED`; the pre-existing target table and its rows remain intact.
+- **Sink failure.** `run_job_sync` raises `JobExecutionError`, Job `FAILED`, `error_message` starts with `ETL_LOAD_FAILED`, the transform result is preserved, the sink was called, and no target table exists.
+- **Invalid target table.** Same contract as a sink failure, including the raise; the table name is rejected before any write.
+- **Empty replace.** `run_job_sync` raises `JobExecutionError`, Job `FAILED` with `ETL_LOAD_FAILED`; the pre-existing target table and its rows remain intact.
 - **Transform failure.** Job `FAILED`, the sink is never called, the failure is not reported as `ETL_LOAD_FAILED`, and no transform result is persisted.
 - **No target.** Job `SUCCESS`, no `result.etl`, and the sink is never called.
 
@@ -46,7 +46,7 @@ The checker replaces the L1/L2/L4 transforms and uses a SQLite target so the fau
 
 - **Real PostgreSQL, MySQL, and MongoDB target writes.** `backend/tests/integration/test_database_connectors.py` writes and reads back each target, runs concurrent appends, and runs one full PostgreSQL-to-MySQL L1 job.
 - **Concurrent writes to one target table.** `test_etl.py::test_concurrent_sqlite_sink_serializes` covers append and replace; the live connector test covers concurrent appends on PostgreSQL, MySQL, and MongoDB.
-- **Real L1, L2, and L4 transforms feeding the sink.** `test_etl.py` covers L1, L2, and L4 target jobs with real engines and real SQLite/DuckDB writes.
+- **Real L1, L2, and L4 transforms feeding the sink.** `test_etl.py` covers L1, L2, and L4 target jobs with real engines and real SQLite/DuckDB writes. The L2 case writes a 2,100-row cluster result end to end, so it catches a truncated cluster artifact.
 - **Schedule runner and Celery beat.** `test_etl.py` covers run-now, due-run selection, disabled skip, the beat schedule entry, and the Compose beat service.
 - **Credential handling.** `test_etl.py::test_datasource_api_does_not_expose_target_credentials` proves the API and sink errors do not contain the stored password.
 
@@ -56,12 +56,12 @@ The formal checker itself does not spawn live databases, run Celery beat, or exe
 
 | File | Functions | Last changed |
 | --- | --- | --- |
-| `backend/app/workers/tasks.py` | `run_job_sync` stage result and ETL sink block | `97351b6` |
-| `backend/app/services/etl.py` | `resolve_target`, `load_job_frame`, `write_dataframe`, `validate_table_name`, `_sink_lock`, empty-replace guard | `2d82c93` |
+| `backend/app/workers/tasks.py` | `run_job_sync` stage result and ETL sink block, `JobExecutionError`, local `dispatch_job` | `e23ecef` |
+| `backend/app/services/etl.py` | `resolve_target`, `load_job_frame`, `write_dataframe`, `validate_table_name`, `_sink_lock`, empty-replace guard | `e23ecef` |
 | `backend/app/api/v1/providers_jobs.py` | ETL target validation on Job submission | `cec8dd5` |
 | `backend/app/models/entities.py` | `Job`, `DataSource`, `ArtifactVersion` | `8c8a3bd` |
 
-Sync commit: `c754604`. The check was added in `1b29b81`, extended with the empty-replace case in `2d82c93`, and confirmed again at `c754604`. Move the sync commit forward only after you confirm the check still describes these functions at the new commit.
+Sync commit: `e23ecef`. The check was added in `1b29b81`, extended with the empty-replace case in `2d82c93`, extended to require the raised `JobExecutionError` in `e23ecef`, and confirmed against the full-L2 artifact at `e23ecef`. Move the sync commit forward only after you confirm the check still describes these functions at the new commit.
 
 ## If it fails
 

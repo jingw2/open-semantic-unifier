@@ -604,7 +604,7 @@ def execute_l2(
                 )
             )
 
-    cl_art = _save_artifact(db, project_id, job_id, "clusters_csv", "l2_clusters_sample.csv", df_clusters.head(2000).to_csv(index=False).encode("utf-8-sig"))
+    cl_art = _save_artifact(db, project_id, job_id, "clusters_csv", "l2_clusters.csv", df_clusters.to_csv(index=False).encode("utf-8-sig"))
     artifacts_meta.append({"id": cl_art.id, "type": cl_art.artifact_type, "filename": cl_art.filename, "version": cl_art.version_no})
 
     naive_pairs = n_total * (n_total - 1) // 2

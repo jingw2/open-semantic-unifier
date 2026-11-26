@@ -21,7 +21,7 @@ from app.models.etl import EtlSchedule
 from app.services import etl as etl_service
 from app.services.connectors import read_db_dataframe
 from app.services.storage import storage
-from app.workers.tasks import run_due_etl_schedules, run_job_sync
+from app.workers.tasks import JobExecutionError, run_due_etl_schedules, run_job_sync
 
 
 @pytest.fixture
@@ -163,9 +163,9 @@ def test_empty_l1_result_does_not_destroy_existing_target(api):
         db.commit()
         job_id = job.id
 
-    result = run_job_sync(job_id)
+    with pytest.raises(JobExecutionError, match="ETL_LOAD_FAILED"):
+        run_job_sync(job_id)
 
-    assert "etl" not in result
     with maker() as db:
         failed = db.get(Job, job_id)
         assert failed.status == "FAILED"
@@ -176,9 +176,12 @@ def test_empty_l1_result_does_not_destroy_existing_target(api):
 
 def test_l2_job_writes_target_sqlite(api):
     _client, maker, tmp_path = api
+    row_count = 2100
     storage.put_bytes(
         "projects/proj/uploads/customers.csv",
-        b"company_name,tax_id,phone\nAcme Ltd,T1,138\nACME Ltd,T1,138\nBeta,T2,139\nGamma,T3,140\nDelta,T4,141\n",
+        ("company_name,tax_id,phone\n" + "".join(
+            f"Company {index},T{index},{100000 + index}\n" for index in range(row_count)
+        )).encode(),
     )
     with maker() as db:
         src = DataSource(id="src", project_id="proj", name="customers.csv", source_type="file",
@@ -198,9 +201,10 @@ def test_l2_job_writes_target_sqlite(api):
     result = run_job_sync(job_id)
 
     assert result["etl"]["status"] == "SUCCEEDED"
-    assert result["etl"]["rows_written"] > 0
+    assert result["total_rows"] == row_count
+    assert result["etl"]["rows_written"] == row_count
     out = read_db_dataframe({"db_type": "sqlite", "database": str(tmp_path / "target.db")}, "match_sample", limit=None)
-    assert len(out) > 0
+    assert len(out) == row_count
 
 
 def test_l4_job_writes_target_duckdb(api):
@@ -259,9 +263,9 @@ def test_sink_failure_marks_job_failed_and_keeps_result(api, monkeypatch):
         raise RuntimeError("target unreachable")
 
     monkeypatch.setattr("app.workers.tasks.write_dataframe", boom)
-    result = run_job_sync(job_id)
+    with pytest.raises(JobExecutionError, match="ETL_LOAD_FAILED: target unreachable"):
+        run_job_sync(job_id)
 
-    assert "etl" not in result
     with maker() as db:
         failed = db.get(Job, job_id)
         assert failed.status == "FAILED"
@@ -269,6 +273,37 @@ def test_sink_failure_marks_job_failed_and_keeps_result(api, monkeypatch):
         assert "target unreachable" in failed.error_message
         assert failed.result_json["stage"] == "L1"
         assert failed.result_json["artifacts"]
+
+
+def test_sink_failure_is_returned_as_a_failed_job(api, monkeypatch):
+    client, maker, tmp_path = api
+    storage.put_bytes("projects/proj/uploads/suppliers.csv", b"supplier_raw_name,order_amount_cny\nAcme,100\n")
+    with maker() as db:
+        db.add_all([
+            DataSource(id="src", project_id="proj", name="suppliers.csv", source_type="file",
+                       object_key="projects/proj/uploads/suppliers.csv"),
+            _sqlite_target(tmp_path),
+        ])
+        db.commit()
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("target unreachable")
+
+    monkeypatch.setattr("app.workers.tasks.write_dataframe", boom)
+    response = client.post("/api/v1/projects/proj/jobs", json={
+        "stage": "L1",
+        "datasource_ids": ["src"],
+        "params": {"clean_fields": ["supplier_raw_name"]},
+        "etl_target_datasource_id": "tgt",
+        "etl_target_table": "supplier_clean",
+        "etl_write_mode": "replace",
+    })
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["status"] == "FAILED"
+    assert payload["error_message"].startswith("ETL_LOAD_FAILED: target unreachable")
+    assert payload["result"]["artifacts"]
 
 
 def test_datasource_api_does_not_expose_target_credentials(api, tmp_path):

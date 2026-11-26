@@ -205,8 +205,8 @@ def _write_mongo(config: Dict[str, Any], table: str, frame: pd.DataFrame, mode: 
 def load_job_frame(db: Session, stage: str, result: Dict[str, Any]) -> pd.DataFrame:
     """Select the writable frame for a finished stage.
 
-    L1 -> the ``clean_csv`` artifact; L2 -> the ``clusters_csv`` artifact (a 2,000-row
-    sample of the cluster output, not the full pair set); L4 -> ``result_rows``.
+    L1 -> the ``clean_csv`` artifact; L2 -> the full ``clusters_csv`` artifact (one
+    row per record, not the pair set); L4 -> ``result_rows``.
     """
     if stage == "L4":
         return pd.DataFrame(result.get("result_rows") or [])
