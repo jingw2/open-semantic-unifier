@@ -6,6 +6,7 @@
 3. 为对外 Serving API 提供 reconcile / validate / query_metric 核心能力
 """
 
+import hashlib
 import json
 import math
 import os
@@ -126,6 +127,12 @@ _STOP_TOKENS = ("股份有限公司", "有限责任公司", "科技有限公司"
 def fingerprint_key(text: str) -> str:
     cleaned = re.sub(r"[^\w\u4e00-\u9fff]+", " ", str(text).strip().lower())
     return " ".join(sorted(set(cleaned.split())))
+
+
+def stable_entity_id(text: str) -> str:
+    """Deterministic ENT id that does not depend on Python's per-process hash salt."""
+    digest = hashlib.sha256(str(text).encode("utf-8")).hexdigest()
+    return f"ENT-{int(digest[:8], 16) % 9000 + 1000}"
 
 
 def _calc_supplier_score(query_text: str, item: Dict[str, Any]) -> float:
@@ -327,7 +334,7 @@ def execute_l1(
         else:
             fp = fingerprint_key(val)
             rep = sorted(fp_groups[fp], key=lambda x: (-len(x.strip()), x.strip()))[0].strip()
-            cid = f"ENT-{abs(hash(rep)) % 9000 + 1000}"
+            cid = stable_entity_id(rep)
             mapping[val] = {"raw": val, "canonical_id": cid, "canonical_name": rep, "score": 78.0, "mode": "指纹聚类"}
             if review_added < 10:
                 db.add(
